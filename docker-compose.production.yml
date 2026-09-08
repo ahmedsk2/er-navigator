@@ -1,0 +1,113 @@
+# Production stack for ER Navigator on the OCI host (Coolify + Traefik).
+#
+# Self-contained, like qch and endorsement: the app ships with its own Postgres, so this
+# deployment can be created, moved or destroyed without touching any other system's data.
+#
+# EVERY variable the app reads must appear in an `environment:` block with an explicit
+# ${VAR:-default}. Coolify's Environment Variables screen only reaches what compose passes
+# through; a key set there without a passthrough here silently does nothing.
+#
+# Services:
+#   db       postgres 16, internal network only (unreachable from other apps)
+#   migrate  one-shot: prisma migrate deploy + seed, as the OWNER role, then exits 0
+#   app      Next.js standalone on :3000; runtime connects as the limited APP role
+#   worker   (Phase 6) threshold alerts, same image, different command
+services:
+  db:
+    image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ernav}
+      POSTGRES_USER: ${POSTGRES_USER:-ernav_owner}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      APP_DB_USER: ${APP_DB_USER:-ernav_app}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - ernav-db:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - internal # NOT on the coolify network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ernav_owner} -d ${POSTGRES_DB:-ernav}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrate
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Owner role: schema changes and seeding only. Never given to `app`.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ernav_owner}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ernav}?schema=public
+      APP_DB_USER: ${APP_DB_USER:-ernav_app}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_DISPLAY_NAME: ${ADMIN_DISPLAY_NAME:-Administrator}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    networks:
+      - internal
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      # App role: CRUD only; UPDATE/DELETE on AuditLog and CaseUpdate revoked at the DB.
+      DATABASE_URL: postgresql://${APP_DB_USER:-ernav_app}:${APP_DB_PASSWORD}@db:5432/${POSTGRES_DB:-ernav}?schema=public
+      APP_URL: ${APP_URL:-https://nav.towardpcc.com}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Riyadh}
+      AUTH_SECRET: ${AUTH_SECRET:-}
+      AUTH_TRUST_HOST: "true"
+      # Outgoing mail for threshold alerts (Phase 6). Empty host = alerts logged, not sent.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-ER Navigator <no-reply@towardpcc.com>}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    networks:
+      - coolify
+      - internal
+    labels:
+      # Not a router. Tells Traefik which of this container's networks to reach it on;
+      # coolify-proxy is not on `internal`.
+      - traefik.docker.network=coolify
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+networks:
+  coolify:
+    external: true
+  internal:
+    driver: bridge
+
+volumes:
+  ernav-db:

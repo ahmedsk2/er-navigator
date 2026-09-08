@@ -1,0 +1,295 @@
+// ER Navigator persistence model — authoritative, from the locked plan §3
+// (docs/reference/ER_Navigator_ClaudeCode_Plan.md). Relations are made explicit so the
+// schema validates; no field was added that the plan does not name, except the reverse
+// relation arrays Prisma requires.
+//
+// HARD RULE (plan §3): no column may ever hold a patient name, national ID, or date of birth.
+// tests/unit/phi-guard.test.ts greps this file and fails the build if one appears on Case.
+
+generator client {
+  // Driver-adapter client over the pure-JS `pg` driver (Prisma 7, no Rust engine).
+  provider = "prisma-client-js"
+}
+
+// No `url` here: Prisma 7 rejects datasource.url in the schema (P1012). See prisma.config.ts.
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  NAVIGATOR
+  SUPERVISOR
+  ADMIN
+  VIEWER
+}
+
+enum Shift {
+  MORNING
+  EVENING
+  NIGHT
+}
+
+enum CaseStatus {
+  OPEN
+  RESOLVED
+  VOIDED
+}
+
+enum RoomType {
+  RESUS
+  EXAM
+}
+
+enum Disposition {
+  ADMITTED
+  DISCHARGED_HOME
+  DISCHARGED_DAMA
+  TRANSFERRED
+  LEFT_WITHOUT_BEING_SEEN
+  OTHER
+}
+
+enum InvestigationType {
+  LAB
+  CT
+  US
+  XR
+}
+
+enum OtherReviewStatus {
+  PENDING
+  PROMOTED
+  DISMISSED
+}
+
+model User {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  passwordHash String
+  displayName  String
+  role         Role
+  active       Boolean   @default(true)
+  lastShift    Shift?
+  createdAt    DateTime  @default(now())
+  lastLoginAt  DateTime?
+  failedLogins Int       @default(0)
+  lockedUntil  DateTime?
+
+  openedCases     Case[]        @relation("CaseOpenedBy")
+  updates         CaseUpdate[]
+  acknowledged    Alert[]       @relation("AlertAcknowledgedBy")
+  reviewsReviewed OtherReview[] @relation("OtherReviewReviewedBy")
+  auditEntries    AuditLog[]
+}
+
+model Case {
+  id                 String     @id @default(cuid())
+  mrn                String // digits only, any length; validated by zod /^\d+$/
+  registrationAt     DateTime // LOS clock start, entered manually, may be in the past
+  openedAt           DateTime   @default(now())
+  openedById         String
+  shift              Shift?
+  status             CaseStatus @default(OPEN)
+  primaryReasonId    String?
+  medAdminInformedAt DateTime?
+
+  // general journey milestones (single events)
+  triageAt    DateTime?
+  roomAt      DateTime?
+  roomType    RoomType?
+  physicianAt DateTime?
+  decisionAt  DateTime?
+  departedAt  DateTime?
+
+  // admission chain
+  admOrderAt     DateTime?
+  bedRequestedAt DateTime?
+  bedAssignedAt  DateTime?
+  handoverAt     DateTime?
+
+  // transfer chain
+  transferRequestedAt DateTime?
+  transferAcceptedAt  DateTime?
+  transportArrivedAt  DateTime?
+  referralTrackingNo  String?
+  transferFacility    String?
+
+  // resolution
+  disposition    Disposition?
+  wardId         String?
+  isolation      Boolean      @default(false)
+  resolutionNote String?
+  resolvedAt     DateTime?
+  voidReason     String?
+  version        Int          @default(1) // optimistic locking
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  openedBy      User    @relation("CaseOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
+  primaryReason Reason? @relation("CasePrimaryReason", fields: [primaryReasonId], references: [id], onDelete: Restrict)
+  ward          Ward?   @relation(fields: [wardId], references: [id], onDelete: Restrict)
+
+  reasons        CaseReason[]
+  consults       CaseConsult[]
+  investigations CaseInvestigation[]
+  updates        CaseUpdate[]
+  alerts         Alert[]
+  otherReviews   OtherReview[]
+
+  @@index([status, registrationAt])
+  @@index([mrn])
+}
+
+model Stage {
+  id        String  @id @default(cuid())
+  code      String  @unique
+  name      String
+  sortOrder Int
+  active    Boolean @default(true)
+
+  reasons      Reason[]
+  otherReviews OtherReview[]
+}
+
+model Reason {
+  id                 String  @id @default(cuid())
+  stageId            String
+  name               String
+  requiresDepartment Boolean @default(false)
+  requiresReferralNo Boolean @default(false)
+  isOther            Boolean @default(false)
+  active             Boolean @default(true)
+  sortOrder          Int
+
+  stage          Stage         @relation(fields: [stageId], references: [id], onDelete: Restrict)
+  caseReasons    CaseReason[]
+  primaryOfCases Case[]        @relation("CasePrimaryReason")
+  promotedFrom   OtherReview[] @relation("OtherReviewPromotedReason")
+
+  @@unique([stageId, name])
+}
+
+model CaseReason {
+  caseId    String
+  reasonId  String
+  otherText String?
+
+  case   Case   @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  reason Reason @relation(fields: [reasonId], references: [id], onDelete: Restrict)
+
+  @@id([caseId, reasonId])
+}
+
+model Department {
+  id        String  @id @default(cuid())
+  name      String  @unique
+  active    Boolean @default(true)
+  sortOrder Int
+
+  consults CaseConsult[]
+}
+
+model CaseConsult {
+  id           String    @id @default(cuid())
+  caseId       String
+  departmentId String
+  consultedAt  DateTime?
+  seenAt       DateTime?
+  repliedAt    DateTime?
+
+  case       Case       @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+
+  @@unique([caseId, departmentId])
+}
+
+model CaseInvestigation {
+  id          String            @id @default(cuid())
+  caseId      String
+  type        InvestigationType
+  orderedAt   DateTime?
+  collectedAt DateTime? // LAB only: sample collected
+  receivedAt  DateTime? // LAB only: received by lab
+  doneAt      DateTime? // imaging: scan done
+  resultedAt  DateTime? // LAB: resulted; imaging: reported
+
+  case Case @relation(fields: [caseId], references: [id], onDelete: Restrict)
+
+  @@unique([caseId, type])
+}
+
+model Ward {
+  id        String  @id @default(cuid())
+  code      String  @unique
+  name      String
+  active    Boolean @default(true)
+  sortOrder Int
+
+  cases Case[]
+}
+
+// Append-only: no update or delete route exists, and the app DB role has UPDATE/DELETE revoked.
+model CaseUpdate {
+  id        String   @id @default(cuid())
+  caseId    String
+  authorId  String
+  createdAt DateTime @default(now())
+  text      String
+
+  case   Case @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([caseId, createdAt])
+}
+
+model OtherReview {
+  id               String            @id @default(cuid())
+  caseId           String
+  stageId          String
+  text             String
+  status           OtherReviewStatus @default(PENDING)
+  reviewedById     String?
+  reviewedAt       DateTime?
+  promotedReasonId String?
+
+  case           Case    @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  stage          Stage   @relation(fields: [stageId], references: [id], onDelete: Restrict)
+  reviewedBy     User?   @relation("OtherReviewReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
+  promotedReason Reason? @relation("OtherReviewPromotedReason", fields: [promotedReasonId], references: [id], onDelete: Restrict)
+
+  @@index([status])
+}
+
+model Alert {
+  id               String    @id @default(cuid())
+  caseId           String
+  thresholdHours   Int // 4, 6, 12, 24
+  firedAt          DateTime  @default(now())
+  emailSentAt      DateTime?
+  acknowledgedById String?
+  acknowledgedAt   DateTime?
+
+  case           Case  @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  acknowledgedBy User? @relation("AlertAcknowledgedBy", fields: [acknowledgedById], references: [id], onDelete: Restrict)
+
+  @@unique([caseId, thresholdHours])
+}
+
+// Append-only at the database level (app role: INSERT + SELECT only).
+model AuditLog {
+  id        String   @id @default(cuid())
+  at        DateTime @default(now())
+  actorId   String?
+  action    String // case.create, case.update, case.resolve, case.void, user.create, list.update, auth.login, auth.fail, auth.forbidden
+  entity    String
+  entityId  String?
+  before    Json?
+  after     Json?
+  ip        String?
+  userAgent String?
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([entity, entityId])
+  @@index([at])
+}

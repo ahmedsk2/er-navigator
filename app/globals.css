@@ -1,0 +1,30 @@
+@import 'tailwindcss';
+
+/*
+  Design tokens — Phase 0 baseline taken from the validated prototype palette
+  (docs/reference/ERNavigatorTracker.jsx, `const C`). They are replaced in Phase 0.3 by the
+  tokens extracted from the attached Envato template (docs/DESIGN-ASSETS.md); the
+  threshold colours (ok/h4/h6/h12/h24) are information design and stay.
+*/
+@theme {
+  --color-bg: #f5f7f5;
+  --color-panel: #ffffff;
+  --color-ink: #16243b;
+  --color-line: #d6dcd7;
+  --color-muted: #5b6673;
+  --color-accent: #1f7a8c;
+  --color-accent-soft: #e3f1f4;
+  --color-band-ok: #2e7d5b;
+  --color-band-h4: #c98a1b;
+  --color-band-h6: #b93a2e;
+  --color-band-h12: #6b2058;
+  --color-band-h24: #16243b;
+  --font-sans: 'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --radius-field: 8px;
+  --radius-button: 10px;
+  --radius-chip: 999px;
+}
+
+html { color-scheme: light; }
+body { background: var(--color-bg); color: var(--color-ink); font-family: var(--font-sans); }
+.num { font-variant-numeric: tabular-nums; }
