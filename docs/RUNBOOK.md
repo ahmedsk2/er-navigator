@@ -11,7 +11,7 @@ The host also runs other live clinical applications. Every command below is scop
 | Host | OCI `hosting-1`, `ubuntu@145.241.105.239` (`ssh -i ~/.ssh/oci_server`), passwordless sudo |
 | Platform | Coolify 4.1.2 at https://deploy.towardpcc.com (API from the host: `http://localhost:8000/api/v1`, token `~/.coolify-token`) |
 | Project / environment | `clinical` (`bzgokocrhao23bp4zj6amom5`) / `production` (`p7ozpkekn1lcuf8wbmaip0m4`) |
-| Application | `er-navigator`, uuid `<APP_UUID>` |
+| Application | `er-navigator`, uuid `jqcjqhmcmizxs1u51wnqlfwv` |
 | Build | `dockercompose`, `/docker-compose.production.yml`, base directory `/` |
 | Domain binding | `docker_compose_domains = {"app":{"domain":"https://nav.towardpcc.com:3000"}}` |
 | Repository | `git@github.com:ahmedsk2/er-navigator.git`, branch `main`, private |
@@ -38,7 +38,7 @@ curl -s https://nav.towardpcc.com/api/ready
 Force a redeploy without a push (from the host):
 
 ```bash
-T=$(cat ~/.coolify-token); curl -s -H "Authorization: Bearer $T" "http://localhost:8000/api/v1/deploy?uuid=<APP_UUID>&force=false"
+T=$(cat ~/.coolify-token); curl -s -H "Authorization: Bearer $T" "http://localhost:8000/api/v1/deploy?uuid=jqcjqhmcmizxs1u51wnqlfwv&force=false"
 ```
 
 Poll `GET /api/v1/deployments/<deployment_uuid>` until `status` is `finished`. Read the deployment log in Coolify when it is not.
@@ -64,7 +64,7 @@ Every key the compose file passes through. Secrets are 48-character alphanumeric
 Changing a secret: edit both the production and the preview copy, then a `restart_only` deployment (a plain restart keeps the old environment). Verify with a hash inside the container, never by printing the value:
 
 ```bash
-CID=$(sudo docker ps --format '{{.Names}}' | grep '^app-<APP_UUID>')
+CID=$(sudo docker ps --format '{{.Names}}' | grep '^app-jqcjqhmcmizxs1u51wnqlfwv')
 sudo docker exec "$CID" sh -c 'printenv AUTH_SECRET | sha256sum | cut -c1-8'
 ```
 
@@ -73,7 +73,7 @@ sudo docker exec "$CID" sh -c 'printenv AUTH_SECRET | sha256sum | cut -c1-8'
 Only through the `db` container of this app. Owner role for schema work, app role for anything else.
 
 ```bash
-DB=$(sudo docker ps --format '{{.Names}}' | grep '^db-<APP_UUID>')
+DB=$(sudo docker ps --format '{{.Names}}' | grep '^db-jqcjqhmcmizxs1u51wnqlfwv')
 sudo docker exec "$DB" psql -U ernav_owner -d ernav -tAc \
   "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL ORDER BY started_at"
 sudo docker exec "$DB" psql -U ernav_owner -d ernav -tAc \
