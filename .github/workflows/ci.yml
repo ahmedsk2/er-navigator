@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
@@ -41,7 +41,7 @@ jobs:
       OWNER_URL: postgresql://ernav_owner:devowner@localhost:5432/ernav?schema=public
       APP_URL_DB: postgresql://ernav_app:devapp@localhost:5432/ernav?schema=public
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
