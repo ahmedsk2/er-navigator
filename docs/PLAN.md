@@ -288,7 +288,7 @@ Fable is the most capable model available here and the most expensive per token.
 
 1. Work on a branch, open a PR, CI must be green (lint, typecheck, unit, build).
 2. Merge to `main`, outside shift change. Coolify builds on the host (about 2 to 5 minutes; longer when other tenants are building), then stops and removes every container of this app and starts the new set: `db`, then `migrate`, then `app`. The site returns 404 for about a minute. If `migrate` fails, `app` does not start and the site stays down: follow the runbook's "Deploy failed at migrate" section, because redeploying the previous commit does not clear a failed migration record.
-3. Verify by fingerprint, not by tag: `curl -sI https://nav.towardpcc.com/api/health | grep x-build-fingerprint` and compare with `printf %s "$(git rev-parse HEAD)" | sha256sum | cut -c1-16`. Then `curl -s https://nav.towardpcc.com/api/ready` must return `ready`, and on the host `docker exec <app> printenv POSTGRES_PASSWORD` must print nothing.
+3. Verify by fingerprint, not by tag: `curl -sI https://nav.towardpcc.com/api/health | grep x-build-fingerprint` and compare with `printf %s "$(git rev-parse HEAD)" | sha256sum | cut -c1-16`. Then `curl -s https://nav.towardpcc.com/api/ready` must return `ready`, and on the host the running process's environment (`/proc/1/environ` in the app container, not `docker exec printenv`, which shows the configured env) must contain no `POSTGRES_PASSWORD`.
 
 **Roll back**: Coolify → the application → Deployments → pick the last good one → Redeploy. Migrations are forward-only; a rollback that needs a schema revert gets its own migration. After a failed migration, run `prisma migrate resolve` first (runbook), or the redeploy fails at the same step.
 
