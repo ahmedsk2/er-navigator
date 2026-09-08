@@ -14,7 +14,9 @@
 #   worker   (Phase 6) threshold alerts, same image, different command
 services:
   db:
-    image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+    build:
+      context: .
+      dockerfile: docker/postgres/Dockerfile
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -28,7 +30,6 @@ services:
       PGTZ: UTC
     volumes:
       - ernav-db:/var/lib/postgresql/data
-      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
     networks:
       - internal # NOT on the coolify network
     healthcheck:
