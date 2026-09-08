@@ -26,7 +26,7 @@ Read order for any session: `CLAUDE.md` (short), then the section of this plan f
 | Item | Value |
 | --- | --- |
 | Host | OCI `hosting-1`, `145.241.105.239`, me-riyadh-1, Ubuntu 24.04 ARM64, 4 OCPU / 24 GB, 131 GB free |
-| Platform | Coolify 4.1.2 + Traefik 3.6, Docker 29.6. Apps deploy from GitHub via read-only deploy keys, push-to-deploy, rolling update gated on healthcheck |
+| Platform | Coolify 4.1.2 + Traefik 3.6, Docker 29.6. Apps deploy from GitHub via read-only deploy keys, push-to-deploy. For compose applications a deploy is stop-then-start: every container of the app is removed, then `docker compose up -d` runs, so expect about a minute of 404 per deploy (verified in the first deploy log) |
 | Existing clinical pattern | `qch` and `endorsement`: project `clinical`, build pack `dockercompose`, `/docker-compose.production.yml`, isolated DB container on a private network, Traefik reaches the app on the `coolify` network |
 | DNS | Cloudflare zone `towardpcc.com`. Every subdomain on this host is PROXIED and must stay so: the OCI security list accepts 80/443 only from Cloudflare ranges. Zone SSL mode: Full (strict). Origin certs: Let's Encrypt via Traefik HTTP-01 through Cloudflare |
 | Backups | OCI Object Storage bucket `coolify-backups` (14-day WORM rule), mirrored daily to Ahmed's laptop by the `OracleBackupSync` task. Boot-volume backup policy attached |
@@ -37,7 +37,8 @@ Read order for any session: `CLAUDE.md` (short), then the section of this plan f
 **Delivered this session (Phase 0, most of it)**
 
 - This repository: Next.js 16 + TypeScript strict + Tailwind 4 + Prisma 7 + Postgres 16, with the authoritative Prisma schema, the Appendix A seed, the duration formulas ported from the prototype with unit tests, the PHI-guard test, security headers, health and readiness probes, a Dockerfile and production compose that follow the host's clinical pattern, CI, Dependabot.
-- GitHub repository, Cloudflare record `nav.towardpcc.com`, Coolify application in project `clinical`, first deploy. The live facts are in `docs/RUNBOOK.md`.
+- GitHub repository, Cloudflare record `nav.towardpcc.com`, Coolify application in project `clinical`, push-to-deploy webhook, first deploy verified by commit fingerprint and a live `SELECT 1`. The live facts are in `docs/RUNBOOK.md`.
+- An adversarial review of this plan, the scaffold and the deployment config (five lenses, two independent refuters per finding, 55 agents). Nineteen findings survived; every one is either fixed in the scaffold or recorded in Section 1, Section 9 or the runbook. The refuted ones are not carried.
 
 ---
 
@@ -50,7 +51,13 @@ The locked plan wins on workflow, taxonomy, rules, screens and permissions. This
 | Framework | Next.js 15, App Router, TS strict | Next.js 16.3, App Router, TS strict | Current stable. The exact combination (Next 16, React 19, Prisma 7, Auth.js v5 beta, zod 4, Tailwind 4) already runs on this host in `towardpcc`, so it is proven on this ARM64 build path |
 | ORM | Prisma, provider chosen at Gate 0 | Prisma 7 on PostgreSQL 16 with the `pg` driver adapter | Prisma 7 has no native engine, so it runs on the Windows-ARM64 dev box and the Linux-ARM64 host alike |
 | Database placement | "whatever the server has" | Dedicated Postgres 16 container inside this app's compose, on a private network, two roles: `ernav_owner` (migrations, seed) and `ernav_app` (runtime; UPDATE/DELETE revoked on `AuditLog` and `CaseUpdate`) | Matches the `qch`/`endorsement` isolation rule for anything holding patient identifiers. The app can be created, moved or destroyed without touching another system's data. Append-only is enforced at the database, not only in code |
-| Migrations | Not specified | Automatic on every deploy: a one-shot `migrate` service runs `prisma migrate deploy` and the seed as the owner role; `app` starts only after it exits 0 | Removes the "merged a schema change, forgot the migration" failure recorded in the towardpcc runbook. The owner connection string never enters the app container |
+| Migrations | Not specified | Automatic on every deploy: a one-shot `migrate` service runs `prisma migrate deploy`, reconciles the app role's password and privileges, then seeds, all as the owner role; `app` starts only after it exits 0. A failed migration is an outage until it is resolved (Section 7) | Removes the "merged a schema change, forgot the migration" failure recorded in the towardpcc runbook |
+| Secrets inside containers | Not specified | Coolify writes every application variable into an env file attached to every service, so the owner password would reach the app container. The app image's entrypoint unsets everything not on its allowlist before starting the server; the runbook's deploy verification checks it | Keeps the database-level append-only guarantee meaningful: code running in the app process cannot connect as the owner |
+| Deploy model | Rolling update assumed | Stop-then-start (Coolify's behaviour for compose apps): about a minute of downtime per deploy, merge outside shift change, and a failed migration keeps the site down until `prisma migrate resolve` is run (runbook, "Deploy failed at migrate") | Measured on the first deploy; the plan must not promise a rolling update it does not get |
+| Seed contract | Seed reference lists verbatim | The seed fills EMPTY reference tables only and never updates an existing row, because Admin renames, reorders and deactivates them from Phase 6 | Otherwise every merge to `main` would revert Admin's edits and resurrect renamed rows |
+| Phase sequencing | Schema, migrations, seed, formula tests and PHI guard belong to Phase 1 | Pulled forward into the Phase 0 scaffold so the pipeline could be proven end to end. Gate 1 still reviews them | Listed here so the Gate 0 report can name it as a deviation rather than hide it |
+| Sessions | Auth.js v5 credentials provider with database sessions | Auth.js refuses that combination (the credentials provider only supports JWT sessions), so Phase 1 needs a decision at Gate 0, Section 9 question 9. Recommended: option A, hand-rolled opaque-cookie sessions stored in a `Session` table (about 200 lines plus tests), which satisfies locked section 7 literally: 12 h sliding, rotated on login, revoked on deactivation, no beta dependency | Discovered in review; deciding it mid-phase would cost a Sonnet loop |
+| Amber threshold colour | Prototype `#C98A1B` | Band `#B8790F` (3.6:1 on white) with a text variant `#8A5E0E` (5.7:1); a unit test enforces 4.5:1 for text tokens and 3:1 for bands | The prototype's amber is 2.9:1, below AA for text and below 3:1 for graphics; the plan's own acceptance would have failed at Gate 3 |
 | Hosting | NSSM + Caddy + Cloudflare Tunnel, or systemd + Caddy | Coolify application, build pack `dockercompose`, Traefik in front, push-to-deploy from `main` | This is what the server runs. No new moving parts |
 | Domain | "public hostname" at Gate 0 | `nav.towardpcc.com`, Cloudflare A record to `145.241.105.239`, proxied | Same zone and lock as the other clinical apps |
 | Alerts worker | `worker/alerts.ts` as its own process | Same code, run as a `worker` service in the compose from the same image with a different command (Phase 6) | One image, one deploy, separate process as the plan requires |
@@ -101,7 +108,7 @@ Everything an agent needs to deploy or debug, and where each secret lives. Value
 | --- | --- |
 | Source | `git@github.com:ahmedsk2/er-navigator.git`, branch `main` |
 | Coolify application | project `clinical` → environment `production`. UUIDs and the deploy-key name are recorded in `docs/RUNBOOK.md` after creation |
-| Production env vars | Coolify → the application → Environment Variables. The compose file lists every key it passes through; a key not listed there does nothing |
+| Production env vars | Coolify → the application → Environment Variables. Every key set there reaches every container (Coolify's env file); the compose `environment:` blocks fix defaults, and the app entrypoint keeps only its allowlist |
 | Local dev env | `.env` (gitignored), from `.env.example` |
 | Infrastructure secrets (Cloudflare, Coolify, SMTP) | `C:\Users\ahmed\Documents\ORACLE MCP\infra\secrets.env` on the dev machine and `~/.coolify-token`, `~/.cloudflare-token` on the host. Never in this repository |
 | Health | `GET /api/health` (liveness, returns `x-build-fingerprint` = first 16 hex of sha256 of the deployed commit) and `GET /api/ready` (runs `SELECT 1`, 503 when the database is down) |
@@ -131,12 +138,13 @@ Not worth buying: fonts (use Google Fonts: Inter or IBM Plex Sans, both with tab
 1. Put the unzipped folders under `C:\Users\ahmed\Documents\Navigators\design-template\` (one folder per item). Do not commit them: they are licensed assets.
 2. Phase 0.3 (a short Fable session): extract tokens into `design/tokens.md` and `app/globals.css` `@theme`: neutral scale, accent, semantic colours, type ramp (sizes, weights, line heights), spacing scale, radii, elevation. Keep the five threshold colours from the prototype unless the template's semantic colours meet WCAG AA on white and stay distinguishable from each other; record the decision in `design/tokens.md`.
 3. Extract only tokens and layout patterns. No content, copy, logos, illustrations or component names from the template reach this repository.
+4. Contrast is a test, not a preference: every token used as text is at least 4.5:1 on both grounds and every band at least 3:1 (`tests/unit/tokens.test.ts`). The prototype's amber failed both and is already replaced (Section 1).
 
 **Acceptance for the visual layer (checked at every gate with Playwright screenshots at 390 x 844 and 1280 x 800)**
 
 - Lighthouse mobile: performance and accessibility at or above 90 on Board and Case editor (Phase 7 gate; tracked from Phase 3).
 - Touch targets at least 44 px; body text at least 15 px on mobile; all times in tabular numerals; contrast AA.
-- One-handed use of the case editor: chips, "Now" buttons, quick-adjust registration chips, sticky save.
+- One-handed use of the case editor exactly as the prototype has it: chips, "Now" buttons, quick-adjust registration chips, the save button after the "Check these times" panel. No sticky save bar: it would let a nurse save without passing the warnings and would stack on the tab bar.
 - Print stylesheet produces the shift handover sheet (Phase 3) and the report (Phase 5).
 
 ---
@@ -164,9 +172,9 @@ Gate 0 report, then wait for "confirm".
 
 ### Phase 1: schema, seed, auth, audit
 
-Done: schema, migrations, seed, two DB roles.
+Done (pulled forward, Section 1): schema, migrations including the privileges migration, seed, two DB roles, role reconciliation on deploy.
 
-To build: Auth.js v5 credentials provider, bcrypt cost 12, database sessions (httpOnly, secure, sameSite=lax, 12 h sliding, rotated on login), login rate limit (5 per minute per IP via `CF-Connecting-IP`), lockout (15 min after 10 failures), role middleware, audit wrapper writing before/after JSON, `auth.login`/`auth.fail`/`auth.forbidden` events, grants migration that revokes UPDATE/DELETE on `AuditLog` and `CaseUpdate` from `ernav_app`.
+To build: the session design decided at Gate 0 (Section 1, Sessions row) with bcrypt cost 12 credentials, httpOnly/secure/sameSite=lax cookie, 12 h sliding expiry, rotation on login, revocation on deactivation; login rate limit (5 per minute per IP via `CF-Connecting-IP`, socket address as fallback); lockout (15 min after 10 failures); role checks in a `proxy.ts` gate plus every server action; audit wrapper writing before/after JSON; `auth.login`/`auth.fail`/`auth.forbidden` events. Install `scripts/backup.sh` on the host timer at this gate, before any real case is entered, and record the first restore drill in the runbook.
 
 Tests: formula tests (done), PHI guard (done), role matrix test (every action x every role), lockout test, audit wrapper test, a DB privilege test that asserts `has_table_privilege('ernav_app','"AuditLog"','DELETE')` is false.
 
@@ -177,6 +185,8 @@ Recipe: Fable designs the auth and audit module boundaries and reviews at the ga
 Create, edit, resolve, reopen, void. Conditional sections, chains, "Check these times" panel (port `timeWarnings`), primary selector, optimistic locking with 409 and the "changed by {name} at {time}" message, append-only updates, "Other" text to review queue, deselect-Other cleanup.
 
 Tests: zod rules from locked plan section 4, one unit test per rule; Playwright: navigator opens a case in under 15 UI actions, adds an update, resolves; a second session gets 409 on a stale save.
+
+Free text is the realistic PHI path (update text, resolution note, Other text, void reason): a shared `freeText` zod schema trims and caps every one of them, and, if Ahmed approves Section 9 question 10, adds a warning to the existing warnings channel when a 10-digit run appears (Saudi ID, Iqama and mobile numbers are 10 digits; MRNs vary, so warn rather than block). Every free-text field carries a persistent "MRN only, no names" hint. The runbook already has the owner-role scrub procedure for the day a name slips through.
 
 Recipe: Fable writes `validation.ts` and `warnings.ts` itself (they encode the rules; getting them wrong is the expensive failure) and reviews the server actions. Sonnet builds the editor UI from the prototype section by section, one component per subagent, each with its own Playwright step. Screenshots at both viewports at the gate.
 
@@ -205,6 +215,8 @@ Recipe: Sonnet end to end, Fable reviews the sheet mapping against the prototype
 ### Phase 6: admin and alerts
 
 Users, reference lists, Other promotion (re-tags the originating case, closes the review), audit viewer, alerts worker (5 min cron over OPEN cases, thresholds 4/6/12/24, email from 6 h up to SUPERVISOR and ADMIN, retry once, never crash), `worker` service added to the compose.
+
+Preconditions this phase must build first: a `worker` Dockerfile target (the runner image has no TypeScript runtime; bundle `worker/alerts.ts` with esbuild into the runner image and run it with `node`, reusing the entrypoint allowlist) and a seeded system user (fixed username, `active = false`, role NAVIGATOR) to own the "Reached Nh threshold" updates, because `CaseUpdate.authorId` is required. The Phase 8 importer uses the same user.
 
 Recipe: Fable designs the worker's idempotency (unique on caseId+threshold does the heavy lifting) and the email template. Sonnet builds admin screens. Test: promoting an Other reason re-tags the case and closes the review.
 
@@ -275,12 +287,12 @@ Fable is the most capable model available here and the most expensive per token.
 **Ship a change**
 
 1. Work on a branch, open a PR, CI must be green (lint, typecheck, unit, build).
-2. Merge to `main`. Coolify builds on the host (about 2 to 5 minutes; longer when other tenants are building) and rolls the new `app` container in only after its healthcheck passes. The `migrate` service runs first; if a migration fails, the old container keeps serving.
-3. Verify by fingerprint, not by tag: `curl -sI https://nav.towardpcc.com/api/health | grep x-build-fingerprint` and compare with `printf %s "$(git rev-parse HEAD)" | sha256sum | cut -c1-16`. Then `curl -s https://nav.towardpcc.com/api/ready` must return `ready`.
+2. Merge to `main`, outside shift change. Coolify builds on the host (about 2 to 5 minutes; longer when other tenants are building), then stops and removes every container of this app and starts the new set: `db`, then `migrate`, then `app`. The site returns 404 for about a minute. If `migrate` fails, `app` does not start and the site stays down: follow the runbook's "Deploy failed at migrate" section, because redeploying the previous commit does not clear a failed migration record.
+3. Verify by fingerprint, not by tag: `curl -sI https://nav.towardpcc.com/api/health | grep x-build-fingerprint` and compare with `printf %s "$(git rev-parse HEAD)" | sha256sum | cut -c1-16`. Then `curl -s https://nav.towardpcc.com/api/ready` must return `ready`, and on the host `docker exec <app> printenv POSTGRES_PASSWORD` must print nothing.
 
-**Roll back**: Coolify → the application → Deployments → pick the last good one → Redeploy. Migrations are forward-only; a rollback that needs a schema revert gets its own migration.
+**Roll back**: Coolify → the application → Deployments → pick the last good one → Redeploy. Migrations are forward-only; a rollback that needs a schema revert gets its own migration. After a failed migration, run `prisma migrate resolve` first (runbook), or the redeploy fails at the same step.
 
-**Change a secret**: edit it in Coolify (both the production and the preview copy), then a `restart_only` deployment; a plain restart keeps the old environment. Verify with a hash of the value inside the container, never by printing it.
+**Change a secret**: edit it in Coolify (both the production and the preview copy), then redeploy; a plain restart keeps the old environment. `APP_DB_PASSWORD` rotates this way because the migrate step re-applies it to the role. `POSTGRES_PASSWORD` is the exception: change it in the database first, then in Coolify (runbook). Verify with a hash of the value inside the container, never by printing it.
 
 **DNS**: `nav.towardpcc.com` stays proxied. Turning the orange cloud off takes the site offline and breaks certificate renewal.
 
@@ -293,7 +305,7 @@ Fable is the most capable model available here and the most expensive per token.
 | Risk | Mitigation |
 | --- | --- |
 | Threshold alerts depend on the worker; if it dies, nobody is emailed | Worker has `restart: unless-stopped`, its own healthcheck, and an Uptime Kuma push monitor (Phase 6). The `Alert` unique index makes restarts idempotent |
-| A migration runs against production data with a mistake | `migrate` runs before `app` and the old container keeps serving on failure; nightly dump plus a drilled restore (Phase 7); schema PRs get Fable review |
+| A migration runs against production data with a mistake | `migrate` runs before `app`, so a failing migration never starts the new app, but the site is down until it is resolved (runbook procedure); nightly dump installed at Gate 1 with a drilled restore; schema PRs get Fable review and are merged outside shift change |
 | Optimistic-locking conflicts frustrate nurses on a busy shift | The 409 message names who changed the case and when; `CaseUpdate` rows never conflict, so the most common action (add an update) always succeeds |
 | Someone opens 80/443 to the world for another app | `CF-Connecting-IP` becomes spoofable. The runbook records the dependency; the rate limiter falls back to the socket address when the header is absent |
 | Envato template pushes the UI toward decorative dashboards | Section 4 rules: tokens only. Gate screenshots are reviewed against the prototype's information design |
@@ -307,11 +319,13 @@ Fable is the most capable model available here and the most expensive per token.
 1. Please add `ER_Navigator_Tool_Design.md` to `docs/reference/` (or say it is superseded by the prototype and plan).
 2. Download the Section 4 items into `Documents\Navigators\design-template\` and say when they are there.
 3. SMTP for alerts: use the existing Infomaniak relay (`mail.dmc-im.com`, from `info@dmc-im.com`), or a `towardpcc.com` sender (needs an SPF change and DKIM)? Alerts stay log-only until this is answered.
-4. First ADMIN username and display name (the password is set once in Coolify as `ADMIN_PASSWORD` and consumed by the seed; change it after first login).
+4. First ADMIN username and display name. The seed created `admin` (display name Ahmed) with a generated password that lives only in Coolify's environment; once login exists (Phase 1) change it and delete `ADMIN_PASSWORD` from both Coolify copies.
 5. Hospital header text for the printed report and handover sheet (exact wording, English).
 6. Confirm Next.js 16 and Prisma 7 instead of the plan's Next.js 15 (Section 1).
 7. Keep the repository private with a deploy key (recommended), or make it public as you offered?
 8. Preview deployments: Coolify can build PRs on `pr-N.nav.towardpcc.com`. Wanted from Phase 2, or not at all?
+9. Sessions (Section 1): option A, hand-rolled opaque-cookie sessions in a `Session` table, recommended; or option B, Auth.js with JWT sessions plus a per-request active/locked check. Both meet the locked plan's cookie, expiry and rotation rules; only A is "database sessions" literally.
+10. Free text: may the case editor warn (not block) when an update, note or Other text contains a 10-digit number, and show an "MRN only, no names" hint on those fields? This is one rule beyond the locked plan's validation list.
 
 ---
 

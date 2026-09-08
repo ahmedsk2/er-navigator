@@ -3,13 +3,23 @@
 # Self-contained, like qch and endorsement: the app ships with its own Postgres, so this
 # deployment can be created, moved or destroyed without touching any other system's data.
 #
-# EVERY variable the app reads must appear in an `environment:` block with an explicit
-# ${VAR:-default}. Coolify's Environment Variables screen only reaches what compose passes
-# through; a key set there without a passthrough here silently does nothing.
+# How Coolify runs this file (verified 2026-09-08):
+#   - Every variable set on the application in Coolify is written to a .env that Coolify
+#     attaches to EVERY service as env_file. The `environment:` blocks below are therefore not
+#     the only way a value reaches a container; they fix the value and the default. The app
+#     image's entrypoint unsets everything that is not on its allowlist (docker/entrypoint.sh),
+#     which is what keeps the owner password out of the app process.
+#   - A deploy is STOP-THEN-START, not a rolling update: Coolify removes every container of this
+#     application, then runs `docker compose up -d`. Expect about a minute of 404 per deploy
+#     (db start + healthcheck, migrate, app start, first health probe). Merge outside shift
+#     change. If `migrate` exits non-zero, `app` does not start and the site stays down until
+#     the migration is resolved (docs/RUNBOOK.md, "Deploy failed at migrate").
+#   - Coolify prefixes the named volume: on the host it is <app-uuid>_ernav-db. It also attaches
+#     every service to a per-application network that coolify-proxy joins.
 #
 # Services:
-#   db       postgres 16, internal network only (unreachable from other apps)
-#   migrate  one-shot: prisma migrate deploy + seed, as the OWNER role, then exits 0
+#   db       postgres 16 with the first-boot init baked in (docker/postgres/Dockerfile)
+#   migrate  one-shot: prisma migrate deploy + role sync + seed as the OWNER role, exits 0
 #   app      Next.js standalone on :3000; runtime connects as the limited APP role
 #   worker   (Phase 6) threshold alerts, same image, different command
 services:
@@ -31,13 +41,14 @@ services:
     volumes:
       - ernav-db:/var/lib/postgresql/data
     networks:
-      - internal # NOT on the coolify network
+      - internal
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ernav_owner} -d ${POSTGRES_DB:-ernav}"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 12
+      retries: 24
       start_period: 20s
+      start_interval: 2s
 
   migrate:
     build:
@@ -51,9 +62,10 @@ services:
       db:
         condition: service_healthy
     environment:
-      # Owner role: schema changes and seeding only. Never given to `app`.
+      # Owner role: schema changes, role reconciliation and seeding. Not used by `app`.
       DATABASE_URL: postgresql://${POSTGRES_USER:-ernav_owner}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ernav}?schema=public
       APP_DB_USER: ${APP_DB_USER:-ernav_app}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_DISPLAY_NAME: ${ADMIN_DISPLAY_NAME:-Administrator}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
@@ -81,6 +93,7 @@ services:
       DATABASE_URL: postgresql://${APP_DB_USER:-ernav_app}:${APP_DB_PASSWORD}@db:5432/${POSTGRES_DB:-ernav}?schema=public
       APP_URL: ${APP_URL:-https://nav.towardpcc.com}
       APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Riyadh}
+      TZ: UTC
       AUTH_SECRET: ${AUTH_SECRET:-}
       AUTH_TRUST_HOST: "true"
       # Outgoing mail for threshold alerts (Phase 6). Empty host = alerts logged, not sent.
@@ -103,6 +116,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 40s
+      start_interval: 2s
 
 networks:
   coolify:

@@ -33,9 +33,9 @@ describe('endAt / elapsedHours', () => {
   })
 })
 
-describe('band thresholds are inclusive at 4/6/12/24', () => {
+describe('band thresholds are inclusive at 4/6/12/24; null is the neutral no-data band', () => {
   it.each([
-    [null, 'ok'],
+    [null, 'none'],
     [0, 'ok'],
     [3.99, 'ok'],
     [4, 'h4'],

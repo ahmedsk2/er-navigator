@@ -1,0 +1,32 @@
+# Local development and CI database: the SAME Postgres image production runs, so the first-boot
+# init creates both roles (ernav_owner, ernav_app) and privilege tests mean the same thing here.
+#
+#   docker compose -f docker-compose.dev.yml up -d --wait
+#   DATABASE_URL=postgresql://ernav_owner:devowner@localhost:5432/ernav?schema=public pnpm db:deploy
+#
+# Passwords here are development-only defaults and are never used in production.
+services:
+  db:
+    build:
+      context: .
+      dockerfile: docker/postgres/Dockerfile
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ernav}
+      POSTGRES_USER: ${POSTGRES_USER:-ernav_owner}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devowner}
+      APP_DB_USER: ${APP_DB_USER:-ernav_app}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-devapp}
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      - "${DEV_DB_PORT:-5432}:5432"
+    volumes:
+      - ernav-dev-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ernav_owner} -d ${POSTGRES_DB:-ernav}"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  ernav-dev-db:

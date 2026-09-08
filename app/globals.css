@@ -3,8 +3,13 @@
 /*
   Design tokens — Phase 0 baseline taken from the validated prototype palette
   (docs/reference/ERNavigatorTracker.jsx, `const C`). They are replaced in Phase 0.3 by the
-  tokens extracted from the attached Envato template (docs/DESIGN-ASSETS.md); the
-  threshold colours (ok/h4/h6/h12/h24) are information design and stay.
+  tokens extracted from the Envato items (docs/DESIGN-ASSETS.md); the threshold colours are
+  information design and stay, with one recorded change: the prototype's amber (#C98A1B) is
+  2.9:1 on white, below the 3:1 non-text minimum, so the band uses #B8790F (3.6:1) and text in
+  amber uses --color-band-h4-ink (5.7:1). tests/unit/tokens.test.ts enforces the ratios.
+
+  Rules: every token used as text is at least 4.5:1 on --color-bg and --color-panel; every band
+  is at least 3:1. --color-band-none is the prototype's neutral "no data" colour (C.line).
 */
 @theme {
   --color-bg: #f5f7f5;
@@ -14,8 +19,10 @@
   --color-muted: #5b6673;
   --color-accent: #1f7a8c;
   --color-accent-soft: #e3f1f4;
+  --color-band-none: #d6dcd7;
   --color-band-ok: #2e7d5b;
-  --color-band-h4: #c98a1b;
+  --color-band-h4: #b8790f;
+  --color-band-h4-ink: #8a5e0e;
   --color-band-h6: #b93a2e;
   --color-band-h12: #6b2058;
   --color-band-h24: #16243b;

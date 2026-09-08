@@ -25,9 +25,9 @@ Put each unzipped item in its own folder under `C:\Users\ahmed\Documents\Navigat
 
 1. Open the Figma files. Record in `design/tokens.md`: neutral scale (7 to 9 steps), accent and accent-soft, semantic success/warning/danger, text ramp (size, weight, line height for display, heading, body, small, caption), spacing scale, radii (field, button, chip, card), elevation (two levels at most).
 2. Translate into `app/globals.css` `@theme` variables. Keep the token names already used by the scaffold (`--color-bg`, `--color-panel`, `--color-ink`, `--color-line`, `--color-muted`, `--color-accent`, `--color-accent-soft`, `--radius-*`).
-3. The five threshold colours (`--color-band-ok/h4/h6/h12/h24`) are information design. Keep the prototype's values unless the template's semantic colours pass AA on white and remain distinguishable from one another; write the decision down.
+3. The five threshold colours (`--color-band-ok/h4/h6/h12/h24`) are information design. Keep the prototype's values unless the template's semantic colours pass the contrast test and remain distinguishable from one another; write the decision down. One change is already recorded: the prototype's amber (`#C98A1B`, 2.9:1) is replaced by `#B8790F` for the band and `#8A5E0E` (`--color-band-h4-ink`) wherever amber is text (the clock, the staleness line, the threshold table). `tests/unit/tokens.test.ts` fails the build if a text token drops below 4.5:1 or a band below 3:1 on either ground, so the template session cannot regress it silently.
 4. Choose the font: Inter or IBM Plex Sans, loaded through `next/font/google` with `font-feature-settings: "tnum"` on `.num`.
-5. Screenshot the holding page at 390 x 844 before and after; commit both under `design/screens/`.
+5. Screenshot the holding page at 390 x 844 and 1280 x 800 before and after with `node scripts/screenshots.mjs <label> <url> home`; the script waits for the h1 and refuses blank captures. Commit both under `design/screens/`.
 
 ## Rules that do not change
 

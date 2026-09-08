@@ -4,7 +4,9 @@
  * median) and plan §4. Pure functions, no I/O, no timezone: callers pass Date objects;
  * bucketing in Asia/Riyadh happens in the aggregate layer.
  */
-export type Band = 'ok' | 'h4' | 'h6' | 'h12' | 'h24'
+
+/** 'none' is the prototype's neutral "no data" colour (bandColor(null) → C.line), not green. */
+export type Band = 'none' | 'ok' | 'h4' | 'h6' | 'h12' | 'h24'
 
 /** Hours from a to b. null when either side is missing or b is before a. Never negative. */
 export function duration(a?: Date | null, b?: Date | null): number | null {
@@ -32,7 +34,7 @@ export function elapsedHours(c: CaseClock, now: Date): number | null {
 }
 
 export function band(h: number | null): Band {
-  if (h == null) return 'ok'
+  if (h == null) return 'none'
   if (h >= 24) return 'h24'
   if (h >= 12) return 'h12'
   if (h >= 6) return 'h6'

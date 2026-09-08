@@ -24,7 +24,7 @@ Mobile-first web app replacing a WhatsApp group used by ER Navigator nurses to t
 
 ## Production, in one paragraph
 
-Coolify application on the shared OCI host, deployed by merging to `main`. The host runs other live clinical apps: every command there is scoped to this app's containers and volume. `nav.towardpcc.com` stays proxied in Cloudflare. Details, UUIDs and the API cookbook: `docs/RUNBOOK.md` and `docs/PLAN.md` Section 7 and Appendix A.
+Coolify application on the shared OCI host, deployed by merging to `main`. A deploy is stop-then-start (about a minute of downtime, so merge outside shift change) and a failed migration keeps the site down until it is resolved per the runbook. The host runs other live clinical apps: every command there is scoped to this app's containers and volume. `nav.towardpcc.com` stays proxied in Cloudflare. Details, UUIDs and the API cookbook: `docs/RUNBOOK.md` and `docs/PLAN.md` Section 7 and Appendix A.
 
 ## Cost discipline
 

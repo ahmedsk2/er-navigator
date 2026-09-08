@@ -19,7 +19,7 @@ describe('PHI guard on the Case model', () => {
       .map((l) => l.trim())
       .filter((l) => l && !l.startsWith('//') && !l.startsWith('@@'))
       .map((l) => l.split(/\s+/)[0]!)
-    const offenders = fields.filter((f) => /name|national|dob|birth/i.test(f))
+    const offenders = fields.filter((f) => /name|national|iqama|civil|passport|dob|birth|phone|mobile/i.test(f))
     expect(offenders).toEqual([])
   })
 })

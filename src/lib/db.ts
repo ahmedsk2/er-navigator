@@ -2,12 +2,16 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '@prisma/client'
 
 /**
- * One PrismaClient per process, created lazily on first query. Import `prisma` everywhere;
- * never `new PrismaClient()` in feature code (plan §7: Prisma only, no raw SQL — the only
- * $queryRaw in the codebase is the readiness probe's SELECT 1).
+ * One PrismaClient per process, created lazily on first query and cached for the life of the
+ * process in every environment. (Caching only outside production, the common Next.js snippet,
+ * would create a fresh pg.Pool per query in production and exhaust Postgres connections.)
  *
- * Uses the pg driver adapter (Prisma 7 has no native engine), which runs on the Windows-ARM64
- * dev box and the Linux-ARM64 prod host alike. Timeouts bound a hung query so one stuck
+ * Import `prisma` everywhere; never `new PrismaClient()` in feature code. The only raw SQL in
+ * application code is the readiness probe's SELECT 1; prisma/sync-app-role.ts is an operator
+ * script run by the migrate container as the owner role, not application code.
+ *
+ * Uses the pg driver adapter (Prisma 7 has no native engine), which runs on the Windows ARM64
+ * dev box and the Linux ARM64 prod host alike. Timeouts bound a hung query so one stuck
  * connection cannot stall the board.
  */
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient }
@@ -27,10 +31,8 @@ function createClient(): PrismaClient {
 }
 
 function getClient(): PrismaClient {
-  if (globalForPrisma.prisma) return globalForPrisma.prisma
-  const client = createClient()
-  if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = client
-  return client
+  globalForPrisma.prisma ??= createClient()
+  return globalForPrisma.prisma
 }
 
 /** Lazy handle: importing this module never connects; the first query does. */
