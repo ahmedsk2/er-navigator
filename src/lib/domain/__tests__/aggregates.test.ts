@@ -18,6 +18,7 @@ import {
   tiles,
   weekKey,
 } from '../aggregates'
+import type { KpiCase } from '../kpi'
 import { FIXTURE, NOW } from './aggregates.fixture'
 
 const row = <T extends { name: string }>(rows: T[], name: string) => rows.find((r) => r.name === name)
@@ -145,61 +146,13 @@ describe('30-day dashboard, hand-computed', () => {
 })
 
 /**
- * Phase 8, Slice D. `src/lib/domain/kpi.ts` is written in parallel and takes a `KpiCase`, "a
- * structural subset of `CaseForStats`". The shape below is that contract, field for field, from
- * `docs/specs/phase8-reports.md` — restated here rather than imported, because this branch was
- * cut before the module landed and the loader's job is to satisfy the contract whether or not
- * the module is present. A field dropped from `CaseForStats`, or handed back with the wrong
- * type, is a compile error in this file.
+ * Phase 8: `src/lib/domain/kpi.ts` takes a `KpiCase`, a structural subset of `CaseForStats`.
+ * Assigning the fixture to that type is the contract check: a field dropped from
+ * `CaseForStats`, or handed back with the wrong type, is a compile error in this file.
  */
-type KpiConsultContract = {
-  departmentName: string
-  consultedAt: Date | null
-  seenAt: Date | null
-  repliedAt: Date | null
-}
-type KpiInvestigationContract = {
-  type: 'LAB' | 'CT' | 'US' | 'XR'
-  orderedAt: Date | null
-  collectedAt: Date | null
-  receivedAt: Date | null
-  doneAt: Date | null
-  preliminaryAt: Date | null
-  resultedAt: Date | null
-}
-type KpiCaseContract = {
-  id: string
-  mrn: string
-  status: 'OPEN' | 'RESOLVED' | 'VOIDED'
-  registrationAt: Date
-  triageAt: Date | null
-  roomAt: Date | null
-  physicianAt: Date | null
-  decisionAt: Date | null
-  departedAt: Date | null
-  resolvedAt: Date | null
-  admOrderAt: Date | null
-  bedRequestedAt: Date | null
-  bedAssignedAt: Date | null
-  handoverAt: Date | null
-  transferRequestedAt: Date | null
-  transferAcceptedAt: Date | null
-  transportArrivedAt: Date | null
-  medAdminInformedAt: Date | null
-  disposition: string | null
-  wardCode: string | null
-  ctas: number | null
-  areaName: string | null
-  stageNames: ReadonlyArray<string>
-  updatesCount: number
-  lastUpdateAt: Date | null
-  consults: ReadonlyArray<KpiConsultContract>
-  investigations: ReadonlyArray<KpiInvestigationContract>
-}
-
 describe('CaseForStats satisfies the KpiCase contract', () => {
   it('every case in the fixture is usable as a KpiCase', () => {
-    const asKpi: KpiCaseContract[] = FIXTURE
+    const asKpi: KpiCase[] = FIXTURE
     expect(asKpi).toHaveLength(FIXTURE.length)
   })
 
