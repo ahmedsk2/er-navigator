@@ -153,4 +153,9 @@ describe('all-time dashboard adds C9', () => {
     expect(row(d.byStage, 'Resus room')?.value).toBe(1)
     expect(row(d.byDispo, 'TRANSFERRED')?.value).toBe(1)
   })
+
+  it('the page helper caps the primary-reason chart at 8 rows (prototype), the aggregate itself does not', () => {
+    expect(dashboard(FIXTURE, 'all', NOW).byPrimary).toHaveLength(8)
+    expect(byPrimaryReason(inRange(FIXTURE, 'all', NOW))).toHaveLength(10)
+  })
 })

@@ -210,7 +210,12 @@ export function otherQueue(cases: ReadonlyArray<CaseForStats>): OtherQueueRow[] 
   return cases.flatMap((c) => c.otherTexts.filter((o) => o.text.trim()).map((o) => ({ id: c.id, mrn: c.mrn, stageName: o.stageName, text: o.text })))
 }
 
-/** Everything the dashboard page renders, in one call. */
+/**
+ * Everything the dashboard page renders, in one call. `byPrimary` and `byDept` are capped to the
+ * top 8 here because that is what the prototype's charts show (a rendering cap, verified by three
+ * independent recomputations of the fixture); the uncapped lists come from byPrimaryReason() and
+ * byDepartment() directly.
+ */
 export function dashboard(all: ReadonlyArray<CaseForStats>, range: Range, now: Date) {
   const cases = inRange(all, range, now)
   return {
