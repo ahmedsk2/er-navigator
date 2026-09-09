@@ -12,11 +12,14 @@ COPY package.json pnpm-lock.yaml .npmrc ./
 RUN pnpm install --frozen-lockfile
 
 # ---- build: prisma generate + next build (standalone output is opted into here only) ----
+# The alerts worker (Phase 6) is bundled here too: esbuild inlines the Prisma client, the pg
+# driver and nodemailer into one plain-Node file, so the runner image needs no TypeScript, no
+# package manager and no node_modules of its own to run it.
 FROM deps AS build
 SHELL ["/bin/ash", "-o", "pipefail", "-c"]
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1 NEXT_OUTPUT_STANDALONE=1
-RUN pnpm exec prisma generate && pnpm exec next build
+RUN pnpm exec prisma generate && pnpm exec next build && pnpm run build:worker
 
 # ---- migrate: one-shot container applying migrations, role sync and seed as the OWNER ----
 # A separate target so the owner connection string is never part of the app image's command.
@@ -43,6 +46,8 @@ WORKDIR /app
 COPY --from=build --chown=app:app /repo/.next/standalone ./
 COPY --from=build --chown=app:app /repo/.next/static ./.next/static
 COPY --from=build --chown=app:app /repo/public ./public
+# The `worker` service in docker-compose.production.yml runs this same image as `node worker.js`.
+COPY --from=build --chown=app:app /repo/dist/worker.js ./worker.js
 USER 100
 EXPOSE 3000
 ENV PORT=3000 HOSTNAME=0.0.0.0

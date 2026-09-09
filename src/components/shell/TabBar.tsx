@@ -1,8 +1,7 @@
 'use client'
 
 /**
- * The prototype's bottom tab bar (`ERNavigatorTracker`, `.tabbar`), as real routes. Admin is a
- * placeholder until Phase 6.
+ * The prototype's bottom tab bar (`ERNavigatorTracker`, `.tabbar`), as real routes.
  *
  * Two tabs are role-dependent: Export (`export.xlsx`, so not a NAVIGATOR) and Admin (ADMIN only).
  * Hiding a tab is not a permission — both pages check the action again on the server, and write

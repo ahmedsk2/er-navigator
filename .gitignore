@@ -1,6 +1,8 @@
 node_modules/
 .next/
 out/
+# the esbuild bundle of worker/alerts.ts; built in the Docker build stage, never committed
+dist/
 coverage/
 playwright-report/
 test-results/

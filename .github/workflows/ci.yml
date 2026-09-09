@@ -30,6 +30,9 @@ jobs:
       - run: pnpm build
         env:
           NEXT_TELEMETRY_DISABLED: '1'
+      # The Docker build stage runs the same command; a bundle that no longer builds would
+      # otherwise only surface as a failed deploy.
+      - run: pnpm run build:worker
 
   # Database-backed checks and the Playwright suite against the production Postgres image:
   # migrations, role sync, seed, then the app on a normal build behind `pnpm start`.

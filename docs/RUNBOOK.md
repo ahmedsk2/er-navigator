@@ -18,8 +18,8 @@ The host also runs other live clinical applications. Every command below is scop
 | Deploy key | GitHub deploy key id `162688479` (read-only) = Coolify private key `er-navigator-deploy` (`l48u5xcuzddx3vr1hb4zsqlb`) |
 | DNS | Cloudflare A `nav.towardpcc.com` → `145.241.105.239`, proxied, record id `3d0956409a57ac5f069bbc9736969e61` |
 | TLS | Let's Encrypt via Traefik HTTP-01 through Cloudflare; zone SSL mode Full (strict) |
-| Containers | `db` (postgres:16-alpine with the init script baked in; volume `jqcjqhmcmizxs1u51wnqlfwv_ernav-db`; networks `internal` and the Coolify per-app network `jqcjqhmcmizxs1u51wnqlfwv`, which only `coolify-proxy` also joins), `migrate` (one-shot, exits 0), `app` (:3000; networks `coolify`, `internal` and the per-app network) |
-| Probes | `GET /api/health` (liveness + `x-build-fingerprint`), `GET /api/ready` (SELECT 1) |
+| Containers | `db` (postgres:16-alpine with the init script baked in; volume `jqcjqhmcmizxs1u51wnqlfwv_ernav-db`; networks `internal` and the Coolify per-app network `jqcjqhmcmizxs1u51wnqlfwv`, which only `coolify-proxy` also joins), `migrate` (one-shot, exits 0), `app` (:3000; networks `coolify`, `internal` and the per-app network), `worker` (threshold alerts, the same runner image as `app` running `node worker.js`; `internal` only, no port, no proxy label) |
+| Probes | `GET /api/health` (liveness + `x-build-fingerprint`), `GET /api/ready` (SELECT 1), and for `worker` the container healthcheck on `/tmp/heartbeat` (unhealthy = no cycle finished in 15 minutes) |
 
 ## DNS rule
 
@@ -86,6 +86,9 @@ Every key the compose file passes through. Secrets are 48-character alphanumeric
 | `AUTH_SECRET` | Auth.js session signing (Phase 1) |
 | `ADMIN_USERNAME`, `ADMIN_DISPLAY_NAME`, `ADMIN_PASSWORD` | first ADMIN, created by the seed only if the username does not exist yet |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | threshold alert email (Phase 6): the `navigator@towardpcc.com` mailbox's own SMTP settings, as in a mail client (no relay). `SMTP_FROM` is set; Ahmed enters the other four in Coolify (both copies) and redeploys. Empty host = log only. Deliverability needs the provider's DKIM selector record in Cloudflare; SPF and DMARC stay unchanged |
+| `ALERT_INTERVAL_MINUTES` | how often the `worker` scans the open cases. Default 5. The healthcheck allows 15 minutes between cycles, so anything above ~7 needs the healthcheck widened too |
+| `ALERT_EMAIL_MAP` | who the 6 h+ alerts go to: `username=address` pairs, comma or space separated (`sami=sami@x.org, ahmed=ahmed@x.org`). The **roles** come from the database every cycle (active SUPERVISOR and ADMIN); the **addresses** come from here, because `User` has no address column and the locked plan's data model is authoritative. A supervisor with no entry is skipped and logged at warn level, never guessed at. Empty = alerts are still recorded, just not emailed |
+| `ALERT_HEARTBEAT_FILE` | the file the worker touches at the end of every cycle. Default and healthcheck path: `/tmp/heartbeat`. Leave unset |
 | `LOG_LEVEL` | `info` |
 
 Every variable set here reaches every container of the app (Coolify's env file). The app image's entrypoint unsets everything except its allowlist (`docker/entrypoint.sh`); `migrate` keeps the full set for the seconds it runs; `db` ignores what it does not use.
@@ -155,9 +158,40 @@ SQL
 
 Then take a fresh backup, and remember the previous dumps (local, bucket, laptop mirror) still hold the text until they age out.
 
+## The alerts worker
+
+Its own container, no inbound traffic, the same image as `app`. Every `ALERT_INTERVAL_MINUTES` it
+scans the OPEN cases and, the first time one passes 4, 6, 12 or 24 hours, writes an `Alert`, the
+`system` user's "Reached {t}h threshold" update and an `alert.fire` audit row in one transaction;
+from 6 hours up it also emails the active supervisors and admins. It never fills in "medical admin
+informed". A unique index on `(caseId, thresholdHours)` is what makes a restart or a second worker
+harmless. Acknowledging is done in the app: Admin → Alerts, or the case editor's header.
+
+```bash
+U=jqcjqhmcmizxs1u51wnqlfwv
+W=$(sudo docker ps --format '{{.Names}}' | grep "^worker-$U")
+sudo docker logs "$W" --tail 50               # "[alerts] cycle done { ... }" every interval
+sudo docker inspect --format '{{.State.Health.Status}}' "$W"
+sudo docker exec "$W" sh -c 'cat /tmp/heartbeat'   # the last finished cycle, ISO 8601
+```
+
+Before enabling mail in production, send one test message and check the headers of what arrives
+(plan section 9, item 3 — it must show `dkim=pass` and `dmarc=pass`):
+
+```bash
+sudo docker exec "$W" node worker.js --test ahmed@example.com   # prints the SMTP response
+```
+
+If `SMTP_HOST` is empty the worker logs each message at info level instead of sending it and
+leaves `emailSentAt` null — the alerts themselves are still recorded, so nothing is lost by
+leaving mail switched off until the DKIM record is in place.
+
 ## Add a user
 
-Phase 6 adds Admin → Users. Until then: none; the seed creates the first ADMIN only.
+Admin → Users, as an ADMIN: create (the temporary password is shown once — read it out, it cannot
+be recovered), change role, reset password, deactivate. Deactivating and resetting a password
+delete that user's sessions immediately. Nobody is ever deleted, and an administrator cannot
+deactivate or change the role of their own account: ask another administrator.
 
 First login (Phase 1): sign in at https://nav.towardpcc.com/login with ADMIN_USERNAME and the
 ADMIN_PASSWORD that was in Coolify when the database was first seeded, then change it at

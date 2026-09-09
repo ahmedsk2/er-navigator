@@ -33,20 +33,45 @@ function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.has(pathname) || PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))
 }
 
+/** The cookie attributes both the app and this gate write; `maxAge: 0` deletes. */
+function cookieAttrs(maxAge: number) {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const,
+    path: '/',
+    maxAge,
+  }
+}
+
 export default function proxy(request: NextRequest): NextResponse {
   const { pathname, search } = request.nextUrl
   const signedIn = request.cookies.has(SESSION_COOKIE)
 
-  // Someone already signed in has no business on the login form.
   if (pathname === '/login') {
-    return signedIn ? NextResponse.redirect(new URL('/', request.url)) : NextResponse.next()
+    if (!signedIn) return NextResponse.next()
+    /**
+     * `?expired=1` is what a page's `requireUser()` sends when the cookie is present but the
+     * session behind it is gone — deactivated by an Admin (Phase 6), expired, or logged out on
+     * another device. Without this the two halves would bounce: the page would redirect to
+     * /login because the session is dead, and this gate would redirect back to / because the
+     * cookie is alive. A render cannot clear a cookie in Next, but this gate can, so it does.
+     */
+    if (request.nextUrl.searchParams.has('expired')) {
+      const response = NextResponse.next()
+      response.cookies.set(SESSION_COOKIE, '', cookieAttrs(0))
+      response.cookies.set(REMEMBER_COOKIE, '', cookieAttrs(0))
+      return response
+    }
+    // Someone already signed in has no business on the login form.
+    return NextResponse.redirect(new URL('/', request.url))
   }
   if (isPublic(pathname) || signedIn) {
     const response = NextResponse.next()
     // A remembered device: slide the browser-side lifetime of both cookies on every request, so
     // a busy shift is never signed out mid-way. The server-side expiry slides in getSession().
     if (signedIn && request.cookies.has(REMEMBER_COOKIE)) {
-      const attrs = { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' as const, path: '/', maxAge: COOKIE_MAX_AGE_S }
+      const attrs = cookieAttrs(COOKIE_MAX_AGE_S)
       response.cookies.set(SESSION_COOKIE, request.cookies.get(SESSION_COOKIE)!.value, attrs)
       response.cookies.set(REMEMBER_COOKIE, '1', attrs)
     }
