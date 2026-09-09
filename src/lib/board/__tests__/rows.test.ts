@@ -34,6 +34,7 @@ function row(over: Partial<BoardRow> & Pick<BoardRow, 'id' | 'mrn'>): BoardRow {
     ward: null,
     createdAt: hoursBefore(1),
     lastUpdateAt: null,
+    reviewedAt: null,
     // The sort, search and staleness helpers read the clock and the MRN only; a row's Phase 8
     // timeline is the handover sheet's business.
     timeline: [],

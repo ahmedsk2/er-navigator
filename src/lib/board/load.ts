@@ -40,6 +40,8 @@ const BOARD_ROW_SELECT = {
   disposition: true,
   createdAt: true,
   ctas: true,
+  // Phase 8b, decision H: the row's "Reviewed" chip.
+  reviewedAt: true,
   triageAt: true,
   roomAt: true,
   physicianAt: true,
@@ -103,6 +105,7 @@ type SelectedRow = Milestones & {
   disposition: BoardRow['disposition']
   createdAt: Date
   ctas: number | null
+  reviewedAt: Date | null
   primaryReason: { name: string } | null
   ward: { code: string } | null
   area: { code: string } | null
@@ -142,6 +145,7 @@ function toBoardRow(row: SelectedRow): BoardRow {
     ward: row.ward?.code ?? null,
     createdAt: row.createdAt.toISOString(),
     lastUpdateAt: iso(row.updates[0]?.createdAt ?? null),
+    reviewedAt: iso(row.reviewedAt),
     timeline: timelineOf({
       status: row.status,
       registrationAt: row.registrationAt,

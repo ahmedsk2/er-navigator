@@ -40,6 +40,12 @@ export type BoardRow = {
   /** The newest `CaseUpdate.createdAt`, or null when the case has never been updated. */
   lastUpdateAt: string | null
   /**
+   * When a supervisor last marked the case reviewed, or null (Phase 8b, decision H). The row
+   * shows it as a small chip and nothing else: the reviewer's name and the exact time belong on
+   * the case page, and a board row has one line to say what happened to the patient.
+   */
+  reviewedAt: string | null
+  /**
    * The case's recorded milestones in time order (Phase 8), for the compact timeline on the
    * handover sheet. It rides on the row rather than being fetched for the sheet alone because
    * the sheet prints whatever the board is currently showing — filtered and sorted in the
