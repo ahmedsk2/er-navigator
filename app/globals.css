@@ -75,4 +75,15 @@ body { background: var(--color-bg); color: var(--color-ink); font-family: var(--
   table.print-only { display: table; }
   tr, td, th { break-inside: avoid; }
   thead { display: table-header-group; }
+
+  /*
+    The dashboard on paper (Phase 4; Phase 5 reuses this for /report). The range chips, the
+    "‹ Dashboard" button and the tab bar are `.no-print` and have already gone. What is left is
+    the difference between a screen and a sheet: a drill-down link is not tappable on paper, so
+    it stops advertising itself and reads as plain text, and every section is kept — including
+    the charts, which are SVG and print as drawn. Nothing is hidden that carries a number.
+  */
+  .dash a { color: inherit !important; text-decoration: none; }
+  .dash section { break-inside: avoid; border-width: 1px 0; }
+  .dash .shadow-panel { box-shadow: none; }
 }

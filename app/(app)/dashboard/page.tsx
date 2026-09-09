@@ -1,16 +1,45 @@
 import type { Metadata } from 'next'
-import { Placeholder } from '@/src/components/shell/Placeholder'
+import { DashboardView } from '@/src/components/dashboard/DashboardView'
+import { DrillView } from '@/src/components/dashboard/DrillView'
 import { requireUser } from '@/src/lib/auth/session'
+import { loadBoardRowsByIds } from '@/src/lib/board/load'
+import { parseDrill, parseRange, resolveDrill } from '@/src/lib/dashboard/drill'
+import { loadCasesForStats } from '@/src/lib/dashboard/load'
+import { dashboard } from '@/src/lib/domain/aggregates'
 
 export const metadata: Metadata = { title: 'Dashboard · ER Navigator' }
+export const dynamic = 'force-dynamic'
 
-/** The tab exists from Phase 3 so the shell is real; the numbers arrive in Phase 4. */
-export default async function DashboardPage() {
+/**
+ * `/dashboard` — every role (`dashboard.view` is ALL); the layout has already required a session,
+ * and `requireUser()` here says so again rather than trusting the layout to be the gate.
+ *
+ * One database read, one `dashboard()` call, then either the page or one drill-down out of the
+ * same aggregates. `now` is the request time and the page does not poll: leadership reads this
+ * on a laptop and reloads it, unlike the board, which a nurse leaves open on a phone all shift.
+ *
+ * An unresolvable `?drill=` — a section this page does not have, or a row that has fallen out of
+ * the chosen range — renders the dashboard. A bad query string is a stale bookmark, not an error.
+ */
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ r?: string | string[]; drill?: string | string[] }>
+}) {
   await requireUser()
-  return (
-    <Placeholder title="Dashboard" phase="Phase 4">
-      Median length of stay, the threshold table, the weekly trend and every drill-down land here.
-      Until then the board is the live view.
-    </Placeholder>
-  )
+  const params = await searchParams
+  const range = parseRange(params.r)
+  const now = new Date()
+
+  const cases = await loadCasesForStats()
+  const data = dashboard(cases, range, now)
+
+  const key = parseDrill(params.drill)
+  const drill = key ? resolveDrill(data, key) : null
+  if (drill) {
+    const rows = await loadBoardRowsByIds(drill.ids)
+    return <DrillView label={drill.label} rows={rows} range={range} now={now} />
+  }
+
+  return <DashboardView data={data} range={range} />
 }
