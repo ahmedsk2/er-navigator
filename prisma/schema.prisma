@@ -80,6 +80,26 @@ model User {
   acknowledged    Alert[]       @relation("AlertAcknowledgedBy")
   reviewsReviewed OtherReview[] @relation("OtherReviewReviewedBy")
   auditEntries    AuditLog[]
+  sessions        Session[]
+}
+
+// Opaque server-side sessions (locked plan §7): the cookie carries 32 random bytes, the row
+// carries only sha256 of them, so a database leak cannot be replayed as a login. Rows are
+// deleted on logout, on password change and when a user is deactivated — the only model the
+// app is allowed to delete from, because a session is not a clinical record.
+model Session {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique // sha256(hex) of the opaque cookie value
+  userId     String
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  expiresAt  DateTime
+  ip         String?
+  userAgent  String?
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model Case {

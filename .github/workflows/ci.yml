@@ -22,7 +22,7 @@ jobs:
           set -e
           for f in docker/entrypoint.sh docker/postgres-init/01-app-role.sh scripts/migrate-and-seed.sh; do sh -n "$f"; done
           bash -n scripts/backup.sh
-          if grep -l -P '\x00' docker/entrypoint.sh docker/postgres-init/01-app-role.sh scripts/*.sh; then echo "NUL byte in a shell script"; exit 1; fi
+          if grep -rl -P '\x00' docker/entrypoint.sh docker/postgres-init/01-app-role.sh scripts/ docs/*.md docs/specs README.md CLAUDE.md; then echo "NUL byte in a script or doc"; exit 1; fi
       - run: pnpm exec prisma generate
       - run: pnpm lint
       - run: pnpm typecheck
@@ -67,6 +67,10 @@ jobs:
           ADMIN_USERNAME: admin
           ADMIN_PASSWORD: ci-only-password
           ADMIN_DISPLAY_NAME: CI
+      - name: database-backed tests (owner role; vitest includes tests/db only when DATABASE_URL is set)
+        run: pnpm test
+        env:
+          DATABASE_URL: ${{ env.OWNER_URL }}
       - name: privilege guard (app role cannot delete audit rows)
         run: |
           set -e

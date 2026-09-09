@@ -50,6 +50,9 @@
   --text-label--line-height: 1.3;
   --text-caption: 12px;
   --text-caption--line-height: 1.3;
+  /* Form fields stay at 16px so iOS Safari does not zoom the page on focus (design/tokens.md). */
+  --text-input: 16px;
+  --text-input--line-height: 1.4;
 }
 
 html { color-scheme: light; }

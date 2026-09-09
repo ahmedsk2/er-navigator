@@ -2,6 +2,10 @@
 
 One line per finished slice, newest first. The gate reports reference this file.
 
+## Phase 1
+
+- 2026-09-09 [ERN-P1.6] Sign-in, sessions, lockout and the role gate: `Session` model and migration (sha256 of an opaque 32-byte cookie, 12 h sliding expiry, rotated on login and password change, deleted on logout and deactivation); `src/lib/auth/` (password with a dummy-hash timing path, session, lockout at 10 failures for 15 minutes, in-process 5-per-minute IP rate limiter, login and change-password cores); `proxy.ts` route gate on cookie presence only; `/login` with remember-this-device; the authenticated shell at `/` with the band legend and logout; `/account` change-password; `auth.login`, `auth.logout`, `auth.fail`, `auth.locked`, `auth.forbidden` and `user.password` audit rows; 187 unit and database tests (171 without a database), 22 Playwright checks at both viewports, screenshots in `design/screens/phase1-*`.
+
 ## Phase 0
 
 - 2026-09-09 [ERN-P0.9] Gate 0 closed: design doc v3 filed and reconciled, repo public for the build, SMTP sender recorded (blocked on towardpcc.com SPF; plan section 9 item 3), Opus as the implementation tier. Phase 0.3 tokens extracted from the Envato items into `design/tokens.md`, `app/globals.css` and `app/layout.tsx` (IBM Plex Sans via next/font, type ramp, radii, shadows); contrast test extended.
