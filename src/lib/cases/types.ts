@@ -66,17 +66,25 @@ export type CaseDraft = {
 /** One row of the append-only update list, ready to render. */
 export type CaseUpdateView = { id: string; createdAt: string; text: string; author: string }
 
-/** Reference lists, loaded once per request and handed to the editor. */
+/**
+ * Reference lists, loaded once per request and handed to the editor.
+ *
+ * `retired` marks a row an Admin has deactivated that the case being edited already carries
+ * (`loadReferenceForCase`). It is absent on the active-only reference `/cases/new` uses. A
+ * retired row is accepted by the rules and rendered as a chip that can only be deselected, so a
+ * deactivation never strands an open case (Phase 7, C4/C10).
+ */
 export type ReferenceReason = {
   id: string
   name: string
   requiresDepartment: boolean
   requiresReferralNo: boolean
   isOther: boolean
+  retired?: boolean
 }
 export type ReferenceStage = { id: string; code: string; name: string; reasons: ReferenceReason[] }
-export type ReferenceDepartment = { id: string; name: string }
-export type ReferenceWard = { id: string; code: string; name: string }
+export type ReferenceDepartment = { id: string; name: string; retired?: boolean }
+export type ReferenceWard = { id: string; code: string; name: string; retired?: boolean }
 export type ReferenceData = {
   stages: ReferenceStage[]
   departments: ReferenceDepartment[]

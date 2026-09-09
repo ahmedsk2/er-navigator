@@ -9,7 +9,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { dismissOther as dismissOtherAction, promoteOther as promoteOtherAction } from '@/app/(app)/admin/actions'
-import { Button, Input } from '@/src/components/ui'
+import { Button, Input, UNREACHABLE_MESSAGE } from '@/src/components/ui'
 import type { OtherReviewRow } from '@/src/lib/admin/other'
 import { fmtStamp } from '@/src/lib/cases/local-time'
 
@@ -17,17 +17,23 @@ export function OtherQueuePanel({ reviews, showAll }: { reviews: OtherReviewRow[
   const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  /** The action threw rather than answering (Phase 7, C11). Its own alert: `message` is the
+      panel's success line and is announced as a status, not as a problem. */
+  const [unreachable, setUnreachable] = useState(false)
   const [names, setNames] = useState<Record<string, string>>({})
 
   async function run(work: () => Promise<string | null>): Promise<void> {
     setBusy(true)
     setMessage(null)
+    setUnreachable(false)
     try {
       const problem = await work()
       // Only a problem overwrites the message: a success message the work itself set (the
       // promotion summary) must survive, and the field was already cleared above.
       if (problem) setMessage(problem)
       else router.refresh()
+    } catch {
+      setUnreachable(true)
     } finally {
       setBusy(false)
     }
@@ -69,6 +75,12 @@ export function OtherQueuePanel({ reviews, showAll }: { reviews: OtherReviewRow[
       {message ? (
         <p role="status" className="mb-2.5 rounded-card border border-line bg-panel p-3 text-body text-ink-2">
           {message}
+        </p>
+      ) : null}
+
+      {unreachable ? (
+        <p role="alert" className="mb-2.5 rounded-card border border-danger bg-panel p-3 text-body text-danger">
+          {UNREACHABLE_MESSAGE}
         </p>
       ) : null}
 

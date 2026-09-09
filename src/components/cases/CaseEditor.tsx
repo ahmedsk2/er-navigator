@@ -34,6 +34,7 @@ import {
   Section,
   Select,
   TimeRow,
+  UNREACHABLE_MESSAGE,
 } from '@/src/components/ui'
 import { fmtStamp, hoursAgo, nowLocalInput, shiftMinutes } from '@/src/lib/cases/local-time'
 import type {
@@ -116,8 +117,19 @@ export function CaseEditor(props: CaseEditorProps) {
   const [issues, setIssues] = useState<ValidationIssue[]>([])
   const [conflict, setConflict] = useState<{ changedBy: string; changedAt: string } | null>(null)
   const [forbidden, setForbidden] = useState(false)
+  /** The action threw rather than answering: nothing reached the database (Phase 7, C11). */
+  const [unreachable, setUnreachable] = useState(false)
   const [saved, setSaved] = useState(false)
   const [busy, setBusy] = useState(false)
+  /**
+   * The consults a chip deselect dropped this session, keyed by department (Phase 7, C18). The
+   * prototype keeps `departments` and a `consults` map as two independent fields, so a deselect
+   * never touches the recorded times and a re-select brings them back
+   * (`ERNavigatorTracker.jsx:338, 342`); the port rebuilds one array from the selected ids, so a
+   * thumb catching the chip while scrolling wiped the pair. Editor state only: nothing persisted
+   * changes, and a reload still shows exactly what the database holds.
+   */
+  const [removedConsults, setRemovedConsults] = useState<Record<string, DraftConsult>>({})
   const [voidReasonText, setVoidReasonText] = useState('')
   const [voidOpen, setVoidOpen] = useState(false)
   const [now, setNow] = useState(() => new Date(props.nowIso))
@@ -149,6 +161,19 @@ export function CaseEditor(props: CaseEditorProps) {
   }, [reference])
   const departmentName = useMemo(
     () => new Map(reference.departments.map((d) => [d.id, d.name])),
+    [reference],
+  )
+  /**
+   * The rows an Admin deactivated while this case already carried them (Phase 7, C4/C10). They
+   * come from `loadReferenceForCase`, are only ever present on an existing case, and render as
+   * greyed "(retired)" chips the nurse can turn off but never back on.
+   */
+  const retiredDepartments = useMemo(
+    () => new Set(reference.departments.filter((d) => d.retired).map((d) => d.id)),
+    [reference],
+  )
+  const retiredWards = useMemo(
+    () => new Set(reference.wards.filter((w) => w.retired).map((w) => w.id)),
     [reference],
   )
 
@@ -239,11 +264,20 @@ export function CaseEditor(props: CaseEditorProps) {
   const setOtherText = (reasonId: string, text: string): void =>
     set({ reasons: draft.reasons.map((r) => (r.reasonId === reasonId ? { ...r, otherText: text } : r)) })
 
-  const setDepartments = (ids: string[]): void =>
+  const setDepartments = (ids: string[]): void => {
+    const keep = new Set(ids)
+    const dropped = draft.consults.filter((c) => !keep.has(c.departmentId))
+    if (dropped.length > 0) {
+      setRemovedConsults((previous) => ({
+        ...previous,
+        ...Object.fromEntries(dropped.map((c) => [c.departmentId, c])),
+      }))
+    }
     set({
       consults: ids.map(
         (id) =>
-          draft.consults.find((c) => c.departmentId === id) ?? {
+          draft.consults.find((c) => c.departmentId === id) ??
+          removedConsults[id] ?? {
             departmentId: id,
             consultedAt: null,
             seenAt: null,
@@ -251,6 +285,7 @@ export function CaseEditor(props: CaseEditorProps) {
           },
       ),
     })
+  }
 
   const setConsult = (departmentId: string, patch: Partial<DraftConsult>): void =>
     set({
@@ -274,6 +309,7 @@ export function CaseEditor(props: CaseEditorProps) {
     setIssues([])
     setConflict(null)
     setForbidden(false)
+    setUnreachable(false)
     setSaved(false)
   }
 
@@ -290,11 +326,19 @@ export function CaseEditor(props: CaseEditorProps) {
     } else setForbidden(true)
   }
 
+  /**
+   * A thrown action — a dropped connection, a 404 during the deploy window, a Prisma transaction
+   * timeout — used to be swallowed here: `void onSave()` discarded the rejection, the button
+   * greyed and un-greyed, and the nurse read that as "saved". The catch says what happened, and
+   * says it in the one way that matters: nothing was written (Phase 7, C11).
+   */
   async function run(work: () => Promise<void>): Promise<void> {
     setBusy(true)
     clearFeedback()
     try {
       await work()
+    } catch {
+      setUnreachable(true)
     } finally {
       setBusy(false)
     }
@@ -521,6 +565,7 @@ export function CaseEditor(props: CaseEditorProps) {
                 primary={draft.primaryReasonId}
                 onPrimary={(id) => set({ primaryReasonId: id })}
                 labelOf={(id) => reasonById.get(id)?.name ?? id}
+                retiredOf={(id) => reasonById.get(id)?.retired === true}
                 disabled={disabled}
               />
               {otherSelected && other ? (
@@ -563,6 +608,7 @@ export function CaseEditor(props: CaseEditorProps) {
             value={draft.consults.map((c) => c.departmentId)}
             onChange={setDepartments}
             labelOf={(id) => departmentName.get(id) ?? id}
+            retiredOf={(id) => retiredDepartments.has(id)}
             disabled={disabled}
           />
           {draft.consults.map((consult) => (
@@ -742,6 +788,7 @@ export function CaseEditor(props: CaseEditorProps) {
                   value={draft.wardId ? [draft.wardId] : []}
                   onChange={(ids) => set({ wardId: ids[ids.length - 1] ?? null })}
                   labelOf={(id) => reference.wards.find((w) => w.id === id)?.code ?? id}
+                  retiredOf={(id) => retiredWards.has(id)}
                   disabled={disabled}
                 />
               </FieldGroup>
@@ -816,6 +863,15 @@ export function CaseEditor(props: CaseEditorProps) {
       {forbidden ? (
         <p className="mx-4 mb-2.5 rounded-card border border-line bg-panel p-3 text-body text-danger" role="alert">
           Your role cannot do that.
+        </p>
+      ) : null}
+      {unreachable ? (
+        <p
+          data-unreachable
+          className="mx-4 mb-2.5 rounded-card border border-danger bg-panel p-3 text-body text-danger"
+          role="alert"
+        >
+          {UNREACHABLE_MESSAGE}
         </p>
       ) : null}
       {saved ? (

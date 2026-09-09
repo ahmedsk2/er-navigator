@@ -24,6 +24,9 @@ import { prisma } from '@/src/lib/db'
  */
 const users: string[] = []
 const cases: string[] = []
+/** Reference rows this file creates so it can retire them without touching the seed. */
+const extraReasons: string[] = []
+const extraDepartments: string[] = []
 let reference: ReferenceData
 
 async function makeUser(role: Role): Promise<User> {
@@ -68,6 +71,27 @@ function otherReasonOf(code: string): string {
   const found = stage(code).reasons.find((r) => r.isOther)
   if (!found) throw new Error(`the seed has no "Other" reason under "${code}"`)
   return found.id
+}
+
+/**
+ * A reason and a department this file owns, sorted last so no other suite's ordering assertion
+ * moves, and retired here rather than in the seed so the database files can keep running in
+ * parallel.
+ */
+async function makeReason(stageId: string): Promise<string> {
+  const row = await prisma.reason.create({
+    data: { stageId, name: `p7 retired reason ${randomBytes(4).toString('hex')}`, sortOrder: 900, active: true },
+  })
+  extraReasons.push(row.id)
+  return row.id
+}
+
+async function makeDepartment(): Promise<string> {
+  const row = await prisma.department.create({
+    data: { name: `p7 retired team ${randomBytes(4).toString('hex')}`, sortOrder: 900, active: true },
+  })
+  extraDepartments.push(row.id)
+  return row.id
 }
 
 const HOUR = 36e5
@@ -131,6 +155,8 @@ afterAll(async () => {
     await prisma.caseInvestigation.deleteMany({ where: { caseId: { in: cases } } })
     await prisma.case.deleteMany({ where: { id: { in: cases } } })
   }
+  if (extraReasons.length > 0) await prisma.reason.deleteMany({ where: { id: { in: extraReasons } } })
+  if (extraDepartments.length > 0) await prisma.department.deleteMany({ where: { id: { in: extraDepartments } } })
   if (users.length > 0) {
     await prisma.auditLog.deleteMany({ where: { OR: [{ actorId: { in: users } }, { entityId: { in: users } }] } })
     await prisma.user.deleteMany({ where: { id: { in: users } } })
@@ -315,6 +341,104 @@ describe('saveCase', () => {
   })
 })
 
+/**
+ * Phase 7, C4/C10. An Admin deactivating a reference row a case already carries used to freeze
+ * that case: the stored id survived in the draft, the active-only chips offered nothing to
+ * deselect it with, and both Save and Resolve refused it. The case-aware reference accepts the
+ * rows this case already has — and nothing more.
+ */
+describe('a reference row retired while a case carries it', () => {
+  let nurse: AuthUser
+  let retiredReasonId: string
+  let retiredDepartmentId: string
+  /** The case that carries both rows, and one that never did. */
+  let carrier: string
+  let bystander: string
+
+  const carrierDraft = (version: number): CaseDraft =>
+    draft({
+      reasons: [{ reasonId: retiredReasonId, otherText: null }],
+      consults: [{ departmentId: retiredDepartmentId, consultedAt: null, seenAt: null, repliedAt: null }],
+      version,
+    })
+
+  beforeAll(async () => {
+    nurse = actorOf(await makeUser('NAVIGATOR'))
+    retiredReasonId = await makeReason(stage('reg').id)
+    retiredDepartmentId = await makeDepartment()
+    carrier = await openCase(nurse, {
+      reasons: [{ reasonId: retiredReasonId, otherText: null }],
+      consults: [{ departmentId: retiredDepartmentId, consultedAt: null, seenAt: null, repliedAt: null }],
+    })
+    bystander = await openCase(nurse)
+    // What Admin → Reference lists does, and calls safe.
+    await prisma.reason.update({ where: { id: retiredReasonId }, data: { active: false } })
+    await prisma.department.update({ where: { id: retiredDepartmentId }, data: { active: false } })
+  })
+
+  it('saves the unchanged draft', async () => {
+    const saved = await saveCase(nurse, carrier, carrierDraft(1), ctxFor(nurse.id))
+    expect(saved).toMatchObject({ ok: true, version: 2 })
+    const row = await prisma.case.findUniqueOrThrow({ where: { id: carrier }, include: { reasons: true, consults: true } })
+    expect(row.reasons.map((r) => r.reasonId)).toEqual([retiredReasonId])
+    expect(row.consults.map((c) => c.departmentId)).toEqual([retiredDepartmentId])
+  })
+
+  it('saves once the nurse has deselected both retired chips', async () => {
+    const cleared = await saveCase(
+      nurse,
+      carrier,
+      draft({
+        reasons: [{ reasonId: reasonNamed('reg', 'Registration desk/system delay'), otherText: null }],
+        consults: [],
+        version: 2,
+      }),
+      ctxFor(nurse.id),
+    )
+    expect(cleared).toMatchObject({ ok: true, version: 3 })
+    const row = await prisma.case.findUniqueOrThrow({ where: { id: carrier }, include: { reasons: true, consults: true } })
+    expect(row.reasons.map((r) => r.reasonId)).not.toContain(retiredReasonId)
+    expect(row.consults).toHaveLength(0)
+  })
+
+  it('refuses the retired reason on a case that does not already carry it', async () => {
+    const added = await saveCase(
+      nurse,
+      bystander,
+      draft({ reasons: [{ reasonId: retiredReasonId, otherText: null }], version: 1 }),
+      ctxFor(nurse.id),
+    )
+    expect(added).toMatchObject({ ok: false, error: 'validation' })
+    if (added.ok || added.error !== 'validation') throw new Error('unreachable')
+    expect(added.issues.some((i) => i.message === 'Unknown delay reason.')).toBe(true)
+    expect((await prisma.case.findUniqueOrThrow({ where: { id: bystander } })).version).toBe(1)
+  })
+
+  it('refuses the retired department on a case that does not already carry it', async () => {
+    const added = await saveCase(
+      nurse,
+      bystander,
+      draft({
+        consults: [{ departmentId: retiredDepartmentId, consultedAt: null, seenAt: null, repliedAt: null }],
+        version: 1,
+      }),
+      ctxFor(nurse.id),
+    )
+    expect(added).toMatchObject({ ok: false, error: 'validation' })
+    if (added.ok || added.error !== 'validation') throw new Error('unreachable')
+    expect(added.issues.some((i) => i.message === 'That team is no longer on the list.')).toBe(true)
+  })
+
+  it('keeps createCase strict: a new case cannot be opened on a retired reason', async () => {
+    const result = await createCase(
+      nurse,
+      draft({ reasons: [{ reasonId: retiredReasonId, otherText: null }] }),
+      ctxFor(nurse.id),
+    )
+    expect(result).toMatchObject({ ok: false, error: 'validation' })
+  })
+})
+
 describe('addCaseUpdate', () => {
   it('appends a row without a version check and audits it against the update, not the case', async () => {
     const nurse = actorOf(await makeUser('NAVIGATOR'))
@@ -433,6 +557,31 @@ describe('resolve and reopen', () => {
     expect(await prisma.auditLog.count({ where: { entity: 'Case', entityId: id, action: 'case.reopen' } })).toBe(1)
   })
 
+  it('answers 409 with the last editor for a stale version on resolve, and resolves nothing', async () => {
+    const first = actorOf(await makeUser('NAVIGATOR'))
+    const second = actorOf(await makeUser('SUPERVISOR'))
+    const id = await openCase(first)
+
+    const winner = await saveCase(second, id, draft({ mrn: '111222', version: 1 }), ctxFor(second.id))
+    expect(winner).toMatchObject({ ok: true, version: 2 })
+
+    const loser = await resolveCase(
+      first,
+      id,
+      draft({ disposition: 'DISCHARGED_HOME', departedAt: new Date().toISOString(), version: 1 }),
+      ctxFor(first.id),
+    )
+    expect(loser).toMatchObject({ ok: false, error: 'conflict', changedBy: second.displayName })
+
+    const row = await prisma.case.findUniqueOrThrow({ where: { id } })
+    expect(row.status).toBe('OPEN')
+    expect(row.version).toBe(2)
+    expect(row.resolvedAt).toBeNull()
+    // The refused resolve left neither an audit row nor its "Resolved:" update behind.
+    expect(await prisma.auditLog.count({ where: { entity: 'Case', entityId: id, action: 'case.resolve' } })).toBe(0)
+    expect(await prisma.caseUpdate.count({ where: { caseId: id } })).toBe(0)
+  })
+
   it('answers 409 when the version is stale on reopen', async () => {
     const nurse = actorOf(await makeUser('NAVIGATOR'))
     const id = await openCase(nurse)
@@ -484,5 +633,24 @@ describe('voidCase', () => {
     const audits = await prisma.auditLog.findMany({ where: { entity: 'Case', entityId: id }, orderBy: { at: 'asc' } })
     expect(audits.map((a) => a.action)).toEqual(['case.create', 'case.void'])
     expect(audits[1]!.after).toMatchObject({ status: 'VOIDED' })
+  })
+
+  it('answers 409 with the last editor for a stale version, and voids nothing', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const supervisor = actorOf(await makeUser('SUPERVISOR'))
+    const id = await openCase(nurse)
+
+    const winner = await saveCase(nurse, id, draft({ mrn: '111333', version: 1 }), ctxFor(nurse.id))
+    expect(winner).toMatchObject({ ok: true, version: 2 })
+
+    const loser = await voidCase(supervisor, id, { version: 1, voidReason: 'opened twice' }, ctxFor(supervisor.id))
+    expect(loser).toMatchObject({ ok: false, error: 'conflict', changedBy: nurse.displayName })
+
+    const row = await prisma.case.findUniqueOrThrow({ where: { id } })
+    expect(row.status).toBe('OPEN')
+    expect(row.version).toBe(2)
+    expect(row.voidReason).toBeNull()
+    expect(await prisma.auditLog.count({ where: { entity: 'Case', entityId: id, action: 'case.void' } })).toBe(0)
+    expect(await prisma.caseUpdate.count({ where: { caseId: id } })).toBe(0)
   })
 })

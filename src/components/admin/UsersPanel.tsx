@@ -22,7 +22,7 @@ import {
   setUserEmail as setUserEmailAction,
   setUserRole as setUserRoleAction,
 } from '@/app/(app)/admin/actions'
-import { Button, Field, Input, Select } from '@/src/components/ui'
+import { Button, Field, Input, Select, UNREACHABLE_MESSAGE } from '@/src/components/ui'
 import { ROLE_LABELS, ROLES, type UserRow } from '@/src/lib/admin/user-view'
 import { fmtStamp } from '@/src/lib/cases/local-time'
 
@@ -52,6 +52,9 @@ export function UsersPanel({ users, currentUserId }: { users: UserRow[]; current
       // The field was cleared above, so only a problem needs writing back.
       if (problem) setMessage(problem)
       else router.refresh()
+    } catch {
+      // A thrown action, not a refusal: say so rather than re-enabling in silence (Phase 7, C11).
+      setMessage(UNREACHABLE_MESSAGE)
     } finally {
       setBusy(false)
     }

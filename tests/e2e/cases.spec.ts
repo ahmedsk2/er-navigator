@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { prisma } from '../../src/lib/db'
 import { CASE_URL, fromClientIp, openCase, signIn, uniqueMrn } from './fixtures/case-flow'
 import { E2E_USERS } from './fixtures/seed-users'
 
@@ -10,12 +11,22 @@ test.describe.configure({ mode: 'serial' })
 test.beforeEach(() => {
   test.skip(test.info().project.name !== 'mobile', 'the case flow is checked at the phone size')
 })
+test.afterAll(async () => {
+  await prisma.$disconnect()
+})
 
 /** The number of taps a nurse may spend opening a case (plan section 5.3 usability budget). */
 const ACTION_BUDGET = 15
 
 const STAGE = 'Admission process'
 const REASON = 'No bed available on accepting ward'
+
+/**
+ * The team this suite retires. One stable name, upserted active at the start of the test and left
+ * deactivated at the end, so a run adds at most this single row rather than one per run — and it
+ * is a name no other spec or fixture uses.
+ */
+const RETIRED_TEAM = 'E2E Retired Team'
 
 test('a navigator opens a case, adds an update and resolves it as discharged home', async ({ page }) => {
   await fromClientIp(page, '198.51.100.41')
@@ -63,6 +74,40 @@ test('an admission needs a ward before it can be resolved', async ({ page }) => 
   await expect(page.getByText('Resolved: Admitted')).toBeVisible()
 })
 
+test('a team retired in Admin stays visible and removable on the case that carries it', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.50')
+  const taps = await signIn(page, E2E_USERS.navigator)
+  const team = await prisma.department.upsert({
+    where: { name: RETIRED_TEAM },
+    create: { name: RETIRED_TEAM, sortOrder: 900, active: true },
+    update: { active: true },
+  })
+
+  const url = await openCase(page, uniqueMrn(), STAGE, REASON, taps)
+  await page.getByRole('group', { name: 'Departments' }).getByRole('button', { name: RETIRED_TEAM }).click()
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.getByText('Saved.')).toBeVisible()
+
+  // What Admin → Reference lists does. The case keeps the consult; the chip goes grey.
+  await prisma.department.update({ where: { id: team.id }, data: { active: false } })
+  await page.goto(url)
+  const chip = page.getByRole('button', { name: `${RETIRED_TEAM} (retired)` })
+  await expect(chip).toBeVisible()
+  await expect(chip).toHaveAttribute('aria-pressed', 'true')
+
+  // The case still saves with it on — this is what a deactivation used to break ...
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.getByText('Saved.')).toBeVisible()
+
+  // ... and the chip is the control that clears it, after which it can never go back on.
+  await chip.click()
+  await expect(chip).toBeDisabled()
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.getByText('Saved.')).toBeVisible()
+  await page.goto(url)
+  await expect(page.getByRole('button', { name: RETIRED_TEAM })).toHaveCount(0)
+})
+
 test('a second nurse saving first turns the stale save into "changed by", never a merge', async ({ browser }) => {
   const first = await browser.newContext()
   const second = await browser.newContext()
@@ -96,6 +141,60 @@ test('a second nurse saving first turns the stale save into "changed by", never 
 
   await first.close()
   await second.close()
+})
+
+test('a department chip toggled off and on again keeps that team times', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.52')
+  const taps = await signIn(page, E2E_USERS.navigator)
+  await openCase(page, uniqueMrn(), STAGE, REASON, taps)
+
+  const chip = page.getByRole('group', { name: 'Departments' }).getByRole('button', { name: 'ICU', exact: true })
+  await chip.click()
+  await page.getByLabel('Consulted at', { exact: true }).fill('2026-09-09T14:10')
+  await page.getByLabel('Seen patient at', { exact: true }).fill('2026-09-09T15:40')
+
+  // A thumb catching the chip while scrolling, then putting it back (prototype: the consult map
+  // a deselect never touches).
+  await chip.click()
+  await expect(page.getByLabel('Consulted at', { exact: true })).toHaveCount(0)
+  await chip.click()
+  await expect(page.getByLabel('Consulted at', { exact: true })).toHaveValue('2026-09-09T14:10')
+  await expect(page.getByLabel('Seen patient at', { exact: true })).toHaveValue('2026-09-09T15:40')
+
+  // And what the round trip stores is the restored pair, not two nulls.
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
+  await page.reload()
+  await expect(page.getByLabel('Consulted at', { exact: true })).toHaveValue('2026-09-09T14:10')
+})
+
+test('a save that never reaches the server says so, and says nothing was saved', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.51')
+  const taps = await signIn(page, E2E_USERS.navigator)
+  const url = await openCase(page, uniqueMrn(), STAGE, REASON, taps)
+
+  // The server action posts back to the case's own URL; drop it the way ward wifi does.
+  await page.route(url, async (route) => {
+    if (route.request().method() === 'POST') await route.abort('failed')
+    else await route.fallback()
+  })
+
+  await page.getByLabel('MRN (digits only)').fill('444001')
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  const alert = page.locator('[data-unreachable]')
+  await expect(alert).toHaveRole('alert')
+  await expect(alert).toHaveText('Could not reach the server. Nothing was saved. Check the connection and try again.')
+  // `exact` matters: getByText is case-insensitive and this alert itself says "nothing was saved".
+  await expect(page.getByText('Saved.', { exact: true })).toHaveCount(0)
+  // The message is persistent: the button comes back but the warning stays put.
+  await expect(page.getByRole('button', { name: 'Save changes' })).toBeEnabled()
+  await expect(alert).toBeVisible()
+
+  // And it told the truth — nothing was written.
+  await page.unroute(url)
+  await page.goto(url)
+  await expect(page.getByLabel('MRN (digits only)')).not.toHaveValue('444001')
+  await expect(page.locator('[data-unreachable]')).toHaveCount(0)
 })
 
 test('a supervisor voids a case with a reason and it becomes read-only', async ({ page }) => {

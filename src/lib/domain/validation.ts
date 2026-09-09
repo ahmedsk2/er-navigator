@@ -100,7 +100,15 @@ export function buildCaseSchemas(meta: ReadonlyMap<string, ReasonMeta>, now: () 
     version: z.number().int().positive(),
   })
 
-  const withRules = base.superRefine((c, ctx) => {
+  /**
+   * The cross-field rules, extracted so that "Mark resolved" enforces exactly what "Save changes"
+   * enforces (Phase 7, C5). The resolve schema used to be built from the unrefined `base`, so one
+   * tap past a refused save wrote a bare "Other" reason with no text, a requiresDepartment reason
+   * with no consult, or a future registration time — data the app's own rules forbid, into the
+   * dataset the dashboard and the "Other" review queue read.
+   */
+  type CrossFieldDraft = z.output<typeof base>
+  const crossFieldRules = (c: CrossFieldDraft, ctx: z.RefinementCtx<CrossFieldDraft>): void => {
     // registrationAt <= now
     if (c.registrationAt.getTime() > now().getTime() + 60_000) {
       ctx.addIssue({ code: 'custom', path: ['registrationAt'], message: 'Registration time cannot be in the future.' })
@@ -145,11 +153,17 @@ export function buildCaseSchemas(meta: ReadonlyMap<string, ReasonMeta>, now: () 
     if (new Set(invTypes).size !== invTypes.length) {
       ctx.addIssue({ code: 'custom', path: ['investigations'], message: 'An investigation type is listed twice.' })
     }
-  })
+  }
 
-  /** Resolve adds: disposition required; ADMITTED needs a ward; referral number when required. */
+  const withRules = base.superRefine(crossFieldRules)
+
+  /**
+   * Resolve is the draft's rules PLUS: disposition required; ADMITTED needs a ward; referral
+   * number when required.
+   */
   const resolve = base
     .extend({ disposition: dispositionSchema, departedAt: isoOrDate })
+    .superRefine(crossFieldRules)
     .superRefine((c, ctx) => {
       if (c.disposition === 'ADMITTED' && !c.wardId) {
         ctx.addIssue({ code: 'custom', path: ['wardId'], message: 'Choose the ward.' })

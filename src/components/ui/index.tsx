@@ -10,6 +10,15 @@ import { useEffect, useId, useState, type ReactNode } from 'react'
 import { fromLocalInput, toLocalInput } from '@/src/lib/cases/local-time'
 import { useHydrated } from './hydrated'
 
+/**
+ * What every action runner says when the call itself threw rather than answering (Phase 7, C11):
+ * a dropped ward wifi, a 502 during the stop-then-start deploy window, a Prisma transaction
+ * timeout. It must say that nothing was saved, because a failed save is otherwise
+ * indistinguishable from a successful one — the button simply re-enables.
+ */
+export const UNREACHABLE_MESSAGE =
+  'Could not reach the server. Nothing was saved. Check the connection and try again.'
+
 // --- section ----------------------------------------------------------------------------------
 
 export function Section({
@@ -131,6 +140,11 @@ const CHIP_BASE =
   'mr-1.5 mb-2 inline-flex min-h-11 items-center rounded-chip border px-3 py-2 text-left text-[14px] leading-tight ' +
   'disabled:opacity-60 motion-safe:transition-colors'
 
+/**
+ * `retiredOf` marks an option an Admin has deactivated that the record already carries (Phase 7,
+ * C4/C10). Such a chip is greyed, labelled "(retired)" and deselect-only: tapping it clears the
+ * stale selection, and once it is off it can never be turned back on.
+ */
 export function Chips<T extends string>({
   options,
   value,
@@ -138,6 +152,7 @@ export function Chips<T extends string>({
   primary,
   onPrimary,
   labelOf = (v) => v,
+  retiredOf,
   disabled = false,
   groupLabel,
 }: {
@@ -147,6 +162,7 @@ export function Chips<T extends string>({
   primary?: string | null
   onPrimary?: (value: T) => void
   labelOf?: (value: T) => string
+  retiredOf?: (value: T) => boolean
   disabled?: boolean
   groupLabel: string
 }) {
@@ -154,21 +170,30 @@ export function Chips<T extends string>({
     <div role="group" aria-label={groupLabel}>
       {options.map((option) => {
         const on = value.includes(option)
+        const retired = retiredOf?.(option) ?? false
+        const spent = retired && !on
         return (
           <button
             key={option}
             type="button"
-            disabled={disabled}
+            disabled={disabled || spent}
             aria-pressed={on}
             className={`${CHIP_BASE} ${
-              on ? 'border-accent bg-accent text-white' : 'border-line bg-panel text-ink'
+              retired
+                ? `border-line bg-bg text-muted ${spent ? 'opacity-60' : ''}`
+                : on
+                  ? 'border-accent bg-accent text-white'
+                  : 'border-line bg-panel text-ink'
             } ${primary === option ? 'ring-3 ring-accent-soft' : ''}`}
-            onClick={() => onChange(on ? value.filter((v) => v !== option) : [...value, option])}
+            onClick={() => {
+              if (spent) return
+              onChange(on ? value.filter((v) => v !== option) : [...value, option])
+            }}
             onDoubleClick={() => {
-              if (on) onPrimary?.(option)
+              if (on && !retired) onPrimary?.(option)
             }}
           >
-            {labelOf(option)}
+            {retired ? `${labelOf(option)} (retired)` : labelOf(option)}
           </button>
         )
       })}
