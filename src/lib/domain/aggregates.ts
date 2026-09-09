@@ -12,8 +12,37 @@
  *   - Weekly buckets are Sunday-start weeks in Asia/Riyadh keyed by registration.
  *   - Every row carries the ids behind it so the UI can drill down to the case list.
  */
-import { duration, elapsedHours, median, type CaseClock } from './time'
+import { MIN_N, duration, elapsedHours, median, type CaseClock } from './time'
 import { INVESTIGATION_LABELS, INVESTIGATION_STEPS, THRESHOLDS_H } from './taxonomy'
+import {
+  TARGETS,
+  actionsDocumented,
+  adaaSummary,
+  admissionToUnitBands,
+  byArea,
+  byCtas,
+  completeness,
+  examToConsult,
+  headline,
+  longestStays,
+  outcomes,
+  previousRange,
+  repeatVisits,
+  stayBands,
+  targets,
+  treatedBands,
+  turnaroundBands,
+  type Actions,
+  type AdaaSummaryRow,
+  type Headline,
+  type IdRow,
+  type LongestStay,
+  type ShareRow,
+  type StatRow,
+  type TargetKey,
+  type TurnaroundRow,
+  type UnitType,
+} from './kpi'
 
 export const TIMEZONE = 'Asia/Riyadh'
 export const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
@@ -249,11 +278,102 @@ export function otherQueue(cases: ReadonlyArray<CaseForStats>): OtherQueueRow[] 
   return cases.flatMap((c) => c.otherTexts.filter((o) => o.text.trim()).map((o) => ({ id: c.id, mrn: c.mrn, stageName: o.stageName, text: o.text })))
 }
 
+// --- Phase 8: the deck and Adaa panels ---------------------------------------------------------
+
+/** One working target with the drill-down the section needs: the cases that did NOT meet it. */
+export type DashboardTarget = ShareRow & { key: TargetKey; minutes: number; missedIds: string[] }
+
+/**
+ * Everything the Phase 8 sections render, computed once per request by `dashboard()`.
+ *
+ * Every figure is a call into `src/lib/domain/kpi.ts` — this layer names them, puts the six
+ * `completeness` rows into one drillable list, and takes the set difference `ids − withinIds` a
+ * "who missed this target" drill-down needs. The only arithmetic it does that `kpi.ts` does not
+ * hand over is the two headline shares, and they are guarded by `MIN_N` like every other share.
+ */
+export type DashboardKpi = {
+  headline: Headline
+  /** The period of the same length before this one, measured to `asOf`. Null for 'all'. */
+  previous: { headline: Headline; asOf: Date } | null
+  /**
+   * `headline()` reports "10 h or more" and "12 h or more" as counts; the headline tile asks for
+   * a share (brief, section 3, item 1). The denominator is `measured` — the cases with a
+   * computable stay, which is what the counts are drawn from — and the share is null below MIN_N.
+   */
+  atLeast10Share: number | null
+  atLeast12Share: number | null
+  stayBands: IdRow[]
+  longest: LongestStay[]
+  actions: Actions
+  outcomes: IdRow[]
+  /** The six data-quality rows in a fixed order, so the panel and the drill-down share one list. */
+  completeness: IdRow[]
+  repeats: Array<{ mrn: string; ids: string[] }>
+  adaa: AdaaSummaryRow[]
+  /** `adaa`'s last row: the one the dashboard panel shows. Per-CTAS rows are for the export. */
+  adaaOverall: AdaaSummaryRow
+  treated: IdRow[]
+  admissionToUnit: Array<{ unit: UnitType; bands: IdRow[] }>
+  targets: DashboardTarget[]
+  examToConsult: StatRow[]
+  turnaround: TurnaroundRow[]
+  byCtas: StatRow[]
+  byArea: StatRow[]
+}
+
+function guardedShare(within: number, n: number): number | null {
+  return n >= MIN_N ? within / n : null
+}
+
+export function kpiPanels(all: ReadonlyArray<CaseForStats>, cases: ReadonlyArray<CaseForStats>, range: Range, now: Date): DashboardKpi {
+  const head = headline(cases, now)
+  // 'all' has no period before it; `previousRange` returns an empty window and no delta is shown.
+  const before = previousRange(all, range, now)
+  const rows = completeness(cases, now)
+  const adaa = adaaSummary(cases)
+  return {
+    headline: head,
+    previous: range === 'all' ? null : { headline: headline(before.cases, before.asOf), asOf: before.asOf },
+    atLeast10Share: guardedShare(head.atLeast10, head.measured),
+    atLeast12Share: guardedShare(head.atLeast12, head.measured),
+    stayBands: stayBands(cases, now),
+    longest: longestStays(cases, now),
+    actions: actionsDocumented(cases),
+    outcomes: outcomes(cases),
+    completeness: [
+      rows.noReason,
+      rows.openQuiet12h,
+      rows.noDecision24h,
+      rows.resolvedNoDisposition,
+      rows.outOfOrder,
+      rows.noStay,
+    ],
+    repeats: repeatVisits(cases),
+    adaa,
+    adaaOverall: adaa[adaa.length - 1]!,
+    treated: treatedBands(cases),
+    admissionToUnit: admissionToUnitBands(cases),
+    targets: targets(cases).map((row, i) => {
+      const within = new Set(row.withinIds)
+      return { ...row, key: TARGETS[i]!.key, minutes: TARGETS[i]!.minutes, missedIds: row.ids.filter((id) => !within.has(id)) }
+    }),
+    examToConsult: examToConsult(cases),
+    turnaround: turnaroundBands(cases),
+    byCtas: byCtas(cases, now),
+    byArea: byArea(cases, now),
+  }
+}
+
 /**
  * Everything the dashboard page renders, in one call. `byPrimary` and `byDept` are capped to the
  * top 8 here because that is what the prototype's charts show (a rendering cap, verified by three
  * independent recomputations of the fixture); the uncapped lists come from byPrimaryReason() and
  * byDepartment() directly.
+ *
+ * Phase 8 added `kpi`: the weekly deck's headline, bands, longest stays, actions, outcomes and
+ * completeness, and the Adaa and August-sheet panels. Those come from `kpi.ts` over the same
+ * `cases` list, except `previousRange`, which needs the unfiltered `all` to find the window
+ * before this one.
  */
 export function dashboard(all: ReadonlyArray<CaseForStats>, range: Range, now: Date) {
   const cases = inRange(all, range, now)
@@ -274,5 +394,6 @@ export function dashboard(all: ReadonlyArray<CaseForStats>, range: Range, now: D
     byWeekday: byWeekday(cases),
     byDispo: byDisposition(cases),
     otherQueue: otherQueue(cases),
+    kpi: kpiPanels(all, cases, range, now),
   }
 }

@@ -3,8 +3,10 @@ import { FIXTURE, NOW } from '@/src/lib/domain/__tests__/aggregates.fixture'
 import { dashboard } from '@/src/lib/domain/aggregates'
 import {
   DEFAULT_RANGE,
+  DRILL_SECTIONS,
   dashboardHref,
   drillKey,
+  gridKey,
   investigationLabel,
   parseDrill,
   parseRange,
@@ -140,5 +142,70 @@ describe('resolveDrill', () => {
       ...data.byStage.flatMap((r) => r.ids),
     ]
     expect(every).not.toContain('C10')
+  })
+})
+
+/**
+ * Phase 8: one drill-down per new count row. The ids are the same lists
+ * `src/lib/domain/__tests__/aggregates.test.ts` hand-computes; what is checked here is that every
+ * section name reaches them, that the grid sections split their two coordinates, and that a row
+ * which has fallen out of range still resolves to null rather than throwing.
+ */
+describe('resolveDrill, the Phase 8 sections', () => {
+  it('resolves a stay band, a treated-within band and an outcome', () => {
+    expect(resolveDrill(data, { section: 'stayband', name: '24+ h' })).toEqual({
+      key: { section: 'stayband', name: '24+ h' },
+      label: 'Stay 24+ h',
+      ids: ['C4'],
+    })
+    expect(resolveDrill(data, { section: 'treated', name: 'Within 4 h' })).toMatchObject({
+      label: 'Door to disposition: Within 4 h',
+      ids: ['C12'],
+    })
+    expect(resolveDrill(data, { section: 'outcome', name: 'Discharged home' })?.ids).toEqual(['C6', 'C7'])
+    expect(resolveDrill(data, { section: 'outcome', name: 'Still open' })?.ids).toEqual(['C1', 'C2', 'C3', 'C4', 'C11'])
+  })
+
+  it('a target resolves by its key to the cases that MISSED it', () => {
+    const drill = resolveDrill(data, { section: 'target', name: 'consult60' })
+    expect(drill?.label).toBe('Missed: Consulted team responded within 1 h')
+    expect(drill?.ids).toEqual(['C2', 'C5'])
+    expect(resolveDrill(data, { section: 'target', name: 'nonsense' })).toBeNull()
+  })
+
+  it('the two grid sections split unit or type from band on the pipe', () => {
+    expect(gridKey('CT', '2–4 h')).toBe('CT|2–4 h')
+    expect(resolveDrill(data, { section: 'turnaround', name: gridKey('CT', '2–4 h') })).toMatchObject({
+      label: 'CT order to result 2–4 h',
+      ids: ['C6'],
+    })
+    // No ward code in the fixture, so every admission band is empty — but it still resolves.
+    expect(resolveDrill(data, { section: 'unitband', name: gridKey('ICU', '≤30 min') })).toMatchObject({
+      label: 'ICU-type unit, admission order to left ED ≤30 min',
+      ids: [],
+    })
+    expect(resolveDrill(data, { section: 'unitband', name: 'ICU' })).toBeNull()
+    expect(resolveDrill(data, { section: 'turnaround', name: gridKey('MRI', '2–4 h') })).toBeNull()
+  })
+
+  it('resolves an action kind, a CTAS level, an area and a completeness row', () => {
+    expect(resolveDrill(data, { section: 'action', name: 'Bed requested (fax)' })?.ids).toEqual(['C5'])
+    expect(resolveDrill(data, { section: 'action', name: 'No action documented' })?.ids).toHaveLength(9)
+    expect(resolveDrill(data, { section: 'ctas', name: '3' })).toMatchObject({ label: 'CTAS 3', ids: ['C1'] })
+    expect(resolveDrill(data, { section: 'ctas', name: 'Not recorded' })?.label).toBe('CTAS not recorded')
+    expect(resolveDrill(data, { section: 'area', name: 'Acute area' })).toMatchObject({ label: 'Acute area', ids: ['C6'] })
+    expect(resolveDrill(data, { section: 'quality', name: 'Times out of order' })?.ids).toEqual(['C12'])
+  })
+
+  it('a repeat visit resolves by MRN, and an unknown one falls back', () => {
+    // Every fixture MRN is distinct, so there is no repeat row to hit.
+    expect(resolveDrill(data, { section: 'repeat', name: '100001' })).toBeNull()
+    expect(resolveDrill(data, { section: 'examconsult', name: 'MROD' })).toBeNull() // no physician times
+  })
+
+  it('every Phase 8 section is parseable and round-trips through drillKey', () => {
+    for (const section of DRILL_SECTIONS) {
+      expect(parseDrill(drillKey(section, 'x'))).toEqual({ section, name: 'x' })
+    }
   })
 })

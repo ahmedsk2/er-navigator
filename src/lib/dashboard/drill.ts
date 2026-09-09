@@ -11,6 +11,7 @@
  * ("Lab: delay in processing").
  */
 import { RANGES, type Range } from '@/src/lib/domain/aggregates'
+import { NOT_RECORDED } from '@/src/lib/domain/kpi'
 import { DISPOSITION_LABELS, INVESTIGATION_LABELS, SHIFT_LABELS } from '@/src/lib/domain/taxonomy'
 
 export const DEFAULT_RANGE: Range = '30'
@@ -22,7 +23,15 @@ export const RANGE_LABELS: Record<Range, string> = {
   all: 'All time',
 }
 
-/** Every section of the page that can be drilled into. One per chart or table the prototype picks from. */
+/**
+ * Every section of the page that can be drilled into. One per chart or table the prototype picks
+ * from, plus one per Phase 8 count row.
+ *
+ * Two of the Phase 8 sections are a grid rather than a list, so their row name carries both
+ * coordinates joined by a pipe: `unitband:ICU|≤30 min`, `turnaround:CT|61–90 min`. The pipe is
+ * safe where a colon is not — `parseDrill` splits on the first colon because reason names contain
+ * colons of their own, and no band, unit or investigation type contains a pipe.
+ */
 export const DRILL_SECTIONS = [
   'threshold',
   'week',
@@ -34,8 +43,25 @@ export const DRILL_SECTIONS = [
   'shift',
   'weekday',
   'dispo',
+  'stayband',
+  'treated',
+  'target',
+  'unitband',
+  'turnaround',
+  'examconsult',
+  'action',
+  'outcome',
+  'ctas',
+  'area',
+  'repeat',
+  'quality',
 ] as const
 export type DrillSection = (typeof DRILL_SECTIONS)[number]
+
+/** The two-coordinate key the admission-to-unit and turnaround grids use. */
+export function gridKey(a: string, b: string): string {
+  return `${a}|${b}`
+}
 
 export type DrillKey = { section: DrillSection; name: string }
 
@@ -74,19 +100,38 @@ export function dashboardHref(range: Range, drill?: string | null): string {
   return search ? `/dashboard?${search}` : '/dashboard'
 }
 
+type NamedRows = ReadonlyArray<{ name: string; ids: string[] }>
+
 /** Everything `dashboard()` returns; the drill-down reads its rows rather than counting again. */
 type DashboardData = {
   thresholds: ReadonlyArray<{ threshold: number; allIds: string[] }>
   weeks: ReadonlyArray<{ weekStart: string; ids: string[] }>
-  byPrimary: ReadonlyArray<{ name: string; ids: string[] }>
-  byStage: ReadonlyArray<{ name: string; ids: string[] }>
-  byDept: ReadonlyArray<{ name: string; ids: string[] }>
-  consults: ReadonlyArray<{ name: string; ids: string[] }>
+  byPrimary: NamedRows
+  byStage: NamedRows
+  byDept: NamedRows
+  consults: NamedRows
   investigations: ReadonlyArray<{ type: string; name: string; ids: string[] }>
-  byShift: ReadonlyArray<{ name: string; ids: string[] }>
-  byWeekday: ReadonlyArray<{ name: string; ids: string[] }>
-  byDispo: ReadonlyArray<{ name: string; ids: string[] }>
+  byShift: NamedRows
+  byWeekday: NamedRows
+  byDispo: NamedRows
+  kpi: {
+    stayBands: NamedRows
+    treated: NamedRows
+    targets: ReadonlyArray<{ key: string; name: string; missedIds: string[] }>
+    admissionToUnit: ReadonlyArray<{ unit: string; bands: NamedRows }>
+    turnaround: ReadonlyArray<{ type: string; orderToResult: NamedRows }>
+    examToConsult: NamedRows
+    actions: { any: { name: string; ids: string[] }; none: { name: string; ids: string[] }; byKind: NamedRows }
+    outcomes: NamedRows
+    byCtas: NamedRows
+    byArea: NamedRows
+    repeats: ReadonlyArray<{ mrn: string; ids: string[] }>
+    completeness: NamedRows
+  }
 }
+
+/** "ICU-type" and "Ward" as the admission-to-unit section titles them. */
+export const UNIT_LABELS: Record<string, string> = { ICU: 'ICU-type unit', Ward: 'Ward' }
 
 /**
  * Resolve a key against this render's aggregates. A key whose section is known but whose row is
@@ -129,7 +174,51 @@ export function resolveDrill(data: DashboardData, key: DrillKey): Drill | null {
       return named(data.byWeekday)
     case 'dispo':
       return named(data.byDispo, (r) => DISPOSITION_LABELS[r.name as keyof typeof DISPOSITION_LABELS] ?? r.name)
+    case 'stayband':
+      return named(data.kpi.stayBands, (r) => `Stay ${r.name}`)
+    case 'treated':
+      return named(data.kpi.treated, (r) => `Door to disposition: ${r.name}`)
+    case 'target': {
+      const row = data.kpi.targets.find((r) => r.key === key.name)
+      return row ? { key, label: `Missed: ${row.name}`, ids: row.missedIds } : null
+    }
+    case 'unitband': {
+      const [unit, band] = splitGrid(key.name)
+      const group = data.kpi.admissionToUnit.find((g) => g.unit === unit)
+      const row = group?.bands.find((b) => b.name === band)
+      return row ? { key, label: `${UNIT_LABELS[unit] ?? unit}, admission order to left ED ${row.name}`, ids: row.ids } : null
+    }
+    case 'turnaround': {
+      const [type, band] = splitGrid(key.name)
+      const group = data.kpi.turnaround.find((g) => g.type === type)
+      const row = group?.orderToResult.find((b) => b.name === band)
+      return row ? { key, label: `${investigationLabel(type)} order to result ${row.name}`, ids: row.ids } : null
+    }
+    case 'examconsult':
+      return named(data.kpi.examToConsult, (r) => `${r.name}: exam to consult`)
+    case 'action': {
+      const { any, none, byKind } = data.kpi.actions
+      return named([any, none, ...byKind])
+    }
+    case 'outcome':
+      return named(data.kpi.outcomes)
+    case 'ctas':
+      return named(data.kpi.byCtas, (r) => (r.name === NOT_RECORDED ? 'CTAS not recorded' : `CTAS ${r.name}`))
+    case 'area':
+      return named(data.kpi.byArea, (r) => (r.name === NOT_RECORDED ? 'ED area not recorded' : r.name))
+    case 'repeat': {
+      const row = data.kpi.repeats.find((r) => r.mrn === key.name)
+      return row ? { key, label: `MRN ${row.mrn}, ${row.ids.length} visits`, ids: row.ids } : null
+    }
+    case 'quality':
+      return named(data.kpi.completeness)
   }
+}
+
+/** `unit|band` back into its two halves. A name with no pipe yields an empty second half. */
+function splitGrid(name: string): [string, string] {
+  const pipe = name.indexOf('|')
+  return pipe < 0 ? [name, ''] : [name.slice(0, pipe), name.slice(pipe + 1)]
 }
 
 /** Display name for an investigation type, used by the table and its drill-down alike. */
