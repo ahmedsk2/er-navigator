@@ -20,6 +20,7 @@ import { DISPOSITION_LABELS } from '@/src/lib/domain/taxonomy'
 import {
   buildCaseSchemas,
   phiWarnings,
+  updateActionSchema,
   updateTextSchema,
   voidSchema,
   type CaseDraft as ValidatedDraft,
@@ -36,6 +37,7 @@ import type {
   ReferenceData,
   ReopenCaseResult,
   ResolveCaseResult,
+  ReviewCaseResult,
   SaveCaseResult,
   ValidationIssue,
   VoidCaseResult,
@@ -79,9 +81,30 @@ async function conflictFailure(caseId: string): Promise<ActionFailure> {
 const MISSING = fail([{ path: '', message: 'This case no longer exists.' }])
 const VOIDED = fail([{ path: '', message: 'This case is voided and cannot be changed.' }])
 
-function updateView(row: { id: string; createdAt: Date; text: string; author: { displayName: string } }): CaseUpdateView {
-  return { id: row.id, createdAt: row.createdAt.toISOString(), text: row.text, author: row.author.displayName }
+function updateView(row: {
+  id: string
+  createdAt: Date
+  text: string
+  action: CaseUpdateView['action']
+  author: { displayName: string }
+}): CaseUpdateView {
+  return {
+    id: row.id,
+    createdAt: row.createdAt.toISOString(),
+    text: row.text,
+    author: row.author.displayName,
+    action: row.action,
+  }
 }
+
+/** The `select` every function here uses to build a `CaseUpdateView`. */
+const UPDATE_VIEW_SELECT = {
+  id: true,
+  createdAt: true,
+  text: true,
+  action: true,
+  author: { select: { displayName: true } },
+} as const
 
 /**
  * Reference ids the zod factory does not police: a stale editor could post a department or ward
@@ -136,12 +159,37 @@ function caseScalarData(d: ValidatedDraft) {
     referralTrackingNo: blankToNull(d.referralTrackingNo),
     transferFacility: blankToNull(d.transferFacility),
     medAdminInformedAt: d.medAdminInformedAt ?? null,
+    // Phase 8b (docs/specs/phase8b-decisions.md). Nullish-coalesced like every other optional
+    // column, so leaving a chip row untouched clears the stored value rather than keeping a
+    // stale one — the same behaviour CTAS and the ED area have.
+    painkillerPrescribed: d.painkillerPrescribed ?? null,
+    pethidinePrescribed: d.pethidinePrescribed ?? null,
+    pethidineDoseMg: d.pethidineDoseMg ?? null,
+    painkillerAt: d.painkillerAt ?? null,
+    sickleCellTreatment: d.sickleCellTreatment ?? null,
+    instructionsGiven: d.instructionsGiven ?? null,
+    familyEngagement: d.familyEngagement ?? null,
+    caseMgmtReferral: d.caseMgmtReferral ?? null,
+    caseMgmtCriteria: d.caseMgmtCriteria ?? null,
+    caseMgmtAction: d.caseMgmtAction ?? null,
+    caseMgmtCalledAt: d.caseMgmtCalledAt ?? null,
+    caseMgmtRepliedAt: d.caseMgmtRepliedAt ?? null,
     disposition: d.disposition ?? null,
     wardId: blankToNull(d.wardId),
     isolation: d.isolation,
     resolutionNote: blankToNull(d.resolutionNote),
   }
 }
+
+/**
+ * What `saveCase` and `resolveCase` add to `caseScalarData`: the review, cleared (Phase 8b,
+ * decision H). A supervisor signs off on the case as it stood when they read it; the moment
+ * somebody edits it afterwards that signature no longer describes anything, so it goes and the
+ * case shows as unreviewed again. `addCaseUpdate`, `reopenCase` and `voidCase` leave it alone —
+ * none of them changes what was reviewed (an update is an addition, and a reopen and a void are
+ * about the case's standing, not its content).
+ */
+const CLEARS_REVIEW = { reviewedAt: null, reviewedById: null } as const
 
 /** "Other" text belongs only to an "Other" reason; anything else is dropped. */
 function otherTextsByStage(d: ValidatedDraft, reference: ReferenceData): Map<string, string> {
@@ -379,7 +427,7 @@ export async function saveCase(
 
     const touched = await tx.case.updateMany({
       where: { id: caseId, version: d.version, status: { not: 'VOIDED' } },
-      data: { ...caseScalarData(d), version: { increment: 1 } },
+      data: { ...caseScalarData(d), ...CLEARS_REVIEW, version: { increment: 1 } },
     })
     if (touched.count === 0) return { kind: 'conflict' }
 
@@ -411,16 +459,25 @@ export async function saveCase(
 /**
  * Append-only, so no version check: two nurses adding an update at the same moment both succeed
  * (locked plan section 4). The identifier warning is advisory — the row is kept either way.
+ *
+ * Phase 8b, decision C: an update may carry one of the weekly deck's six action categories. It is
+ * written with the row and there is no path that changes it afterwards, which is what keeps this
+ * table append-only; leaving it off is the ordinary case and never refused. A review the case
+ * already carries is untouched — an update adds to the record, it does not change what was read.
  */
 export async function addCaseUpdate(
   actor: AuthUser,
   caseId: string,
   text: unknown,
   ctx: AuditContext,
+  action?: unknown,
 ): Promise<AddUpdateResult> {
   await assertCan(actor, 'case.update.add', ctx)
   const parsed = updateTextSchema.safeParse(text)
   if (!parsed.success) return fail(issuesOf(parsed.error))
+  const parsedAction = updateActionSchema.safeParse(action)
+  if (!parsedAction.success) return fail(issuesOf(parsedAction.error))
+  const tag = parsedAction.data ?? null
 
   const outcome = await prisma.$transaction(async (tx): Promise<Outcome<CaseUpdateView>> => {
     const target = await tx.case.findUnique({ where: { id: caseId }, select: { status: true } })
@@ -428,15 +485,15 @@ export async function addCaseUpdate(
     if (target.status === 'VOIDED') return { kind: 'voided' }
 
     const row = await tx.caseUpdate.create({
-      data: { caseId, authorId: actor.id, text: parsed.data },
-      select: { id: true, createdAt: true, text: true, author: { select: { displayName: true } } },
+      data: { caseId, authorId: actor.id, text: parsed.data, action: tag },
+      select: UPDATE_VIEW_SELECT,
     })
     await audit(
       {
         action: 'case.update.add',
         entity: 'CaseUpdate',
         entityId: row.id,
-        after: { caseId, text: parsed.data },
+        after: { caseId, text: parsed.data, action: tag },
       },
       ctx,
       tx,
@@ -476,6 +533,7 @@ export async function resolveCase(
         where: { id: caseId, version: d.version, status: { not: 'VOIDED' } },
         data: {
           ...caseScalarData(d),
+          ...CLEARS_REVIEW,
           status: 'RESOLVED',
           departedAt: d.departedAt,
           resolvedAt: d.departedAt,
@@ -487,7 +545,7 @@ export async function resolveCase(
       await applyChildren(tx, caseId, d, reference, before)
       const row = await tx.caseUpdate.create({
         data: { caseId, authorId: actor.id, text: `Resolved: ${DISPOSITION_LABELS[d.disposition]}` },
-        select: { id: true, createdAt: true, text: true, author: { select: { displayName: true } } },
+        select: UPDATE_VIEW_SELECT,
       })
       const after = await tx.case.findUniqueOrThrow({ where: { id: caseId }, include: WITH_CHILDREN })
       await audit(
@@ -536,7 +594,7 @@ export async function reopenCase(
 
       const row = await tx.caseUpdate.create({
         data: { caseId, authorId: actor.id, text: 'Reopened' },
-        select: { id: true, createdAt: true, text: true, author: { select: { displayName: true } } },
+        select: UPDATE_VIEW_SELECT,
       })
       const after = await tx.case.findUniqueOrThrow({ where: { id: caseId }, include: WITH_CHILDREN })
       await audit(
@@ -604,4 +662,54 @@ export async function voidCase(
   if (outcome.kind === 'voided') return VOIDED
   if (outcome.kind === 'conflict') return conflictFailure(caseId)
   return { ok: true, version: outcome.value }
+}
+
+// --- 7. mark reviewed ---------------------------------------------------------------------------
+
+/**
+ * Phase 8b, decision H: a SUPERVISOR or an ADMIN signs a case off as read.
+ *
+ * Deliberately NOT version-checked, and it does not bump the version. Marking a case reviewed
+ * changes no case content, so there is nothing for two people to disagree about and nothing an
+ * open editor's draft could be stale against — a 409 here would only be a puzzle. It is
+ * idempotent for the same reason: marking an already-reviewed case again simply moves the time
+ * and the name to whoever read it last, which is what a second reading actually is.
+ *
+ * A voided case is still refused, because a voided case is refused everywhere.
+ */
+export async function reviewCase(
+  actor: AuthUser,
+  caseId: string,
+  ctx: AuditContext,
+): Promise<ReviewCaseResult> {
+  await assertCan(actor, 'case.review', ctx)
+
+  const outcome = await prisma.$transaction(async (tx): Promise<Outcome<Date>> => {
+    const before = await tx.case.findUnique({
+      where: { id: caseId },
+      select: { status: true, reviewedAt: true, reviewedById: true },
+    })
+    if (!before) return { kind: 'missing' }
+    if (before.status === 'VOIDED') return { kind: 'voided' }
+
+    const reviewedAt = new Date()
+    await tx.case.update({ where: { id: caseId }, data: { reviewedAt, reviewedById: actor.id } })
+    await audit(
+      {
+        action: 'case.review',
+        entity: 'Case',
+        entityId: caseId,
+        before: { reviewedAt: before.reviewedAt?.toISOString() ?? null, reviewedById: before.reviewedById },
+        after: { reviewedAt: reviewedAt.toISOString(), reviewedById: actor.id },
+      },
+      ctx,
+      tx,
+    )
+    return { kind: 'ok', value: reviewedAt }
+  })
+
+  if (outcome.kind === 'missing') return MISSING
+  if (outcome.kind === 'voided') return VOIDED
+  if (outcome.kind === 'conflict') return conflictFailure(caseId)
+  return { ok: true, reviewedAt: outcome.value.toISOString(), reviewedByName: actor.displayName }
 }

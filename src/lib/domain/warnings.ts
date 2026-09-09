@@ -51,6 +51,15 @@ export type CaseTimes = {
   transferRequestedAt?: TimeValue
   transferAcceptedAt?: TimeValue
   transportArrivedAt?: TimeValue
+  /**
+   * Phase 8b. The painkiller time is the end of Adaa KPI 8, whose clock starts at the door, so a
+   * time before the registration makes the KPI negative; the case-management pair is a call and
+   * its answer. Both are warnings, like every other pair here — a nurse typing 14:05 for 04:05 at
+   * the end of a shift must be told, not stopped.
+   */
+  painkillerAt?: TimeValue
+  caseMgmtCalledAt?: TimeValue
+  caseMgmtRepliedAt?: TimeValue
   consults?: ReadonlyArray<ConsultTimes>
   investigations?: ReadonlyArray<InvestigationTimes>
 }
@@ -75,6 +84,11 @@ export function timeWarnings(c: CaseTimes): string[] {
   // Every journey milestone must be at or after registration; room at or after triage.
   for (const [key, label] of MILESTONES) check(w, reg, c[key], 'registration', label)
   check(w, c.triageAt, c.roomAt, 'triage', 'room')
+
+  // Phase 8b: the painkiller cannot have been given before the patient arrived, and case
+  // management cannot have replied before it was called.
+  check(w, reg, c.painkillerAt, 'registration', 'Painkiller given')
+  check(w, c.caseMgmtCalledAt, c.caseMgmtRepliedAt, 'case management called', 'case management replied')
 
   // Consults: consulted -> seen -> replied, per team.
   for (const x of c.consults ?? []) {

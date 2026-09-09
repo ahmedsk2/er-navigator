@@ -7,7 +7,20 @@
  * are open" state, ported from the prototype's `c.stages`. On an existing case it is derived
  * from the stages of the selected reasons (see `draftFromCase`).
  */
-import type { Disposition, InvestigationType, RoomType, Shift } from '@prisma/client'
+import type {
+  Answer,
+  CaseManagementAction,
+  CaseManagementCriteria,
+  CaseManagementReferral,
+  Disposition,
+  InvestigationType,
+  RoomType,
+  Shift,
+  UpdateAction,
+} from '@prisma/client'
+
+/** The pain-management answers (Phase 8b, decision F): Yes or No, never "Not sure". */
+export type YesNo = Exclude<Answer, 'NOT_SURE'>
 
 /** An ISO-8601 UTC instant, or null for "not recorded". */
 export type TimeString = string | null
@@ -62,6 +75,22 @@ export type CaseDraft = {
   referralTrackingNo: string
   transferFacility: string
   medAdminInformedAt: TimeString
+  /** Pain management, Adaa KPI 8 (Phase 8b, decision F). Yes / No only. */
+  painkillerPrescribed: YesNo | null
+  pethidinePrescribed: YesNo | null
+  /** 50, 100 or 150, and only alongside a `pethidinePrescribed` of YES. */
+  pethidineDoseMg: number | null
+  painkillerAt: TimeString
+  sickleCellTreatment: YesNo | null
+  /** Discharge communication (decision D). Yes / No / Not sure. */
+  instructionsGiven: Answer | null
+  familyEngagement: Answer | null
+  /** Case management (decision B). */
+  caseMgmtReferral: CaseManagementReferral | null
+  caseMgmtCriteria: CaseManagementCriteria | null
+  caseMgmtAction: CaseManagementAction | null
+  caseMgmtCalledAt: TimeString
+  caseMgmtRepliedAt: TimeString
   disposition: Disposition | null
   wardId: string | null
   isolation: boolean
@@ -69,8 +98,17 @@ export type CaseDraft = {
   version: number
 }
 
-/** One row of the append-only update list, ready to render. */
-export type CaseUpdateView = { id: string; createdAt: string; text: string; author: string }
+/**
+ * One row of the append-only update list, ready to render. `action` is the weekly deck's category
+ * (Phase 8b, decision C), chosen when the row was written and never afterwards.
+ */
+export type CaseUpdateView = {
+  id: string
+  createdAt: string
+  text: string
+  author: string
+  action: UpdateAction | null
+}
 
 /**
  * Reference lists, loaded once per request and handed to the editor.
@@ -110,6 +148,11 @@ export type ActionFailure =
   | { ok: false; error: 'forbidden' }
 
 export type CreateCaseResult = { ok: true; id: string } | ActionFailure
+/**
+ * Phase 8b, decision H. No version comes back: `reviewCase` changes no case content, so it does
+ * not bump the version and an open editor's draft stays valid.
+ */
+export type ReviewCaseResult = { ok: true; reviewedAt: string; reviewedByName: string } | ActionFailure
 export type SaveCaseResult = { ok: true; version: number } | ActionFailure
 export type AddUpdateResult = { ok: true; update: CaseUpdateView; warnings: string[] } | ActionFailure
 export type ResolveCaseResult = { ok: true; version: number; update: CaseUpdateView } | ActionFailure

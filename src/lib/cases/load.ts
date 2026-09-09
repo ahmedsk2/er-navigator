@@ -5,14 +5,17 @@
  * `stages` is reconstructed here — the database stores reasons, and the editor's stage chips are
  * "the stages of the reasons you picked" (the prototype's `c.stages`).
  */
-import type { CaseStatus } from '@prisma/client'
+import type { Answer, CaseStatus } from '@prisma/client'
 import { prisma } from '@/src/lib/db'
 import { REGISTRATION_DEFAULT_HOURS_AGO } from '@/src/lib/domain/validation'
 import { stageOfReason } from './reference'
 import { timelineOf, type TimelineStepView } from './timeline'
-import type { CaseDraft, CaseUpdateView, ReferenceData } from './types'
+import type { CaseDraft, CaseUpdateView, ReferenceData, YesNo } from './types'
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null)
+
+/** A stored `Answer` as the two-valued answer the pain-management questions take. */
+const yesNo = (v: Answer | null): YesNo | null => (v === 'YES' || v === 'NO' ? v : null)
 
 export type LoadedCase = {
   id: string
@@ -22,6 +25,12 @@ export type LoadedCase = {
   openedAt: string
   draft: CaseDraft
   updates: CaseUpdateView[]
+  /**
+   * The supervisor review (Phase 8b, decision H), or null. It is not part of the draft: nothing
+   * the editor posts back can set or clear it, and it is displayed to every role while only a
+   * SUPERVISOR or an ADMIN is offered the control.
+   */
+  review: { at: string; byName: string } | null
   /**
    * Every recorded instant on the case in order, for the read-only Timeline section (Phase 8).
    * Built from the row this function already loaded rather than by a second query, and the
@@ -61,6 +70,18 @@ export function blankDraft(input: { now: Date; shift: CaseDraft['shift'] }): Cas
     referralTrackingNo: '',
     transferFacility: '',
     medAdminInformedAt: null,
+    painkillerPrescribed: null,
+    pethidinePrescribed: null,
+    pethidineDoseMg: null,
+    painkillerAt: null,
+    sickleCellTreatment: null,
+    instructionsGiven: null,
+    familyEngagement: null,
+    caseMgmtReferral: null,
+    caseMgmtCriteria: null,
+    caseMgmtAction: null,
+    caseMgmtCalledAt: null,
+    caseMgmtRepliedAt: null,
     disposition: null,
     wardId: null,
     isolation: false,
@@ -92,6 +113,21 @@ type CaseRow = {
   referralTrackingNo: string | null
   transferFacility: string | null
   medAdminInformedAt: Date | null
+  // The three pain-management columns are `Answer?` in the database because they share the enum,
+  // but the app only ever writes YES or NO (zod refuses NOT_SURE there). `yesNo` below reads a
+  // stray NOT_SURE — which only a hand-written UPDATE could produce — as "not recorded".
+  painkillerPrescribed: Answer | null
+  pethidinePrescribed: Answer | null
+  pethidineDoseMg: number | null
+  painkillerAt: Date | null
+  sickleCellTreatment: Answer | null
+  instructionsGiven: CaseDraft['instructionsGiven']
+  familyEngagement: CaseDraft['familyEngagement']
+  caseMgmtReferral: CaseDraft['caseMgmtReferral']
+  caseMgmtCriteria: CaseDraft['caseMgmtCriteria']
+  caseMgmtAction: CaseDraft['caseMgmtAction']
+  caseMgmtCalledAt: Date | null
+  caseMgmtRepliedAt: Date | null
   disposition: CaseDraft['disposition']
   wardId: string | null
   isolation: boolean
@@ -161,6 +197,18 @@ export function draftFromCase(row: CaseRow, reference: ReferenceData): CaseDraft
     referralTrackingNo: row.referralTrackingNo ?? '',
     transferFacility: row.transferFacility ?? '',
     medAdminInformedAt: iso(row.medAdminInformedAt),
+    painkillerPrescribed: yesNo(row.painkillerPrescribed),
+    pethidinePrescribed: yesNo(row.pethidinePrescribed),
+    pethidineDoseMg: row.pethidineDoseMg,
+    painkillerAt: iso(row.painkillerAt),
+    sickleCellTreatment: yesNo(row.sickleCellTreatment),
+    instructionsGiven: row.instructionsGiven,
+    familyEngagement: row.familyEngagement,
+    caseMgmtReferral: row.caseMgmtReferral,
+    caseMgmtCriteria: row.caseMgmtCriteria,
+    caseMgmtAction: row.caseMgmtAction,
+    caseMgmtCalledAt: iso(row.caseMgmtCalledAt),
+    caseMgmtRepliedAt: iso(row.caseMgmtRepliedAt),
     disposition: row.disposition,
     wardId: row.wardId,
     isolation: row.isolation,
@@ -177,9 +225,10 @@ export async function loadCaseForEditor(id: string, reference: ReferenceData): P
       consults: true,
       investigations: true,
       openedBy: { select: { displayName: true } },
+      reviewedBy: { select: { displayName: true } },
       updates: {
         orderBy: { createdAt: 'asc' },
-        select: { id: true, createdAt: true, text: true, author: { select: { displayName: true } } },
+        select: { id: true, createdAt: true, text: true, action: true, author: { select: { displayName: true } } },
       },
     },
   })
@@ -199,7 +248,13 @@ export async function loadCaseForEditor(id: string, reference: ReferenceData): P
       createdAt: u.createdAt.toISOString(),
       text: u.text,
       author: u.author.displayName,
+      action: u.action,
     })),
+    // Both halves or nothing: a review row without its reviewer would render "Reviewed by ,".
+    review:
+      row.reviewedAt && row.reviewedBy
+        ? { at: row.reviewedAt.toISOString(), byName: row.reviewedBy.displayName }
+        : null,
     timeline: timelineOf({
       status: row.status,
       registrationAt: row.registrationAt,

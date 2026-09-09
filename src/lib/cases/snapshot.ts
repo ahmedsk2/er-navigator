@@ -9,7 +9,17 @@
  *     to `include` the opener, the author of an update or the ward cannot drag a password hash
  *     or anything else into the audit table.
  */
-import type { CaseStatus, Disposition, InvestigationType, RoomType, Shift } from '@prisma/client'
+import type {
+  Answer,
+  CaseManagementAction,
+  CaseManagementCriteria,
+  CaseManagementReferral,
+  CaseStatus,
+  Disposition,
+  InvestigationType,
+  RoomType,
+  Shift,
+} from '@prisma/client'
 
 type Time = Date | null
 
@@ -57,6 +67,23 @@ export type SnapshotSource = {
   transportArrivedAt: Time
   referralTrackingNo: string | null
   transferFacility: string | null
+  // Phase 8b: the collection decisions, in the audit trail like every other column. `reviewedAt`
+  // and `reviewedById` are here too, so an audit reader can see a review appear on `case.review`
+  // and disappear again on the `case.update` that followed it.
+  painkillerPrescribed: Answer | null
+  pethidinePrescribed: Answer | null
+  pethidineDoseMg: number | null
+  painkillerAt: Time
+  sickleCellTreatment: Answer | null
+  instructionsGiven: Answer | null
+  familyEngagement: Answer | null
+  caseMgmtReferral: CaseManagementReferral | null
+  caseMgmtCriteria: CaseManagementCriteria | null
+  caseMgmtAction: CaseManagementAction | null
+  caseMgmtCalledAt: Time
+  caseMgmtRepliedAt: Time
+  reviewedAt: Time
+  reviewedById: string | null
   disposition: Disposition | null
   wardId: string | null
   isolation: boolean
@@ -100,6 +127,20 @@ export function caseSnapshot(c: SnapshotSource): Record<string, unknown> {
     transportArrivedAt: iso(c.transportArrivedAt),
     referralTrackingNo: c.referralTrackingNo,
     transferFacility: c.transferFacility,
+    painkillerPrescribed: c.painkillerPrescribed,
+    pethidinePrescribed: c.pethidinePrescribed,
+    pethidineDoseMg: c.pethidineDoseMg,
+    painkillerAt: iso(c.painkillerAt),
+    sickleCellTreatment: c.sickleCellTreatment,
+    instructionsGiven: c.instructionsGiven,
+    familyEngagement: c.familyEngagement,
+    caseMgmtReferral: c.caseMgmtReferral,
+    caseMgmtCriteria: c.caseMgmtCriteria,
+    caseMgmtAction: c.caseMgmtAction,
+    caseMgmtCalledAt: iso(c.caseMgmtCalledAt),
+    caseMgmtRepliedAt: iso(c.caseMgmtRepliedAt),
+    reviewedAt: iso(c.reviewedAt),
+    reviewedById: c.reviewedById,
     disposition: c.disposition,
     wardId: c.wardId,
     isolation: c.isolation,
