@@ -197,6 +197,56 @@ describe('resolveDrill, the Phase 8 sections', () => {
     expect(resolveDrill(data, { section: 'quality', name: 'Times out of order' })?.ids).toEqual(['C12'])
   })
 
+  /**
+   * Phase 8b. The fixture records no pain block and no discharge answers, so what is proved here
+   * is the routing: every band, dose and question resolves to a row (empty, but a row), the two
+   * halves of the pain block do not collide, and the three new documentation rows come through
+   * `quality` like the six before them.
+   */
+  it('the pain block splits bands from doses on the pipe', () => {
+    expect(resolveDrill(data, { section: 'painkiller', name: gridKey('band', '≤30 min') })).toMatchObject({
+      label: 'Door to painkiller ≤30 min',
+      ids: [],
+    })
+    expect(resolveDrill(data, { section: 'painkiller', name: gridKey('band', '>3 h') })?.label).toBe(
+      'Door to painkiller >3 h',
+    )
+    expect(resolveDrill(data, { section: 'painkiller', name: gridKey('dose', '100 mg') })).toMatchObject({
+      label: 'Pethidine 100 mg',
+      ids: [],
+    })
+    // A dose is not a band and a band is not a dose, and a name with no half resolves to nothing.
+    expect(resolveDrill(data, { section: 'painkiller', name: gridKey('band', '100 mg') })).toBeNull()
+    expect(resolveDrill(data, { section: 'painkiller', name: gridKey('dose', '≤30 min') })).toBeNull()
+    expect(resolveDrill(data, { section: 'painkiller', name: '≤30 min' })).toBeNull()
+  })
+
+  it('the two discharge-communication questions resolve to the cases that answered', () => {
+    expect(resolveDrill(data, { section: 'communication', name: 'Instructions given by doctor' })).toMatchObject({
+      label: 'Instructions given by doctor: recorded',
+      ids: [],
+    })
+    expect(resolveDrill(data, { section: 'communication', name: 'Family engaged' })?.label).toBe(
+      'Family engaged: recorded',
+    )
+    expect(resolveDrill(data, { section: 'communication', name: 'Something else' })).toBeNull()
+  })
+
+  it('the three new documentation rows come through `quality` with the six before them', () => {
+    // Every resolved case in the fixture is unreviewed; no case records a painkiller at all.
+    expect(resolveDrill(data, { section: 'quality', name: 'Resolved, not yet reviewed' })?.ids).toEqual([
+      'C5',
+      'C6',
+      'C7',
+      'C8',
+      'C12',
+    ])
+    expect(resolveDrill(data, { section: 'quality', name: 'Painkiller prescribed, no time given recorded' })?.ids).toEqual([])
+    expect(
+      resolveDrill(data, { section: 'quality', name: 'Pethidine prescribed, dose missing or not 50 / 100 / 150 mg' })?.ids,
+    ).toEqual([])
+  })
+
   it('a repeat visit resolves by MRN, and an unknown one falls back', () => {
     // Every fixture MRN is distinct, so there is no repeat row to hit.
     expect(resolveDrill(data, { section: 'repeat', name: '100001' })).toBeNull()
