@@ -1,0 +1,194 @@
+import { describe, expect, it } from 'vitest'
+import { CASE_STATS_SELECT, toCaseForStats, type CaseStatsRow } from '@/src/lib/cases/stats-mapper'
+import { consultRows, dashboard, otherQueue } from '@/src/lib/domain/aggregates'
+
+/**
+ * The Prisma → `CaseForStats` adapter. The rows here are written by hand in exactly the shape
+ * `CASE_STATS_SELECT` produces (the type is derived from the select, so a missing field is a
+ * compile error), and the assertions are the two things the aggregates depend on and the
+ * database does not give for free: distinct stage names, and the Other free text carried with
+ * its stage.
+ */
+const at = (iso: string) => new Date(iso)
+
+function row(over: Partial<CaseStatsRow> = {}): CaseStatsRow {
+  return {
+    id: 'c1',
+    mrn: '100001',
+    status: 'OPEN',
+    registrationAt: at('2026-09-08T06:00:00Z'),
+    departedAt: null,
+    resolvedAt: null,
+    shift: 'MORNING',
+    disposition: null,
+    admOrderAt: null,
+    bedRequestedAt: null,
+    bedAssignedAt: null,
+    primaryReason: null,
+    reasons: [],
+    consults: [],
+    investigations: [],
+    ...over,
+  }
+}
+
+const reason = (stage: string, sortOrder: number, otherText: string | null = null) => ({
+  otherText,
+  reason: { stage: { name: stage, sortOrder } },
+})
+
+describe('CASE_STATS_SELECT', () => {
+  it('asks for every field CaseForStats needs and nothing else', () => {
+    expect(Object.keys(CASE_STATS_SELECT).sort()).toEqual(
+      [
+        'admOrderAt',
+        'bedAssignedAt',
+        'bedRequestedAt',
+        'consults',
+        'departedAt',
+        'disposition',
+        'id',
+        'investigations',
+        'mrn',
+        'primaryReason',
+        'reasons',
+        'registrationAt',
+        'resolvedAt',
+        'shift',
+        'status',
+      ].sort(),
+    )
+  })
+})
+
+describe('toCaseForStats', () => {
+  it('maps a resolved case with two consults to the expected shape', () => {
+    const mapped = toCaseForStats(
+      row({
+        id: 'c5',
+        mrn: '100005',
+        status: 'RESOLVED',
+        registrationAt: at('2026-09-07T06:00:00Z'),
+        departedAt: at('2026-09-07T14:00:00Z'),
+        resolvedAt: at('2026-09-07T14:00:00Z'),
+        disposition: 'ADMITTED',
+        admOrderAt: at('2026-09-07T09:00:00Z'),
+        bedRequestedAt: at('2026-09-07T09:30:00Z'),
+        bedAssignedAt: at('2026-09-07T13:00:00Z'),
+        primaryReason: { name: 'No bed available on accepting ward' },
+        reasons: [reason('Admission process', 8), reason('Referral / consulted team', 6)],
+        consults: [
+          {
+            department: { name: 'MROD' },
+            consultedAt: at('2026-09-07T08:00:00Z'),
+            seenAt: at('2026-09-07T09:00:00Z'),
+            repliedAt: at('2026-09-07T09:30:00Z'),
+          },
+          {
+            department: { name: 'General Surgery' },
+            consultedAt: at('2026-09-07T09:00:00Z'),
+            seenAt: at('2026-09-07T12:00:00Z'),
+            repliedAt: null,
+          },
+        ],
+        investigations: [
+          {
+            type: 'LAB',
+            orderedAt: at('2026-09-07T07:00:00Z'),
+            collectedAt: at('2026-09-07T08:00:00Z'),
+            receivedAt: at('2026-09-07T08:30:00Z'),
+            doneAt: null,
+            resultedAt: at('2026-09-07T10:00:00Z'),
+          },
+        ],
+      }),
+    )
+
+    expect(mapped).toEqual({
+      id: 'c5',
+      mrn: '100005',
+      status: 'RESOLVED',
+      registrationAt: at('2026-09-07T06:00:00Z'),
+      departedAt: at('2026-09-07T14:00:00Z'),
+      resolvedAt: at('2026-09-07T14:00:00Z'),
+      shift: 'MORNING',
+      primaryReasonName: 'No bed available on accepting ward',
+      // Taxonomy order: Referral (6) before Admission (8), whatever order the rows came back in.
+      stageNames: ['Referral / consulted team', 'Admission process'],
+      departmentNames: ['MROD', 'General Surgery'],
+      disposition: 'ADMITTED',
+      consults: [
+        {
+          departmentName: 'MROD',
+          consultedAt: at('2026-09-07T08:00:00Z'),
+          seenAt: at('2026-09-07T09:00:00Z'),
+          repliedAt: at('2026-09-07T09:30:00Z'),
+        },
+        {
+          departmentName: 'General Surgery',
+          consultedAt: at('2026-09-07T09:00:00Z'),
+          seenAt: at('2026-09-07T12:00:00Z'),
+          repliedAt: null,
+        },
+      ],
+      investigations: [
+        {
+          type: 'LAB',
+          orderedAt: at('2026-09-07T07:00:00Z'),
+          collectedAt: at('2026-09-07T08:00:00Z'),
+          receivedAt: at('2026-09-07T08:30:00Z'),
+          doneAt: null,
+          resultedAt: at('2026-09-07T10:00:00Z'),
+        },
+      ],
+      admOrderAt: at('2026-09-07T09:00:00Z'),
+      bedRequestedAt: at('2026-09-07T09:30:00Z'),
+      bedAssignedAt: at('2026-09-07T13:00:00Z'),
+      otherTexts: [],
+    })
+
+    // And the two consults land as two team rows, which is the point of carrying them at all.
+    expect(consultRows([mapped]).map((r) => r.name).sort()).toEqual(['General Surgery', 'MROD'])
+  })
+
+  it('collapses three reasons in one stage into one stage name', () => {
+    const mapped = toCaseForStats({
+      ...row(),
+      reasons: [reason('Investigations', 5), reason('Investigations', 5), reason('Investigations', 5)],
+    })
+    expect(mapped.stageNames).toEqual(['Investigations'])
+    expect(dashboard([mapped], 'all', at('2026-09-08T12:00:00Z')).byStage).toEqual([
+      { name: 'Investigations', value: 1, ids: ['c1'] },
+    ])
+  })
+
+  it('carries Other free text with the stage it was typed under, and drops blank ones', () => {
+    const mapped = toCaseForStats({
+      ...row({ mrn: '100008' }),
+      reasons: [
+        reason('Discharge process', 9, 'Waiting for social worker'),
+        reason('Triage', 2, '   '),
+        reason('Registration', 1, null),
+      ],
+    })
+    expect(mapped.otherTexts).toEqual([{ stageName: 'Discharge process', text: 'Waiting for social worker' }])
+    expect(otherQueue([mapped])).toEqual([
+      { id: 'c1', mrn: '100008', stageName: 'Discharge process', text: 'Waiting for social worker' },
+    ])
+  })
+
+  it('leaves an unset primary reason, shift and disposition null rather than inventing one', () => {
+    const mapped = toCaseForStats(row({ shift: null }))
+    expect(mapped.primaryReasonName).toBeNull()
+    expect(mapped.shift).toBeNull()
+    expect(mapped.disposition).toBeNull()
+    expect(mapped.stageNames).toEqual([])
+    expect(mapped.departmentNames).toEqual([])
+  })
+
+  it('keeps a voided case voided, so inRange() can drop it', () => {
+    const voided = toCaseForStats(row({ id: 'c10', status: 'VOIDED' }))
+    expect(voided.status).toBe('VOIDED')
+    expect(dashboard([voided], 'all', at('2026-09-08T12:00:00Z')).inRange).toBe(0)
+  })
+})
