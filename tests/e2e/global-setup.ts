@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs'
 import { LOCKOUT_MS } from '../../src/lib/auth/lockout'
 import { prisma } from '../../src/lib/db'
 import { seedBoardCases } from './fixtures/board-cases'
+import { seedDashboardCases } from './fixtures/dashboard-cases'
 import { seedE2EUsers } from './fixtures/seed-users'
 
 /**
@@ -40,4 +41,8 @@ export default async function globalSetup(): Promise<void> {
   // Phase 3: a board worth looking at — eight cases across every band, plus a voided one that
   // must never appear. Strictly after seedE2EUsers(), which is what clears the last run's copies.
   await seedBoardCases()
+
+  // Phase 4: twenty-nine days of cases so the dashboard's ranges, weekly chart, consult and
+  // investigation medians and Other queue all have something real to show.
+  await seedDashboardCases()
 }
