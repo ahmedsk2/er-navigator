@@ -56,6 +56,42 @@ function BarSection({
 }
 
 export function DashboardView({ data, range }: { data: DashboardData; range: Range }) {
+  return (
+    <div className="dash">
+      <div className="px-4 pt-4 pb-2.5">
+        <h2 className="text-title">Dashboard</h2>
+        <p className="num mt-0.5 text-[14px] text-muted" data-subtitle>
+          {data.inRange} of {data.total} cases
+        </p>
+      </div>
+
+      <div className="no-print flex flex-wrap gap-2 px-4 pb-3" role="group" aria-label="Date range">
+        {RANGES.map((option) => (
+          <Link
+            key={option}
+            href={dashboardHref(option)}
+            aria-current={option === range ? 'true' : undefined}
+            className={`inline-flex min-h-11 items-center rounded-chip border px-3 text-[14px] ${
+              option === range ? 'border-accent bg-accent font-semibold text-white' : 'border-line bg-panel text-ink'
+            }`}
+          >
+            {RANGE_LABELS[option]}
+          </Link>
+        ))}
+      </div>
+
+      <DashboardBody data={data} range={range} />
+    </div>
+  )
+}
+
+/**
+ * Every tile, table and chart of the dashboard, without the page's own heading or its range
+ * chips. `/report` (Phase 5) renders exactly this under a hospital header for an explicit date
+ * range, which is what "the dashboard sections for that range" means: one implementation of every
+ * section, printed by the same Phase 4 stylesheet, so the report can never drift from the screen.
+ */
+export function DashboardBody({ data, range }: { data: DashboardData; range: Range }) {
   const { tiles, admission } = data
   const href = (section: DrillSection, name: string | number) => dashboardHref(range, drillKey(section, name))
 
@@ -111,29 +147,7 @@ export function DashboardView({ data, range }: { data: DashboardData; range: Ran
   }))
 
   return (
-    <div className="dash">
-      <div className="px-4 pt-4 pb-2.5">
-        <h2 className="text-title">Dashboard</h2>
-        <p className="num mt-0.5 text-[14px] text-muted" data-subtitle>
-          {data.inRange} of {data.total} cases
-        </p>
-      </div>
-
-      <div className="no-print flex flex-wrap gap-2 px-4 pb-3" role="group" aria-label="Date range">
-        {RANGES.map((option) => (
-          <Link
-            key={option}
-            href={dashboardHref(option)}
-            aria-current={option === range ? 'true' : undefined}
-            className={`inline-flex min-h-11 items-center rounded-chip border px-3 text-[14px] ${
-              option === range ? 'border-accent bg-accent font-semibold text-white' : 'border-line bg-panel text-ink'
-            }`}
-          >
-            {RANGE_LABELS[option]}
-          </Link>
-        ))}
-      </div>
-
+    <>
       <div className="flex gap-2 px-4 pb-3">
         <Tile label="Open now" value={String(tiles.openNow)} />
         <Tile label="Open past 6h" value={String(tiles.openPast6)} tone="danger" />
@@ -272,6 +286,6 @@ export function DashboardView({ data, range }: { data: DashboardData; range: Ran
           </DashSection>
         </>
       )}
-    </div>
+    </>
   )
 }

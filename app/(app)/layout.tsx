@@ -38,7 +38,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <main className="flex-1 pb-28">{children}</main>
 
       {can(user.role, 'case.create') ? <NewCaseFab /> : null}
-      <TabBar showAdmin={user.role === 'ADMIN'} />
+      <TabBar showExport={can(user.role, 'export.xlsx')} showAdmin={user.role === 'ADMIN'} />
     </div>
   )
 }
