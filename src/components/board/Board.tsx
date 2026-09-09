@@ -21,6 +21,7 @@ import {
   sortByElapsed,
 } from '@/src/lib/board/rows'
 import { BOARD_FILTERS, type BoardFilter, type BoardPayload } from '@/src/lib/board/types'
+import { fmtClock } from '@/src/lib/cases/local-time'
 import { InstallPrompt } from '@/src/components/shell/InstallPrompt'
 import { BoardRowItem } from './BoardRowItem'
 import { HandoverSheet } from './HandoverSheet'
@@ -40,6 +41,9 @@ export function Board({ initial, initialQuery, printedBy }: { initial: BoardPayl
   const [payload, setPayload] = useState(initial)
   const [query, setQuery] = useState(initialQuery)
   const [now, setNow] = useState(() => new Date(initial.now))
+  /** When the rows on screen were last fetched, and whether the newest poll failed (review C19). */
+  const [updatedAt, setUpdatedAt] = useState(() => new Date(initial.now))
+  const [pollFailed, setPollFailed] = useState(false)
   const filter = initial.filter
   const alive = useRef(true)
 
@@ -51,16 +55,38 @@ export function Board({ initial, initialQuery, printedBy }: { initial: BoardPayl
   }, [])
 
   // One beat for both jobs. A failed poll (the ward's wifi drops) leaves the last good list on
-  // screen and still moves the clocks, which is what a nurse needs more than an error banner.
+  // screen and still moves the clocks, which is what a nurse needs more than an error banner —
+  // but the freshness line below says so, because a frozen list that looks live is worse than a
+  // stale one that admits it (review C19).
+  //
+  // A 401 is not a dropped packet (review C6). The session behind the cookie is gone — expired,
+  // logged out on another device, or the account deactivated by an Admin — and every later poll
+  // will get the same answer, so the beat stops and the browser goes to the login form.
+  // `?expired=1` is the path the route gate recognises as "clear both cookies".
   useEffect(() => {
     const timer = setInterval(() => {
       setNow(new Date())
       void fetch(`/api/board?f=${filter}`, { cache: 'no-store' })
-        .then((response) => (response.ok ? response.json() : null))
-        .then((next: BoardPayload | null) => {
-          if (next && alive.current && next.filter === filter) setPayload(next)
+        .then(async (response) => {
+          if (response.status === 401) {
+            clearInterval(timer)
+            // A full navigation on purpose, not router.push(): the route gate is what clears the
+            // two cookies on `?expired=1`, and a client-side push never reaches it. Everything
+            // this tab holds is dead anyway.
+            // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+            window.location.assign('/login?expired=1')
+            return
+          }
+          if (!response.ok) throw new Error(`board api answered ${response.status}`)
+          const next = (await response.json()) as BoardPayload
+          if (!alive.current || next.filter !== filter) return
+          setPayload(next)
+          setUpdatedAt(new Date())
+          setPollFailed(false)
         })
-        .catch(() => undefined)
+        .catch(() => {
+          if (alive.current) setPollFailed(true)
+        })
     }, BOARD_POLL_MS)
     return () => clearInterval(timer)
   }, [filter])
@@ -91,6 +117,17 @@ export function Board({ initial, initialQuery, printedBy }: { initial: BoardPayl
         <h2 className="text-title">ER board</h2>
         <p className="num mt-0.5 text-[14px] text-muted">
           {counts.open} open · {counts.past6} past 6h · {counts.past12} past 12h
+        </p>
+        {/* How old the rows are. Riyadh time, 24 h, the same string on the server's first paint
+            and on every client tick. A nurse reading a frozen board must be able to see that it
+            is frozen; the rows stay on screen either way. */}
+        <p
+          data-board-freshness={pollFailed ? 'stale' : 'fresh'}
+          className="mt-0.5 text-caption text-muted"
+        >
+          {pollFailed
+            ? `Not updating since ${fmtClock(updatedAt)}. Check the connection.`
+            : `Updated ${fmtClock(updatedAt)}`}
         </p>
       </div>
 

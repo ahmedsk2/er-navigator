@@ -180,6 +180,60 @@ test('printing the board gives the handover sheet, not the screen', async ({ pag
   await page.emulateMedia({ media: 'screen' })
 })
 
+/**
+ * Review C19. The poll is a 30 s beat, so these two tests wait for one real tick rather than
+ * faking a clock the hydrated board also reads.
+ */
+const ONE_POLL_MS = 45_000
+
+/** The session cookie, by name: importing `src/lib/auth/session` here would pull in next/headers. */
+const SESSION_COOKIE = '__Host-ern_session'
+
+test('a failed poll says the board has stopped updating, and keeps the rows on screen', async ({
+  page,
+}) => {
+  test.setTimeout(90_000)
+  await fromClientIp(page, '198.51.100.79')
+  await signIn(page, E2E_USERS.navigator)
+  await narrowToFixtures(page)
+
+  // The first paint is the server's, so the line is honest before any poll has run.
+  await expect(page.locator('[data-board-freshness]')).toHaveText(/^Updated \d\d:\d\d$/)
+
+  await page.route(/\/api\/board/, (route) =>
+    route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"unavailable"}' }),
+  )
+
+  await expect(page.locator('[data-board-freshness="stale"]')).toHaveText(
+    /^Not updating since \d\d:\d\d\. Check the connection\.$/,
+    { timeout: ONE_POLL_MS },
+  )
+  // The list is not thrown away: a stale board that admits it beats an empty one.
+  await expect(rowFor(page, LONGEST.mrn)).toBeVisible()
+})
+
+test('a 401 from the poll sends the phone to the login form and clears the cookie', async ({
+  page,
+  context,
+}) => {
+  test.setTimeout(90_000)
+  await fromClientIp(page, '198.51.100.80')
+  await signIn(page, E2E_USERS.navigator)
+  await expect(page.getByRole('heading', { name: 'ER board' })).toBeVisible()
+
+  // What a deactivated account, or a session logged out on another device, actually gets.
+  await page.route(/\/api\/board/, (route) =>
+    route.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"unauthorized"}' }),
+  )
+
+  await page.waitForURL(/\/login\?expired=1$/, { timeout: ONE_POLL_MS })
+  await expect(page.getByLabel('Username')).toBeVisible()
+
+  // `?expired=1` is the path the route gate answers by clearing both cookies.
+  const session = (await context.cookies()).find((c) => c.name === SESSION_COOKIE)
+  expect(session?.value ?? '').toBe('')
+})
+
 test('GET /api/board needs a session, honours f and never returns a voided case', async ({ page, request }) => {
   const signedOut = await request.get('/api/board')
   expect(signedOut.status()).toBe(401)

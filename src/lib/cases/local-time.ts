@@ -47,6 +47,25 @@ export function fmtStamp(iso: string): string {
   return `${get('day')}/${get('month')} ${get('hour')}:${get('minute')}`
 }
 
+const clockFormat = new Intl.DateTimeFormat('en-GB', {
+  timeZone: RIYADH,
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+})
+
+/**
+ * "HH:mm" in Asia/Riyadh — the board's "Updated 14:32" freshness line (Phase 7, review C19).
+ *
+ * Assembled from parts for the same reason `fmtSheetStamp` is: this string is rendered on the
+ * server for the first paint and again in the browser on every poll, and the two must agree.
+ */
+export function fmtClock(value: Date | string): string {
+  const parts = clockFormat.formatToParts(typeof value === 'string' ? new Date(value) : value)
+  const get = (type: Intl.DateTimeFormatPartTypes): string => parts.find((p) => p.type === type)?.value ?? '00'
+  return `${get('hour')}:${get('minute')}`
+}
+
 const sheetFormat = new Intl.DateTimeFormat('en-GB', {
   timeZone: RIYADH,
   day: '2-digit',
