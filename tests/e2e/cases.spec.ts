@@ -152,7 +152,7 @@ test('a viewer sees the same editor read-only and cannot reach the new-case form
 test('the referral sections appear with the reason that needs them', async ({ page }) => {
   await fromClientIp(page, '198.51.100.48')
   const taps = await signIn(page, E2E_USERS.navigator)
-  await taps.clickLink(page, 'New case')
+  await taps.clickLink(page, '+ New case')
 
   await page.getByRole('button', { name: 'Referral / consulted team' }).click()
   await expect(page.getByRole('heading', { name: 'Department / consulted team involved' })).toBeVisible()
