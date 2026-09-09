@@ -175,7 +175,10 @@ describe('createCase', () => {
 
   it('refuses a non-numeric MRN and a case with no reason, and writes nothing', async () => {
     const nurse = actorOf(await makeUser('NAVIGATOR'))
-    const before = await prisma.case.count()
+    // Scoped to this nurse: vitest runs the database files in parallel, so a global count moves
+    // under this assertion whenever another suite opens a case at the same moment.
+    const mine = { openedById: nurse.id }
+    const before = await prisma.case.count({ where: mine })
 
     const badMrn = await createCase(nurse, draft({ mrn: 'A1234' }), ctxFor(nurse.id))
     expect(badMrn).toMatchObject({ ok: false, error: 'validation' })
@@ -183,7 +186,7 @@ describe('createCase', () => {
     const noReason = await createCase(nurse, draft({ reasons: [] }), ctxFor(nurse.id))
     expect(noReason).toMatchObject({ ok: false, error: 'validation' })
 
-    expect(await prisma.case.count()).toBe(before)
+    expect(await prisma.case.count({ where: mine })).toBe(before)
   })
 
   it('requires the primary reason once more than one is selected', async () => {
