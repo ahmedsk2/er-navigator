@@ -8,7 +8,10 @@ import { loadReference } from '@/src/lib/cases/reference'
 import { addCaseUpdate, createCase, resolveCase, voidCase } from '@/src/lib/cases/service'
 import type { CaseDraft, ReferenceData } from '@/src/lib/cases/types'
 import { prisma } from '@/src/lib/db'
+import { ADAA_HEADER } from '@/src/lib/export/adaa'
+import { fmtFormDate } from '@/src/lib/export/format'
 import { countCasesForExport, loadCasesForExport } from '@/src/lib/export/load'
+import { QCH_COLUMNS, QCH_GROUP_HEADER, QCH_HEADER } from '@/src/lib/export/qch'
 import { addDays, riyadhDateKey, riyadhDayStart, type ExportRange } from '@/src/lib/export/range'
 import { exportCountResponse, exportWorkbookResponse } from '@/src/lib/export/service'
 import { XLSX_CONTENT_TYPE } from '@/src/lib/export/workbook'
@@ -152,6 +155,8 @@ beforeAll(async () => {
   // have rows and the timings can be checked against the sheet.
   const one = await openCase(navigator, {
     registrationAt: at(DAY_ONE, 10).toISOString(),
+    // The one case with a CTAS, so the Adaa summary has both a level row and a "not recorded" one.
+    ctas: 3,
     consults: [
       {
         departmentId: departmentNamed('MROD'),
@@ -231,6 +236,21 @@ async function workbookOf(response: Response): Promise<ExcelJS.Workbook> {
   // exceljs declares its own `Buffer` interface, which Node's does not structurally satisfy.
   await workbook.xlsx.load(Buffer.from(await response.arrayBuffer()) as unknown as ExcelJS.Buffer)
   return workbook
+}
+
+/** One row of a sheet as `width` strings, padded: exceljs stops at the last non-empty cell. */
+function rowCells(sheet: ExcelJS.Worksheet, number: number, width: number): string[] {
+  const raw = sheet.getRow(number).values as ExcelJS.CellValue[]
+  return Array.from({ length: width }, (_, i) => String(raw[i + 1] ?? ''))
+}
+
+/** The values of one column, by its 1-based position, below `headerRows` header rows. */
+function columnAt(sheet: ExcelJS.Worksheet, column: number, headerRows: number): string[] {
+  const out: string[] = []
+  sheet.eachRow((row, number) => {
+    if (number > headerRows) out.push(String(row.getCell(column).value ?? ''))
+  })
+  return out
 }
 
 /** The values of one column of a sheet, header excluded. */
@@ -394,5 +414,110 @@ describe('GET /api/export.xlsx as a SUPERVISOR', () => {
       format: 'navigator',
       count: 3,
     })
+  })
+})
+
+/**
+ * The two Phase 8 formats over the same three cases, through the same handler: the file the
+ * receiving side actually gets, parsed back with exceljs. The header rows are asserted against
+ * the modules' own constants, so this proves the workbook carries them; that they are the
+ * official form's and the August sheet's is asserted in the unit tests beside those modules.
+ */
+describe('the three formats', () => {
+  const ADAA: ExportRange = { ...RANGE, format: 'adaa' }
+  const QCH: ExportRange = { ...RANGE, format: 'qch' }
+
+  it('names each file for its format', async () => {
+    const nameOf = async (range: ExportRange): Promise<string | null> =>
+      (await exportWorkbookResponse(supervisor, range, ctxFor(supervisor.id), new Date())).headers.get(
+        'content-disposition',
+      )
+    expect(await nameOf(RANGE)).toBe(`attachment; filename="ER_Navigator_${DAY_ONE}_to_${DAY_TWO}.xlsx"`)
+    expect(await nameOf(ADAA)).toBe(`attachment; filename="adaa-ed-kpis_${DAY_ONE}_to_${DAY_TWO}.xlsx"`)
+    expect(await nameOf(QCH)).toBe(`attachment; filename="qch-navigator-sheet_${DAY_ONE}_to_${DAY_TWO}.xlsx"`)
+  })
+
+  it('counts the same cases whichever format is asked for', async () => {
+    expect(await countCasesForExport(ADAA)).toBe(3)
+    expect(await countCasesForExport(QCH)).toBe(3)
+  })
+
+  it('writes the Adaa form’s three sheets, its twenty columns and one row per case', async () => {
+    const workbook = await workbookOf(
+      await exportWorkbookResponse(supervisor, ADAA, ctxFor(supervisor.id), new Date()),
+    )
+    expect(workbook.worksheets.map((w) => w.name)).toEqual(['ED KPIs manual', 'KPI summary', 'Read me'])
+
+    const manual = workbook.getWorksheet('ED KPIs manual')!
+    expect(rowCells(manual, 1, ADAA_HEADER.length)).toEqual(ADAA_HEADER)
+    expect(manual.getRow(1).font?.bold).toBe(true)
+
+    const mrns = columnValues(manual, 'Patient ID / Mandatory')
+    expect(mrns.sort()).toEqual([seeded.open1, seeded.open2, seeded.resolved].sort())
+    expect(mrns).not.toContain(seeded.voided)
+
+    // Two values, hand-checked: the 10:00 Riyadh case on day one, as the form writes it.
+    expect(columnValues(manual, 'Date / (DD-MMM-YYYY)')).toContain(fmtFormDate(at(DAY_ONE, 10)))
+    expect(columnValues(manual, 'Registration Time / (hh:mm)')).toContain('10:00')
+    // The pain-management block is blank on every row.
+    expect(new Set(columnValues(manual, 'Was a Pain Killer Prescribed?'))).toEqual(new Set(['']))
+  })
+
+  it('summarises the same three cases per CTAS, with a row for the ones that have none', async () => {
+    const workbook = await workbookOf(
+      await exportWorkbookResponse(supervisor, ADAA, ctxFor(supervisor.id), new Date()),
+    )
+    const summary = workbook.getWorksheet('KPI summary')!
+    const byLabel = new Map<string, string>()
+    summary.eachRow((row) => {
+      const key = String(row.getCell(1).value ?? '')
+      if (key) byLabel.set(key, String(row.getCell(2).value ?? ''))
+    })
+    expect(byLabel.get('CTAS 3')).toBe('1')
+    expect(byLabel.get('CTAS not recorded')).toBe('2')
+    expect(byLabel.get('Total')).toBe('3')
+  })
+
+  it('says on the Read me which range it covers and how many rows lack a CTAS', async () => {
+    const workbook = await workbookOf(
+      await exportWorkbookResponse(supervisor, ADAA, ctxFor(supervisor.id), new Date()),
+    )
+    const lines: string[] = []
+    workbook.getWorksheet('Read me')!.eachRow((row) => {
+      lines.push(
+        (row.values as ExcelJS.CellValue[])
+          .slice(1)
+          .map((v) => String(v ?? ''))
+          .join(' '),
+      )
+    })
+    const text = lines.join('\n')
+    expect(text).toContain(`${DAY_ONE} to ${DAY_TWO}`)
+    expect(text).toContain('Rows with no CTAS recorded 2')
+    expect(text).toContain('select A2:T4')
+  })
+
+  it('writes the QCH sheet with both header rows and no patient name column', async () => {
+    const workbook = await workbookOf(
+      await exportWorkbookResponse(supervisor, QCH, ctxFor(supervisor.id), new Date()),
+    )
+    expect(workbook.worksheets.map((w) => w.name)).toEqual(['Navigator sheet', 'Read me'])
+
+    const sheet = workbook.getWorksheet('Navigator sheet')!
+    expect(rowCells(sheet, 1, QCH_COLUMNS.length)).toEqual(QCH_GROUP_HEADER)
+    expect(rowCells(sheet, 2, QCH_COLUMNS.length)).toEqual(QCH_HEADER)
+    expect(sheet.getRow(2).font?.bold).toBe(true)
+    // Both header rows stay on screen while the seventy columns scroll. `ySplit` is only on the
+    // frozen variant of the view union, which is what makes this assertion worth making.
+    const view = sheet.views[0]
+    expect(view?.state).toBe('frozen')
+    expect(view?.state === 'frozen' ? view.ySplit : null).toBe(2)
+
+    // Column 2 is the MRN; column 1 is the registration date.
+    const mrns = columnAt(sheet, 2, 2)
+    expect(mrns.sort()).toEqual([seeded.open1, seeded.open2, seeded.resolved].sort())
+    expect(columnAt(sheet, 1, 2)).toContain(fmtFormDate(at(DAY_ONE, 10)))
+    // One value, hand-checked: the 10:00 case ordered its lab at 10:30 Riyadh.
+    expect(columnAt(sheet, QCH_GROUP_HEADER.indexOf('Lab Order Time') + 1, 2)).toContain('10:30')
   })
 })
