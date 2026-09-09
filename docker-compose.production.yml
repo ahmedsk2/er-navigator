@@ -146,9 +146,9 @@ services:
       APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Riyadh}
       TZ: UTC
       ALERT_INTERVAL_MINUTES: ${ALERT_INTERVAL_MINUTES:-5}
-      # username=address pairs for the active supervisors and admins. Empty = alerts are recorded
-      # and logged, never emailed (User has no address column; the data model is authoritative).
-      ALERT_EMAIL_MAP: ${ALERT_EMAIL_MAP:-}
+      # No recipient list here (Phase 7): the worker emails the active SUPERVISOR and ADMIN users
+      # that have an email address on their user record, read from the database on every cycle.
+      # Nobody with an address = alerts are still recorded and logged, just not emailed.
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}

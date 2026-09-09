@@ -29,6 +29,7 @@ import {
   createUser as createUserService,
   resetUserPassword as resetUserPasswordService,
   setUserActive as setUserActiveService,
+  setUserEmail as setUserEmailService,
   setUserRole as setUserRoleService,
   type CreateUserResult,
   type ResetPasswordResult,
@@ -70,6 +71,14 @@ export async function setUserActive(userId: string, active: boolean): Promise<Up
 export async function setUserRole(userId: string, role: string): Promise<UpdateUserResult> {
   const { user, ctx } = await actor()
   const result = await guard(() => setUserRoleService(user, userId, role, ctx))
+  if (result.ok) revalidatePath('/admin/users')
+  return result
+}
+
+/** Set or clear the work address the alerts worker mails. An empty string clears it. */
+export async function setUserEmail(userId: string, email: string): Promise<UpdateUserResult> {
+  const { user, ctx } = await actor()
+  const result = await guard(() => setUserEmailService(user, userId, email, ctx))
   if (result.ok) revalidatePath('/admin/users')
   return result
 }

@@ -20,8 +20,13 @@ export const EMAIL_RETRY_DELAY_MS = 30_000
 
 export type FireOutcome = { fired: true; alertId: string } | { fired: false; reason: 'duplicate' }
 
-/** An active SUPERVISOR or ADMIN, as the database knows them. */
-export type Recipient = { username: string; displayName: string }
+/**
+ * An active SUPERVISOR or ADMIN, as the database knows them. `email` is the address an Admin
+ * typed on Admin → Users; it is null for most people, and someone without one is skipped with a
+ * warning rather than guessed at (Phase 7 replaced the ALERT_EMAIL_MAP environment directory
+ * with this column, so there is one place to look and it is the same place that lists the roles).
+ */
+export type Recipient = { username: string; displayName: string; email: string | null }
 
 export type AlertStore = {
   /** Every OPEN case, with what the email needs to say. */
@@ -44,8 +49,6 @@ export type CycleDeps = {
   store: AlertStore
   /** null when `SMTP_HOST` is empty: the message is logged at info level and not sent. */
   mailer: Mailer | null
-  /** username -> address; a recipient with no address is skipped with a warning. */
-  addressOf: (username: string) => string | null
   logger: Logger
   now: Date
   appUrl: string
@@ -97,7 +100,7 @@ export async function sendWithOneRetry(
 }
 
 export async function runAlertCycle(deps: CycleDeps): Promise<CycleSummary> {
-  const { store, mailer, addressOf, logger, now, appUrl } = deps
+  const { store, mailer, logger, now, appUrl } = deps
   const sleep = deps.sleep ?? defaultSleep
   const retryDelayMs = deps.retryDelayMs ?? EMAIL_RETRY_DELAY_MS
 
@@ -124,8 +127,7 @@ export async function runAlertCycle(deps: CycleDeps): Promise<CycleSummary> {
     const people = await store.recipients()
     const found: string[] = []
     for (const person of people) {
-      const address = addressOf(person.username)
-      if (address) found.push(address)
+      if (person.email) found.push(person.email)
       else logger.warn('[alerts] no address on file for a supervisor or admin', person.username)
     }
     addresses = found

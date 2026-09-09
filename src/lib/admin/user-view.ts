@@ -20,12 +20,20 @@ export const ROLE_LABELS: Record<Role, string> = {
 
 export const USERNAME_RE = /^[a-z0-9][a-z0-9._-]{2,31}$/
 
+/** RFC 5321's limit on a whole address. The zod schema clamps to it. */
+export const EMAIL_MAX = 254
+
 export type UserRow = {
   id: string
   username: string
   displayName: string
   role: Role
   active: boolean
+  /**
+   * The staff work address (Phase 7). Blank for most people; the active SUPERVISOR and ADMIN
+   * rows that have one are exactly who the alerts worker emails from 6 h up.
+   */
+  email: string | null
   lastLoginAt: string | null
   createdAt: string
   /** The `system` account: listed for honesty, never editable. */

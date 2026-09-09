@@ -8,6 +8,9 @@
  * cannot be recovered: it exists only as a bcrypt hash the moment the action returns. The rules
  * that matter (no self-deactivation, no self-demotion, no touching the system account, sessions
  * deleted) are enforced in `src/lib/admin/users.ts`; here they only shape what is offered.
+ *
+ * The Email column is the alerts directory (Phase 7): a supervisor or admin with an address here
+ * gets the 6 h+ threshold mail. Emptying the box and pressing Save takes them off the list.
  */
 import type { Role } from '@prisma/client'
 import { useRouter } from 'next/navigation'
@@ -16,6 +19,7 @@ import {
   createUser as createUserAction,
   resetUserPassword as resetUserPasswordAction,
   setUserActive as setUserActiveAction,
+  setUserEmail as setUserEmailAction,
   setUserRole as setUserRoleAction,
 } from '@/app/(app)/admin/actions'
 import { Button, Field, Input, Select } from '@/src/components/ui'
@@ -31,7 +35,14 @@ export function UsersPanel({ users, currentUserId }: { users: UserRow[]; current
   const [secret, setSecret] = useState<Secret | null>(null)
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const [email, setEmail] = useState('')
   const [role, setRole] = useState<Role>('NAVIGATOR')
+  /**
+   * One draft per row, keyed by user id, so typing in one Email box never touches another. A row
+   * with no draft yet shows whatever the server sent; `router.refresh()` after a save replaces
+   * that, and the draft is dropped so the two cannot disagree.
+   */
+  const [emailDrafts, setEmailDrafts] = useState<Record<string, string>>({})
 
   async function run(work: () => Promise<string | null>): Promise<void> {
     setBusy(true)
@@ -48,12 +59,27 @@ export function UsersPanel({ users, currentUserId }: { users: UserRow[]; current
 
   const onCreate = (): Promise<void> =>
     run(async () => {
-      const result = await createUserAction({ username, displayName, role })
+      const result = await createUserAction({ username, displayName, role, email })
       if (!result.ok) return result.message
       setSecret({ username: result.username, password: result.temporaryPassword, reason: 'created' })
       setUsername('')
       setDisplayName('')
+      setEmail('')
       setRole('NAVIGATOR')
+      return null
+    })
+
+  const onSaveEmail = (row: UserRow): Promise<void> =>
+    run(async () => {
+      const next = emailDrafts[row.id] ?? row.email ?? ''
+      const result = await setUserEmailAction(row.id, next)
+      if (!result.ok) return result.message
+      // The refresh below re-reads the row; the draft would otherwise shadow it forever.
+      setEmailDrafts((all) => {
+        const rest = { ...all }
+        delete rest[row.id]
+        return rest
+      })
       return null
     })
 
@@ -109,7 +135,7 @@ export function UsersPanel({ users, currentUserId }: { users: UserRow[]; current
 
       <section className="mb-2.5 rounded-card border border-line bg-panel p-4">
         <h3 className="mb-2.5 text-section">Add a user</h3>
-        <div className="grid gap-x-3 sm:grid-cols-3">
+        <div className="grid gap-x-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Username">
             <Input
               autoComplete="off"
@@ -124,6 +150,17 @@ export function UsersPanel({ users, currentUserId }: { users: UserRow[]; current
               value={displayName}
               disabled={busy}
               onChange={(e) => setDisplayName(e.target.value)}
+            />
+          </Field>
+          <Field label="Email (optional)">
+            <Input
+              type="email"
+              inputMode="email"
+              autoComplete="off"
+              placeholder="name@hospital.example"
+              value={email}
+              disabled={busy}
+              onChange={(e) => setEmail(e.target.value)}
             />
           </Field>
           <Field label="Role">
@@ -160,6 +197,9 @@ export function UsersPanel({ users, currentUserId }: { users: UserRow[]; current
                 Display name
               </th>
               <th scope="col" className="p-3 font-medium">
+                Email
+              </th>
+              <th scope="col" className="p-3 font-medium">
                 Role
               </th>
               <th scope="col" className="p-3 font-medium">
@@ -176,10 +216,42 @@ export function UsersPanel({ users, currentUserId }: { users: UserRow[]; current
           <tbody>
             {users.map((row) => {
               const self = row.id === currentUserId
+              const draft = emailDrafts[row.id] ?? row.email ?? ''
+              const emailChanged = draft.trim() !== (row.email ?? '')
               return (
                 <tr key={row.id} data-user={row.username} className="border-b border-line-soft last:border-b-0">
                   <td className="num p-3 font-semibold">{row.username}</td>
                   <td className="p-3">{row.displayName}</td>
+                  <td className="p-3" data-email={row.email ?? ''}>
+                    {row.isSystem ? (
+                      <span className="text-ink-2">–</span>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          type="email"
+                          inputMode="email"
+                          autoComplete="off"
+                          aria-label={`Email for ${row.username}`}
+                          className="min-w-[13rem]"
+                          value={draft}
+                          disabled={busy}
+                          onChange={(e) =>
+                            setEmailDrafts((all) => ({ ...all, [row.id]: e.target.value }))
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && emailChanged) void onSaveEmail(row)
+                          }}
+                        />
+                        <Button
+                          aria-label={`Save the email for ${row.username}`}
+                          disabled={busy || !emailChanged}
+                          onClick={() => void onSaveEmail(row)}
+                        >
+                          Save
+                        </Button>
+                      </div>
+                    )}
+                  </td>
                   <td className="p-3">
                     {row.isSystem || self ? (
                       <span className="text-ink-2">{ROLE_LABELS[row.role]}</span>
@@ -234,6 +306,11 @@ export function UsersPanel({ users, currentUserId }: { users: UserRow[]; current
         Nobody is ever deleted: an account is deactivated, which keeps their name on the cases and
         updates they wrote and ends their sessions immediately. You cannot deactivate or change
         the role of your own account.
+      </p>
+      <p className="mt-1.5 text-caption text-muted">
+        Threshold alerts from 6 hours up are emailed to the active supervisors and administrators
+        who have an email address here. Empty the box and press Save to take someone off that
+        list; nothing else changes.
       </p>
     </div>
   )

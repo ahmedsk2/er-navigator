@@ -3,7 +3,8 @@
  *
  * The template is pure (subject, text, minimal HTML) so it can be asserted without a mail
  * server, and `Mailer` is the seam the unit tests replace with a fake. `smtp.ts` holds the one
- * nodemailer-shaped implementation.
+ * nodemailer-shaped implementation. Who receives it is not decided here: the recipients are the
+ * active SUPERVISOR and ADMIN rows with an `email`, read by `store.ts` on every cycle.
  *
  * No PHI beyond the MRN: the message carries the MRN, the waiting time, the primary reason, the
  * consulted departments and a link. Nothing else about the patient exists to leak.
@@ -85,27 +86,4 @@ export function buildAlertEmail(input: AlertEmailInput): AlertEmailBody {
   ].join('\n')
 
   return { subject, text, html }
-}
-
-/**
- * Who gets the mail. `User` has no address column (the locked plan section 3 data model is
- * authoritative and has none), so the roles come from the database every cycle and the addresses
- * come from `ALERT_EMAIL_MAP`, a `username=address` directory in the environment. A supervisor
- * with no entry is skipped and logged, never guessed at.
- *
- * Format: `sami=sami@example.org, ahmed=ahmed@example.org` (commas, semicolons or whitespace).
- */
-export function parseRecipientMap(raw: string | undefined | null): Map<string, string> {
-  const map = new Map<string, string>()
-  if (!raw) return map
-  for (const entry of raw.split(/[,;\s]+/)) {
-    const trimmed = entry.trim()
-    if (!trimmed) continue
-    const at = trimmed.indexOf('=')
-    if (at <= 0) continue
-    const username = trimmed.slice(0, at).trim()
-    const address = trimmed.slice(at + 1).trim()
-    if (username && address.includes('@')) map.set(username, address)
-  }
-  return map
 }

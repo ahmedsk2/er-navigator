@@ -87,7 +87,7 @@ Every key the compose file passes through. Secrets are 48-character alphanumeric
 | `ADMIN_USERNAME`, `ADMIN_DISPLAY_NAME`, `ADMIN_PASSWORD` | first ADMIN, created by the seed only if the username does not exist yet |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | threshold alert email (Phase 6): the `navigator@towardpcc.com` mailbox's own SMTP settings, as in a mail client (no relay). `SMTP_FROM` is set; Ahmed enters the other four in Coolify (both copies) and redeploys. Empty host = log only. Deliverability needs the provider's DKIM selector record in Cloudflare; SPF and DMARC stay unchanged |
 | `ALERT_INTERVAL_MINUTES` | how often the `worker` scans the open cases. Default 5. The healthcheck allows 15 minutes between cycles, so anything above ~7 needs the healthcheck widened too |
-| `ALERT_EMAIL_MAP` | who the 6 h+ alerts go to: `username=address` pairs, comma or space separated (`sami=sami@x.org, ahmed=ahmed@x.org`). The **roles** come from the database every cycle (active SUPERVISOR and ADMIN); the **addresses** come from here, because `User` has no address column and the locked plan's data model is authoritative. A supervisor with no entry is skipped and logged at warn level, never guessed at. Empty = alerts are still recorded, just not emailed |
+| *(no recipient variable)* | who the 6 h+ alerts go to is **not** an environment variable. It is the active SUPERVISOR and ADMIN users that have an email address in **Admin → Users**, read from the database on every cycle — so adding or removing someone takes effect within one interval, with no redeploy. Someone on those roles with no address is skipped and logged at warn level, never guessed at; nobody with an address = alerts are still recorded, just not emailed. Phase 7 removed `ALERT_EMAIL_MAP`; delete it from both Coolify copies if it is still set |
 | `ALERT_HEARTBEAT_FILE` | the file the worker touches at the end of every cycle. Default and healthcheck path: `/tmp/heartbeat`. Leave unset |
 | `LOG_LEVEL` | `info` |
 
@@ -163,9 +163,11 @@ Then take a fresh backup, and remember the previous dumps (local, bucket, laptop
 Its own container, no inbound traffic, the same image as `app`. Every `ALERT_INTERVAL_MINUTES` it
 scans the OPEN cases and, the first time one passes 4, 6, 12 or 24 hours, writes an `Alert`, the
 `system` user's "Reached {t}h threshold" update and an `alert.fire` audit row in one transaction;
-from 6 hours up it also emails the active supervisors and admins. It never fills in "medical admin
-informed". A unique index on `(caseId, thresholdHours)` is what makes a restart or a second worker
-harmless. Acknowledging is done in the app: Admin → Alerts, or the case editor's header.
+from 6 hours up it also emails the active supervisors and admins **that have an email address in
+Admin → Users** — that list is the whole directory and is re-read every cycle, so a change there
+takes effect within one interval without a redeploy. It never fills in "medical admin informed".
+A unique index on `(caseId, thresholdHours)` is what makes a restart or a second worker harmless.
+Acknowledging is done in the app: Admin → Alerts, or the case editor's header.
 
 ```bash
 U=jqcjqhmcmizxs1u51wnqlfwv
@@ -189,9 +191,14 @@ leaving mail switched off until the DKIM record is in place.
 ## Add a user
 
 Admin → Users, as an ADMIN: create (the temporary password is shown once — read it out, it cannot
-be recovered), change role, reset password, deactivate. Deactivating and resetting a password
-delete that user's sessions immediately. Nobody is ever deleted, and an administrator cannot
+be recovered), change role, set or clear the work email, reset password, deactivate. Deactivating
+and resetting a password delete that user's sessions immediately; changing an email does not, it
+is contact data rather than a credential. Nobody is ever deleted, and an administrator cannot
 deactivate or change the role of their own account: ask another administrator.
+
+The Email column is the alerts directory: a supervisor or administrator with an address there
+receives the 6 h+ threshold mail, and emptying the box and pressing Save takes them off the list
+without touching anything else.
 
 First login (Phase 1): sign in at https://nav.towardpcc.com/login with ADMIN_USERNAME and the
 ADMIN_PASSWORD that was in Coolify when the database was first seeded, then change it at

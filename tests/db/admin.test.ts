@@ -11,6 +11,7 @@ import {
   loadUsers,
   resetUserPassword,
   setUserActive,
+  setUserEmail,
   setUserRole,
 } from '@/src/lib/admin/users'
 import type { AuditContext } from '@/src/lib/audit'
@@ -306,6 +307,107 @@ describe('admin users', () => {
     expect(audits[0]!.after).toMatchObject({ role: 'SUPERVISOR' })
   })
 
+  it('creates a user with a work email and audits it, and refuses one already in use', async () => {
+    const admin = actorOf(await makeUser('ADMIN'))
+    const username = `p7new_${randomBytes(4).toString('hex')}`
+    const address = `${username}@hospital.example`
+
+    const result = await createUser(
+      admin,
+      { username, displayName: 'New Supervisor', role: 'SUPERVISOR', email: ` ${address.toUpperCase()} ` },
+      ctxFor(admin.id),
+    )
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error('unreachable')
+    users.push(result.id)
+
+    // Trimmed and lower-cased on the way in, so one mailbox cannot become two rows.
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: result.id } })).email).toBe(address)
+    const audits = await prisma.auditLog.findMany({ where: { entity: 'User', entityId: result.id } })
+    expect(audits[0]!.after).toMatchObject({ email: address })
+
+    expect(
+      await createUser(
+        admin,
+        { username: `${username}b`, displayName: 'Same Mailbox', role: 'ADMIN', email: address },
+        ctxFor(admin.id),
+      ),
+    ).toMatchObject({ ok: false, error: 'duplicate' })
+
+    // Created without one: the column is NULL, not an empty string, so the unique index is free.
+    const plain = await createUser(
+      admin,
+      { username: `${username}c`, displayName: 'No Mailbox', role: 'NAVIGATOR' },
+      ctxFor(admin.id),
+    )
+    expect(plain.ok).toBe(true)
+    if (!plain.ok) throw new Error('unreachable')
+    users.push(plain.id)
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: plain.id } })).email).toBeNull()
+  })
+
+  it('sets, changes and clears the work email, auditing user.update with both values', async () => {
+    const admin = actorOf(await makeUser('ADMIN'))
+    const nurse = actorOf(await makeUser('SUPERVISOR'))
+    const first = `p7a_${randomBytes(4).toString('hex')}@hospital.example`
+    const second = `p7b_${randomBytes(4).toString('hex')}@hospital.example`
+
+    expect(await setUserEmail(admin, nurse.id, first, ctxFor(admin.id))).toMatchObject({ ok: true })
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: nurse.id } })).email).toBe(first)
+
+    expect(await setUserEmail(admin, nurse.id, second, ctxFor(admin.id))).toMatchObject({ ok: true })
+    // Blank clears it back to NULL rather than to an empty string.
+    expect(await setUserEmail(admin, nurse.id, '  ', ctxFor(admin.id))).toMatchObject({ ok: true })
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: nurse.id } })).email).toBeNull()
+
+    const audits = await prisma.auditLog.findMany({
+      where: { entity: 'User', entityId: nurse.id },
+      orderBy: { at: 'asc' },
+    })
+    expect(audits.map((a) => a.action)).toEqual(['user.update', 'user.update', 'user.update'])
+    expect(audits[0]!.before).toMatchObject({ email: null })
+    expect(audits[0]!.after).toMatchObject({ email: first })
+    expect(audits[1]!.before).toMatchObject({ email: first })
+    expect(audits[1]!.after).toMatchObject({ email: second })
+    expect(audits[2]!.before).toMatchObject({ email: second })
+    expect(audits[2]!.after).toMatchObject({ email: null })
+
+    // Sessions are untouched: an address is contact data, not a credential.
+    await createSession({ userId: nurse.id, ip: '10.0.0.12', userAgent: 'phone' })
+    expect(await setUserEmail(admin, nurse.id, first, ctxFor(admin.id))).toMatchObject({
+      ok: true,
+      sessionsDeleted: 0,
+    })
+    expect(await prisma.session.count({ where: { userId: nurse.id } })).toBe(1)
+  })
+
+  it('refuses a malformed address, one already in use, and any change to the system account', async () => {
+    const admin = actorOf(await makeUser('ADMIN'))
+    const nurse = actorOf(await makeUser('SUPERVISOR'))
+    const taken = `p7c_${randomBytes(4).toString('hex')}@hospital.example`
+    expect(await setUserEmail(admin, nurse.id, taken, ctxFor(admin.id))).toMatchObject({ ok: true })
+
+    const other = actorOf(await makeUser('ADMIN'))
+    expect(await setUserEmail(admin, other.id, taken, ctxFor(admin.id))).toMatchObject({
+      ok: false,
+      error: 'duplicate',
+    })
+    expect(await setUserEmail(admin, other.id, 'not-an-address', ctxFor(admin.id))).toMatchObject({
+      ok: false,
+      error: 'validation',
+    })
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: other.id } })).email).toBeNull()
+
+    const systemId = await requireSystemUserId(SYSTEM_USERNAME)
+    expect(await setUserEmail(admin, systemId, 'system@hospital.example', ctxFor(admin.id))).toMatchObject({
+      ok: false,
+      error: 'system',
+    })
+
+    // loadUsers carries the address, which is what the Users screen renders.
+    expect((await loadUsers()).find((u) => u.id === nurse.id)?.email).toBe(taken)
+  })
+
   it('refuses a supervisor, with an auth.forbidden audit row', async () => {
     const supervisor = actorOf(await makeUser('SUPERVISOR'))
     await expect(
@@ -531,13 +633,19 @@ describe('the alerts worker', () => {
     })
     const store = prismaAlertStore(await requireSystemUserId(SYSTEM_USERNAME))
 
-    // Only this case, so a suite that shares a database cannot make the count ambiguous.
-    const scoped = { ...store, openCases: async () => (await store.openCases()).filter((c) => c.id === caseId) }
+    // Only this case, and one fixed recipient, so a suite that shares a database cannot make
+    // either count ambiguous. `recipients()` itself is asserted against the real table below.
+    const scoped = {
+      ...store,
+      openCases: async () => (await store.openCases()).filter((c) => c.id === caseId),
+      recipients: async () => [
+        { username: 'p7alerts', displayName: 'Alerts', email: 'alerts@example.test' },
+      ],
+    }
 
     const deps = {
       store: scoped,
       mailer: null, // SMTP_HOST empty: the 6 h and 12 h messages are logged, not sent
-      addressOf: () => 'alerts@example.test',
       logger: quietLogger,
       appUrl: 'https://example.test',
     }
@@ -548,6 +656,47 @@ describe('the alerts worker', () => {
     const second = await runAlertCycle({ ...deps, now: new Date() })
     expect(second).toMatchObject({ casesScanned: 1, alertsFired: 0 })
     expect(await prisma.alert.count({ where: { caseId } })).toBe(3)
+  })
+
+  /**
+   * Phase 7: the directory is the user table, not `ALERT_EMAIL_MAP`. The store returns every
+   * active SUPERVISOR and ADMIN — including the ones with no address, so the cycle can name them
+   * in a warning — and an Admin setting an address on Admin → Users is picked up on the next
+   * cycle with no restart.
+   */
+  it('reads its recipients from the active supervisors and admins that have an email', async () => {
+    const admin = actorOf(await makeUser('ADMIN'))
+    const supervisor = actorOf(await makeUser('SUPERVISOR'))
+    const navigator = actorOf(await makeUser('NAVIGATOR'))
+    const leaver = actorOf(await makeUser('SUPERVISOR'))
+    const address = `p7r_${randomBytes(4).toString('hex')}@hospital.example`
+    const leaverAddress = `p7l_${randomBytes(4).toString('hex')}@hospital.example`
+    const navigatorAddress = `p7n_${randomBytes(4).toString('hex')}@hospital.example`
+
+    expect(await setUserEmail(admin, supervisor.id, address, ctxFor(admin.id))).toMatchObject({ ok: true })
+    expect(await setUserEmail(admin, navigator.id, navigatorAddress, ctxFor(admin.id))).toMatchObject({ ok: true })
+    expect(await setUserEmail(admin, leaver.id, leaverAddress, ctxFor(admin.id))).toMatchObject({ ok: true })
+
+    const store = prismaAlertStore(await requireSystemUserId(SYSTEM_USERNAME))
+    const emailsOf = async (): Promise<string[]> =>
+      (await store.recipients()).flatMap((r) => (r.email ? [r.email] : []))
+
+    let found = await emailsOf()
+    expect(found).toContain(address)
+    expect(found).toContain(leaverAddress)
+    // A navigator is not on the list whatever their address, and neither is the admin with none.
+    expect(found).not.toContain(navigatorAddress)
+    expect((await store.recipients()).some((r) => r.username === admin.username && r.email === null)).toBe(true)
+
+    // Deactivated: off the list on the very next cycle, with no restart and no config change.
+    expect(await setUserActive(admin, leaver.id, false, ctxFor(admin.id))).toMatchObject({ ok: true })
+    found = await emailsOf()
+    expect(found).toContain(address)
+    expect(found).not.toContain(leaverAddress)
+
+    // Cleared: off the list too, while the account stays active.
+    expect(await setUserEmail(admin, supervisor.id, '', ctxFor(admin.id))).toMatchObject({ ok: true })
+    expect(await emailsOf()).not.toContain(address)
   })
 
   it('acknowledging writes alert.acknowledge once and keeps the first name and time', async () => {

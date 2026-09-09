@@ -125,10 +125,15 @@ export function prismaAlertStore(systemUserId: string, client: PrismaLike = pris
       await client.alert.update({ where: { id: alertId }, data: { emailSentAt: at } })
     },
 
+    /**
+     * Every active SUPERVISOR and ADMIN, with the work address an Admin typed on Admin → Users.
+     * The rows without one are returned too, so the cycle can log by name who is on the list but
+     * unreachable; only the ones with an address are actually emailed.
+     */
     async recipients(): Promise<Recipient[]> {
       return client.user.findMany({
         where: { active: true, role: { in: ['SUPERVISOR', 'ADMIN'] } },
-        select: { username: true, displayName: true },
+        select: { username: true, displayName: true, email: true },
         orderBy: { username: 'asc' },
       })
     },
