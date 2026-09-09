@@ -361,6 +361,8 @@ export function kpiPanels(all: ReadonlyArray<CaseForStats>, cases: ReadonlyArray
       rows.outOfOrder,
       rows.noStay,
       rows.resolvedNotReviewed,
+      rows.painkillerNoTime,
+      rows.pethidineNoDose,
     ],
     repeats: repeatVisits(cases),
     adaa,

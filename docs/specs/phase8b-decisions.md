@@ -124,22 +124,23 @@ KpiCase += {
   caseMgmtReferral: 'CASE_MANAGER' | 'COMPLEX_CARE' | null; caseMgmtCriteria: 'MEETS' | 'NOT_MEETING' | null; caseMgmtAction: 'ENROLLED' | 'FOR_ENROLLMENT' | null; caseMgmtCalledAt: Date | null; caseMgmtRepliedAt: Date | null
   reviewedAt: Date | null; reviewedByName: string | null
   updateActions: ReadonlyArray<UpdateActionKind>   // distinct kinds on the case's updates
+  untaggedUpdatesCount: number                     // updates written with no action tag (count them in the loader: action IS NULL)
 }
 export function kpi8Minutes(c): number | null           // door to painkiller given, when painkillerPrescribed is YES
 export type AdaaKpi += 'kpi7' | 'kpi8'; benchmark('kpi8', minutes): <60 world, <=180 acceptable, <=300 improve, >300 unacceptable; benchmark('kpi7', ...) = null
-export const PAINKILLER_BANDS  // '≤30 min', '31–60 min', '1–3 h', '>3 h' (the form's Pain Killer Statistics block; (min, max] with the first closed at 30)
+export const PAINKILLER_BANDS  // '≤30 min', '>30 min–1 h', '>1–3 h', '>3 h' (the form's Pain Killer Statistics block; (min, max] with the first closed at 30)
 export function painkillerBands(cases): IdRow[]
 export function pethidineDoses(cases): IdRow[]           // '50 mg', '100 mg', '150 mg' among pethidinePrescribed YES
-AdaaSummaryRow += { kpi8TotalMin: number | null; kpi8N: number; kpi8Med: number | null; painkiller: number[] /* per PAINKILLER_BANDS */; pethidine: number[] /* per dose */; deceasedShare: number | null; deceasedN: number; uccN: number; sickleCellYesN: number }
+AdaaSummaryRow += { kpi8TotalMin: number | null; kpi8N: number; kpi8Med: number | null; painkiller: number[] /* per PAINKILLER_BANDS */; pethidine: number[] /* per dose */; painkillerYesN: number; pethidineYesN: number; deceasedShare: number | null /* KPI 7 = deceased / TOTAL cases in the group, open included, as the form divides by total patients */; deceasedN: number; uccN: number; sickleCellYesN: number }
 ACTION_KINDS = the six deck categories; actionsDocumented folds the recorded signals in: LEADERSHIP_ESCALATION also from medAdminInformedAt, BED_MANAGEMENT also from bedRequestedAt, FAX_RCC also from transferRequestedAt; plus a seventh row 'Update without an action tag' (updates beyond the tagged ones); `any` = any of the seven
 export function communication(cases): ShareRow[]         // 'Instructions given by doctor', 'Family engaged': n = answered (YES/NO/NOT_SURE), within = YES
-Completeness += { resolvedNotReviewed: IdRow }           // RESOLVED with no reviewedAt
+Completeness += { resolvedNotReviewed: IdRow; painkillerNoTime: IdRow; pethidineNoDose: IdRow }   // RESOLVED with no reviewedAt; painkiller YES with no time; pethidine YES with no dose or an off-list one
 timeline(): 'Painkiller given', 'Case management called', 'Case management replied' steps; MRI rows like CT
 ```
 
 ## Dashboard, report, exports (Slice H)
 
-- Adaa panel: rows for KPI 7 (mortality, share of resolved, no benchmark) and KPI 8 (door to
+- Adaa panel: rows for KPI 7 (mortality: deceased over all tracked cases in the range, open included, as the form divides by total patients; no benchmark) and KPI 8 (door to
   painkiller, median minutes, benchmark colour), and the painkiller bands table under the
   treated-within bands, with the pethidine doses beside it.
 - Actions documented: the seven rows from `actionsDocumented` (labels from the module).
@@ -153,9 +154,12 @@ timeline(): 'Painkiller given', 'Case management called', 'Case management repli
   calendar days later for the painkiller time, L pethidine prescribed Yes/No, M dose 50/100/150,
   N time of administration hh:mm); discharge type `Deceased` and `Referred to UCC`; the KPI
   summary gains the KPI 7 and KPI 8 columns and the form's Pain Killer Statistics block (bands
-  and pethidine counts per CTAS, as the form's `Summary Sheet` rows 34–36 lay them out); the Read
-  me drops the "blank until recorded" lines that are no longer true and says KPI 7 counts
-  Deceased dispositions.
+  and pethidine counts per CTAS, as the form's `Summary Sheet` rows 34–36 lay them out, with
+  `painkillerYesN` / `pethidineYesN` as the stated denominators); the Read me drops the "blank
+  until recorded" lines that are no longer true, says KPI 7 is Deceased dispositions over all
+  tracked cases in the range (open included), and that a painkiller recorded without a time, or a
+  pethidine without an on-list dose, is in no band and is listed on the dashboard's Documentation
+  section.
 - QCH workbook: `intructions given by doctor`, `Family Engagement`, `Referral to Case Management`
   (`Case manager` / `Complex care co.`), `Complex care Cordinator comment` (`Meeting criteria` /
   `Not meeting criteria`), `Complex care Coordinator Action` (`enrolled` / `for enrollment`),

@@ -526,7 +526,7 @@ describe('Adaa', () => {
     // Prescribed with no time, or an off-list dose: in no band, counted in the denominators and flagged.
     const noTime = base('nt', { registrationAt: T(5), painkillerPrescribed: 'YES', painkillerAt: null, pethidinePrescribed: 'YES', pethidineDoseMg: 75 })
     const noDose = base('nd', { registrationAt: T(5), painkillerPrescribed: 'YES', painkillerAt: T(4), pethidinePrescribed: 'YES', pethidineDoseMg: null })
-    expect(painkillerBands([noTime, noDose]).map((r) => r.value)).toEqual([0, 0, 1, 0])
+    expect(painkillerBands([noTime, noDose]).map((r) => r.value)).toEqual([0, 1, 0, 0]) // 60 min is (30, 60]
     expect(pethidineDoses([noTime, noDose]).map((r) => r.value)).toEqual([0, 0, 0])
     const summary = adaaSummary([noTime, noDose]).at(-1)!
     expect(summary).toMatchObject({ painkillerYesN: 2, pethidineYesN: 2, kpi8N: 1 })

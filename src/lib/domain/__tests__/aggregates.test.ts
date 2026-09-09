@@ -264,7 +264,7 @@ describe('Phase 8 panels', () => {
     expect(k.repeats).toEqual([]) // every fixture MRN is distinct
   })
 
-  it('completeness is the seven rows in one drillable list', () => {
+  it('completeness is the nine rows in one drillable list', () => {
     expect(k.completeness.map((r) => [r.name, r.ids])).toEqual([
       ['No delay reason recorded', []],
       ['Open, no update for 12 h', ['C3', 'C4']],
@@ -273,6 +273,8 @@ describe('Phase 8 panels', () => {
       ['Times out of order', ['C12']], // its consult was "seen" before it was requested
       ['Stay cannot be computed (leaving before registration)', []],
       ['Resolved, not yet reviewed', ['C5', 'C6', 'C7', 'C8', 'C12']],
+      ['Painkiller prescribed, no time given recorded', []],
+      ['Pethidine prescribed, dose missing or not 50 / 100 / 150 mg', []],
     ])
   })
 
