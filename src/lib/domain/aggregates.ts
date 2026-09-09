@@ -21,11 +21,14 @@ import {
   admissionToUnitBands,
   byArea,
   byCtas,
+  communication,
   completeness,
   examToConsult,
   headline,
   longestStays,
   outcomes,
+  painkillerBands,
+  pethidineDoses,
   previousRange,
   repeatVisits,
   stayBands,
@@ -364,6 +367,15 @@ export type DashboardKpi = {
   /** `adaa`'s last row: the one the dashboard panel shows. Per-CTAS rows are for the export. */
   adaaOverall: AdaaSummaryRow
   treated: IdRow[]
+  /**
+   * Phase 8b. `adaaOverall` already carries the pain block's counts, but only as numbers: these
+   * three carry the case ids behind each row, which is what a drill-down needs. Same functions,
+   * same case list — `painkiller[i].value` is `adaaOverall.painkiller[i]` by construction.
+   */
+  painkiller: IdRow[]
+  pethidine: IdRow[]
+  /** Decision D's two discharge-communication rows, as shares of the cases that answered. */
+  communication: ShareRow[]
   admissionToUnit: Array<{ unit: UnitType; bands: IdRow[] }>
   targets: DashboardTarget[]
   examToConsult: StatRow[]
@@ -415,6 +427,9 @@ export function kpiPanels(all: ReadonlyArray<CaseForStats>, cases: ReadonlyArray
     adaa,
     adaaOverall: adaa[adaa.length - 1]!,
     treated: treatedBands(cases),
+    painkiller: painkillerBands(cases),
+    pethidine: pethidineDoses(cases),
+    communication: communication(cases),
     admissionToUnit: admissionToUnitBands(cases),
     targets: targets(cases).map((row, i) => {
       const within = new Set(row.withinIds)

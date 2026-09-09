@@ -131,6 +131,10 @@ export function StayBandsSection({ kpi, range }: Props) {
 
 export function AdaaPanel({ kpi, range }: Props) {
   const rows = adaaRows(kpi.adaaOverall)
+  const { painkillerYesN, pethidineYesN } = kpi.adaaOverall
+  // The form's Pain Killer Statistics block. Nothing to show until a painkiller or a pethidine has
+  // been recorded on one case: four zero bands beside three zero doses is not a finding.
+  const pain = painkillerYesN > 0 || pethidineYesN > 0
   return (
     <DashSection title="Adaa KPIs, tracked cases only">
       <DataTable
@@ -150,7 +154,45 @@ export function AdaaPanel({ kpi, range }: Props) {
       />
       <PanelLabel>Treated within (door to disposition)</PanelLabel>
       <DataTable head={['Band', 'Cases']} rows={countRows(kpi.treated, range, 'treated')} />
+      {pain ? (
+        <div className="grid gap-x-6 sm:grid-cols-2" data-pain-block>
+          <div>
+            <PanelLabel>
+              Door to painkiller · <span className="num">{painkillerYesN}</span> prescribed
+            </PanelLabel>
+            <DataTable
+              head={['Band', 'Cases']}
+              rows={kpi.painkiller.map((row) => ({
+                key: row.name,
+                href: href(range, 'painkiller', gridKey('band', row.name)),
+                cells: [row.name, row.value],
+              }))}
+            />
+          </div>
+          <div>
+            <PanelLabel>
+              Pethidine dose · <span className="num">{pethidineYesN}</span> prescribed
+            </PanelLabel>
+            <DataTable
+              head={['Dose', 'Cases']}
+              rows={kpi.pethidine.map((row) => ({
+                key: row.name,
+                href: href(range, 'painkiller', gridKey('dose', row.name)),
+                cells: [row.name, row.value],
+              }))}
+            />
+          </div>
+        </div>
+      ) : null}
       <Footnote>Tracked cases, not the whole ED. Benchmarks: Adaa ED KPI definitions.</Footnote>
+      {pain ? (
+        <Footnote>
+          KPI 7 divides deaths by every tracked case in the range, open ones included, as the form does. The bands
+          count the {painkillerYesN} {painkillerYesN === 1 ? 'case' : 'cases'} where a painkiller was prescribed and
+          the doses the {pethidineYesN} where pethidine was: a painkiller with no time given, or a pethidine with no
+          dose of 50, 100 or 150 mg, is in no band and is listed under Documentation.
+        </Footnote>
+      ) : null}
     </DashSection>
   )
 }
@@ -312,8 +354,9 @@ export function ActionsDocumented({ kpi, range }: Props) {
       <DataTable head={['Action', 'Cases']} rows={countRows([any, none, ...byKind], range, 'action')} />
       <Footnote>
         Of the {kpi.headline.cases} {kpi.headline.cases === 1 ? 'case' : 'cases'} in this range. A case can carry
-        several kinds, so the four below add to more than the first row; &quot;No action documented&quot; is the weekly
-        deck&apos;s own row.
+        several kinds, so the seven below add to more than the first row; &quot;No action documented&quot; is the
+        weekly deck&apos;s own row. An action counts whether it was tagged on an update or recorded as a time on the
+        case, and the last row is an update written with no category chosen.
       </Footnote>
     </DashSection>
   )
@@ -330,6 +373,39 @@ export function OutcomesSection({ kpi, range }: Props) {
       color="ok"
       footnote="Resolved cases by disposition, then the cases still open."
     />
+  )
+}
+
+/**
+ * Decision D, as two share bars: of the cases where the question was answered at all, how many
+ * were answered Yes. A case with no answer is in neither number, which is why `n` is on the row —
+ * "3 of 4" says something a bare 75 % does not — and the share itself is null below MIN_N and
+ * renders "n<3", like every other share on this page.
+ */
+export function DischargeCommunication({ kpi, range }: Props) {
+  if (!kpi.communication.some((row) => row.n > 0)) return null
+  return (
+    <DashSection title="Discharge communication">
+      <DataTable
+        head={['Question', 'Yes / n', 'Share']}
+        rows={kpi.communication.map((row) => ({
+          key: row.name,
+          href: href(range, 'communication', row.name),
+          cells: [
+            row.name,
+            `${row.within} / ${row.n}`,
+            <span key="s" className="inline-flex min-w-[56px] flex-col items-end gap-1">
+              {fmtShare(row.share)}
+              <ShareBar share={row.share} label={row.name} />
+            </span>,
+          ],
+        }))}
+      />
+      <Footnote>
+        Asked when a case is resolved. n counts the cases where the question was answered — Yes, No or Not sure — and
+        the share is the Yes answers among them; a case with no answer is in neither. Tap a row for those cases.
+      </Footnote>
+    </DashSection>
   )
 }
 

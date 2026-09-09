@@ -142,8 +142,33 @@ describe('adaaRows', () => {
     sickleCellYesN: 0,
   }
 
-  it('is the six rows in the spec order, KPI 5 before KPI 6 before KPI 4', () => {
-    expect(adaaRows(blank).map((r) => r.kpi)).toEqual(['kpi1', 'kpi2', 'kpi3', 'kpi5', 'kpi6', 'kpi4'])
+  it('is the eight rows in the spec order: 1, 2, 3, 5, 6, 7, 8, then 4', () => {
+    expect(adaaRows(blank).map((r) => r.kpi)).toEqual(['kpi1', 'kpi2', 'kpi3', 'kpi5', 'kpi6', 'kpi7', 'kpi8', 'kpi4'])
+    expect(adaaRows(blank).map((r) => r.name)).toEqual([
+      'KPI 1 · Door to doctor, median',
+      'KPI 2 · Doctor to decision, median',
+      'KPI 3 · Decision to disposition, median',
+      'KPI 5 · Door to disposition within 4 h',
+      'KPI 6 · Discharged DAMA',
+      'KPI 7 · Mortality (deceased among tracked cases)',
+      'KPI 8 · Door to painkiller, median',
+      'KPI 4 · CTAS 4 or 5',
+    ])
+  })
+
+  it('counts KPI 7 over every tracked case and KPI 8 over the ones with a painkiller time', () => {
+    const rows = adaaRows({ ...blank, total: 20, deceasedN: 1, deceasedShare: 0.05, kpi8N: 4, kpi8Med: 45 })
+    const byKpi = Object.fromEntries(rows.map((r) => [r.kpi, r]))
+    // The denominator is `total`, open cases included, which is the form's own (kpi.ts).
+    expect(byKpi.kpi7).toMatchObject({ n: 20, value: '5%', band: null })
+    expect(byKpi.kpi8).toMatchObject({ n: 4, value: '45 min', band: 'world' })
+  })
+
+  it('grades KPI 8 on the minutes benchmark and never grades KPI 7', () => {
+    const band = (kpi8Med: number) => adaaRows({ ...blank, kpi8N: 5, kpi8Med }).find((r) => r.kpi === 'kpi8')!.band
+    expect([band(59), band(60), band(181), band(301)]).toEqual(['world', 'acceptable', 'improve', 'unacceptable'])
+    // A mortality rate of 100 % is still ungraded: the form gives KPI 7 no benchmark.
+    expect(adaaRows({ ...blank, total: 4, deceasedN: 4, deceasedShare: 1 }).find((r) => r.kpi === 'kpi7')!.band).toBeNull()
   })
 
   it('grades each value against the Adaa definitions and picks the token band', () => {
@@ -168,6 +193,8 @@ describe('adaaRows', () => {
       ['200 min', 'unacceptable'],
       ['80%', 'acceptable'],
       ['10%', null], // KPI 6 has no benchmark in the form
+      ['n<3', null], // KPI 7: nothing to divide, and no benchmark either way
+      ['n<3', null], // KPI 8: no painkiller recorded on this row
       ['20%', 'world'],
     ])
     expect(BENCHMARK_TEXT.world).toBe('text-band-ok')

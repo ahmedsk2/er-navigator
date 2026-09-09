@@ -5,7 +5,7 @@ import { countCasesForExport } from '../../src/lib/export/load'
 import { DEFAULT_REPORT_HEADER } from '../../src/lib/export/report-header'
 import { riyadhDateKey } from '../../src/lib/export/range'
 import { fromClientIp, signIn } from './fixtures/case-flow'
-import { DASHBOARD_CASES, DASHBOARD_MRNS } from './fixtures/dashboard-cases'
+import { DASHBOARD_CASES, DASHBOARD_MRNS, PHASE8B_MRN } from './fixtures/dashboard-cases'
 import { E2E_USERS } from './fixtures/seed-users'
 
 /**
@@ -161,6 +161,62 @@ test('each format downloads its own workbook, which opens with its own header ro
     const text = sheetText(sheet!)
     for (const mrn of window.mrns) expect(text, `${want.format} holds ${mrn}`).toContain(mrn)
   }
+})
+
+/**
+ * Phase 8b, Slice H: one cell of each workbook that was blank before it.
+ *
+ * The seeded Phase 8b case registered four hours ago, so the window is yesterday and today —
+ * wide enough that a run starting just after Riyadh midnight still catches it. Other specs open
+ * their own cases in the same window, so every assertion finds its row by MRN rather than by
+ * position and nothing here counts rows.
+ */
+test('the Adaa and QCH workbooks carry the Phase 8b cells', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', DESKTOP_ONLY)
+  await fromClientIp(page, '198.51.100.96')
+  await signIn(page, E2E_USERS.supervisor)
+
+  const to = riyadhDateKey(new Date())
+  const from = riyadhDateKey(new Date(Date.now() - 864e5))
+
+  const sheetOf = async (format: string, name: string): Promise<ExcelJS.Worksheet> => {
+    const response = await page.request.get(`/api/export.xlsx?from=${from}&to=${to}&status=all&format=${format}`)
+    expect(response.status(), `${format} downloads`).toBe(200)
+    const workbook = new ExcelJS.Workbook()
+    // exceljs declares its own `Buffer` interface, which Node's does not structurally satisfy.
+    await workbook.xlsx.load(Buffer.from(await response.body()) as unknown as ExcelJS.Buffer)
+    const sheet = workbook.getWorksheet(name)
+    expect(sheet, `${format} has a "${name}" sheet`).toBeTruthy()
+    return sheet!
+  }
+
+  /** One row's cells, found by the MRN in `mrnColumn`, under `headerRows` header rows. */
+  const rowFor = (sheet: ExcelJS.Worksheet, mrnColumn: number, headerRows: number, mrn: string): string[] => {
+    let found: string[] | null = null
+    sheet.eachRow((row, number) => {
+      if (number <= headerRows) return
+      if (String(row.getCell(mrnColumn).value ?? '') === mrn) {
+        found = (row.values as ExcelJS.CellValue[]).slice(1).map((v) => String(v ?? ''))
+      }
+    })
+    expect(found, `${mrn} is on ${sheet.name}`).not.toBeNull()
+    return found!
+  }
+
+  // Adaa column J, "Was a Pain Killer Prescribed?", which was blank on every row until Slice H.
+  const manual = await sheetOf('adaa', 'ED KPIs manual')
+  const headers = (manual.getRow(1).values as ExcelJS.CellValue[]).slice(1).map((v) => String(v ?? ''))
+  const adaaRow = rowFor(manual, 1, 1, PHASE8B_MRN)
+  expect(adaaRow[headers.indexOf('Was a Pain Killer Prescribed?')]).toBe('Yes')
+  expect(adaaRow[headers.indexOf('Discharge Type / (leave blank if no discharge)')]).toBe('Deceased')
+
+  // QCH "Referral to Case Management", likewise. Its own column names are on the FIRST row here:
+  // the plain columns carry their name on the group row and leave the second one blank.
+  const navigatorSheet = await sheetOf('qch', 'Navigator sheet')
+  const groups = (navigatorSheet.getRow(1).values as ExcelJS.CellValue[]).slice(1).map((v) => String(v ?? ''))
+  const qchRow = rowFor(navigatorSheet, 2, 2, PHASE8B_MRN)
+  expect(qchRow[groups.indexOf('Referral to Case Management')]).toBe('Complex care co.')
+  expect(qchRow[groups.indexOf('Reviewed By')]).toBe(E2E_USERS.supervisor.displayName)
 })
 
 test('a navigator may not export, and is told so rather than shown an empty page', async ({ page }, testInfo) => {

@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { AuditContext } from '@/src/lib/audit'
 import type { AuthUser } from '@/src/lib/auth/session'
 import { loadReference } from '@/src/lib/cases/reference'
-import { addCaseUpdate, createCase, resolveCase, voidCase } from '@/src/lib/cases/service'
+import { addCaseUpdate, createCase, resolveCase, reviewCase, voidCase } from '@/src/lib/cases/service'
 import type { CaseDraft, ReferenceData } from '@/src/lib/cases/types'
 import { prisma } from '@/src/lib/db'
 import { ADAA_HEADER } from '@/src/lib/export/adaa'
@@ -164,11 +164,23 @@ beforeAll(async () => {
   navigator = await makeUser('NAVIGATOR')
 
   // Day one, 10:00 Riyadh: an open case with a consult and a lab, so Consults and Investigations
-  // have rows and the timings can be checked against the sheet.
+  // have rows and the timings can be checked against the sheet. Phase 8b hangs its collection
+  // fields on this one — the pain block, the case-management referral and its two times — so the
+  // Adaa columns I to N and the QCH case-management block have a real row to be read off.
   const one = await openCase(navigator, {
     registrationAt: at(DAY_ONE, 10).toISOString(),
     // The one case with a CTAS, so the Adaa summary has both a level row and a "not recorded" one.
     ctas: 3,
+    sickleCellTreatment: 'YES',
+    painkillerPrescribed: 'YES',
+    painkillerAt: at(DAY_ONE, 10 + 40 / 60).toISOString(), // 10:40 Riyadh: 40 min from the door
+    pethidinePrescribed: 'YES',
+    pethidineDoseMg: 100,
+    caseMgmtReferral: 'COMPLEX_CARE',
+    caseMgmtCriteria: 'MEETS',
+    caseMgmtAction: 'ENROLLED',
+    caseMgmtCalledAt: at(DAY_ONE, 11).toISOString(),
+    caseMgmtRepliedAt: at(DAY_ONE, 11.5).toISOString(),
     consults: [
       {
         departmentId: departmentNamed('MROD'),
@@ -190,24 +202,42 @@ beforeAll(async () => {
     ],
   })
   seeded.open1 = one.input.mrn
+  // One tagged update and one plain one (decision C): the export's own `updates` select has to ask
+  // for `action`, or the Summary's "Actions documented" reports neither.
   const noted = await addCaseUpdate(navigator, one.id, 'Chased the lab', ctxFor(navigator.id))
   if (!noted.ok) throw new Error(`expected the update to append, got ${JSON.stringify(noted)}`)
+  const tagged = await addCaseUpdate(navigator, one.id, 'Paged the bed coordinator', ctxFor(navigator.id), 'BED_MANAGEMENT')
+  if (!tagged.ok) throw new Error(`expected the tagged update to append, got ${JSON.stringify(tagged)}`)
 
   // Day one, 22:00 Riyadh — 19:00 UTC, so a server that filtered on its own calendar day would
   // still catch this one; the case below is the one that proves the boundary.
   const two = await openCase(navigator, { registrationAt: at(DAY_ONE, 22).toISOString(), shift: 'NIGHT' })
   seeded.open2 = two.input.mrn
 
-  // Day two, resolved six hours later.
+  // Day two, resolved six hours later. Phase 8b: it is the one case with a disposition decision E
+  // added, with both discharge answers, and it is marked reviewed afterwards — so the Adaa
+  // Discharge Type, the KPI 7 share and the QCH answers, Final Decision and "Reviewed By" all have
+  // a row. The review is taken after the resolve, because a later save clears it by design.
   const three = await openCase(navigator, { registrationAt: at(DAY_TWO, 8).toISOString(), shift: 'MORNING' })
   seeded.resolved = three.input.mrn
   const resolved = await resolveCase(
     navigator,
     three.id,
-    { ...draft(), mrn: three.input.mrn, registrationAt: three.input.registrationAt, disposition: 'DISCHARGED_HOME', departedAt: at(DAY_TWO, 14).toISOString(), version: 1 },
+    {
+      ...draft(),
+      mrn: three.input.mrn,
+      registrationAt: three.input.registrationAt,
+      disposition: 'DECEASED',
+      departedAt: at(DAY_TWO, 14).toISOString(),
+      instructionsGiven: 'YES',
+      familyEngagement: 'NOT_SURE',
+      version: 1,
+    },
     ctxFor(navigator.id),
   )
   if (!resolved.ok) throw new Error(`expected the case to resolve, got ${JSON.stringify(resolved)}`)
+  const reviewed = await reviewCase(supervisor, three.id, ctxFor(supervisor.id))
+  if (!reviewed.ok) throw new Error(`expected the case to be marked reviewed, got ${JSON.stringify(reviewed)}`)
 
   // Day two, voided: must never appear in any sheet or count.
   const four = await openCase(navigator, { registrationAt: at(DAY_TWO, 9).toISOString() })
@@ -395,9 +425,50 @@ describe('GET /api/export.xlsx as a SUPERVISOR', () => {
     const updates = workbook.getWorksheet('Updates')!
     const texts = columnValues(updates, 'Update')
     expect(texts).toContain('Chased the lab')
+    expect(texts).toContain('Paged the bed coordinator')
     // Resolving a case appends its own update, so the resolved case is on this sheet too.
-    expect(texts).toContain('Resolved: Discharged home')
+    expect(texts).toContain('Resolved: Deceased')
     expect(columnValues(updates, 'By')).toContain(navigator.displayName)
+  })
+
+  /**
+   * Phase 8b. The export's `updates` select overrides the dashboard's, and `toCaseForStats` reads
+   * a row that did not ask for `action` as having no opinion on tagging at all — so without
+   * `action: true` on that override every case here would be "no action documented". The Summary
+   * sheet is the navigator workbook's own `dashboard()` call, which is where that shows.
+   */
+  it('carries the update action tags through the export read', async () => {
+    const loaded = (await loadCasesForExport(RANGE)).filter((c) => c.mrn.startsWith(MRN_PREFIX))
+    const one = loaded.find((c) => c.mrn === seeded.open1)!
+    expect(one.updateActions).toEqual(['BED_MANAGEMENT'])
+    expect(one.untaggedUpdatesCount).toBe(1) // "Chased the lab", written with no category
+    // The resolved case's only update is the one the resolve appended, and it carries no tag.
+    expect(loaded.find((c) => c.mrn === seeded.resolved)!.updateActions).toEqual([])
+  })
+
+  it('carries every Phase 8b collection field through the export read', async () => {
+    const loaded = await loadCasesForExport(RANGE)
+    const one = loaded.find((c) => c.mrn === seeded.open1)!
+    expect(one).toMatchObject({
+      sickleCellTreatment: 'YES',
+      painkillerPrescribed: 'YES',
+      pethidinePrescribed: 'YES',
+      pethidineDoseMg: 100,
+      caseMgmtReferral: 'COMPLEX_CARE',
+      caseMgmtCriteria: 'MEETS',
+      caseMgmtAction: 'ENROLLED',
+    })
+    expect(one.painkillerAt).toEqual(at(DAY_ONE, 10 + 40 / 60))
+    expect(one.caseMgmtCalledAt).toEqual(at(DAY_ONE, 11))
+    expect(one.caseMgmtRepliedAt).toEqual(at(DAY_ONE, 11.5))
+    const three = loaded.find((c) => c.mrn === seeded.resolved)!
+    expect(three).toMatchObject({
+      disposition: 'DECEASED',
+      instructionsGiven: 'YES',
+      familyEngagement: 'NOT_SURE',
+      reviewedByName: supervisor.displayName,
+    })
+    expect(three.reviewedAt).toBeInstanceOf(Date)
   })
 
   it('summarises the range and the status filter on the Summary sheet', async () => {
@@ -471,23 +542,79 @@ describe('the three formats', () => {
     // Two values, hand-checked: the 10:00 Riyadh case on day one, as the form writes it.
     expect(columnValues(manual, 'Date / (DD-MMM-YYYY)')).toContain(fmtFormDate(at(DAY_ONE, 10)))
     expect(columnValues(manual, 'Registration Time / (hh:mm)')).toContain('10:00')
-    // The pain-management block is blank on every row.
-    expect(new Set(columnValues(manual, 'Was a Pain Killer Prescribed?'))).toEqual(new Set(['']))
   })
+
+  /** Phase 8b: columns I to N and the two discharge types decision E added, off the real rows. */
+  it('writes the pain block and Deceased into the manual sheet', async () => {
+    const workbook = await workbookOf(
+      await exportWorkbookResponse(supervisor, ADAA, ctxFor(supervisor.id), new Date()),
+    )
+    const manual = workbook.getWorksheet('ED KPIs manual')!
+    const row = (header: string) => {
+      const mrns = columnValues(manual, 'Patient ID / Mandatory')
+      return columnValues(manual, header)[mrns.indexOf(seeded.open1)]
+    }
+    expect(row('Was the treatment identified for Sicklecell condition?')).toBe('Yes')
+    expect(row('Was a Pain Killer Prescribed?')).toBe('Yes')
+    expect(row('Calendar Days later for Pain of pain killer administration /')).toBe('') // the same day
+    expect(row('Was Pethidine Prescribed?')).toBe('Yes')
+    expect(row('Prescribed Dose')).toBe('100')
+    expect(row('Time of Pain Killer Administration / (hh:mm)')).toBe('10:40')
+    // The two cases that recorded nothing keep every one of those cells blank.
+    expect(columnValues(manual, 'Was a Pain Killer Prescribed?').filter((v) => v === '')).toHaveLength(2)
+    // Decision E's dispositions reach the form's Discharge Type column.
+    expect(columnValues(manual, 'Discharge Type / (leave blank if no discharge)')).toContain('Deceased')
+  })
+
+  /**
+   * Two blocks on this sheet label their rows "CTAS 3" / "Total": the ED statistics table and, as
+   * of Phase 8b, the Pain Killer Statistics table under the admission block. Every lookup here
+   * names the heading it counts from, or the second block silently answers for the first.
+   */
+  const SUMMARY_HEADINGS = [
+    'ED statistics, tracked cases',
+    'Admission to unit (admission order to leaving the ED)',
+    'Pain Killer Statistics (KPI 8)',
+    'Benchmark colours',
+  ]
+
+  function summaryBlock(sheet: ExcelJS.Worksheet, heading: string): Map<string, string[]> {
+    const rows: string[][] = []
+    sheet.eachRow((row) => rows.push((row.values as ExcelJS.CellValue[]).slice(1).map((v) => String(v ?? ''))))
+    const start = rows.findIndex((r) => r[0] === heading)
+    expect(start, `the "${heading}" block is on the sheet`).toBeGreaterThanOrEqual(0)
+    const out = new Map<string, string[]>()
+    for (const row of rows.slice(start + 1)) {
+      if (SUMMARY_HEADINGS.includes(row[0] ?? '')) break // the next block begins
+      if (row[0]) out.set(row[0], row)
+    }
+    return out
+  }
 
   it('summarises the same three cases per CTAS, with a row for the ones that have none', async () => {
     const workbook = await workbookOf(
       await exportWorkbookResponse(supervisor, ADAA, ctxFor(supervisor.id), new Date()),
     )
-    const summary = workbook.getWorksheet('KPI summary')!
-    const byLabel = new Map<string, string>()
-    summary.eachRow((row) => {
-      const key = String(row.getCell(1).value ?? '')
-      if (key) byLabel.set(key, String(row.getCell(2).value ?? ''))
-    })
-    expect(byLabel.get('CTAS 3')).toBe('1')
-    expect(byLabel.get('CTAS not recorded')).toBe('2')
-    expect(byLabel.get('Total')).toBe('3')
+    const stats = summaryBlock(workbook.getWorksheet('KPI summary')!, 'ED statistics, tracked cases')
+    expect(stats.get('CTAS 3')?.[1]).toBe('1')
+    expect(stats.get('CTAS not recorded')?.[1]).toBe('2')
+    expect(stats.get('Total')?.[1]).toBe('3')
+  })
+
+  it('adds the KPI 7 share, the KPI 8 total and the Pain Killer Statistics block', async () => {
+    const workbook = await workbookOf(
+      await exportWorkbookResponse(supervisor, ADAA, ctxFor(supervisor.id), new Date()),
+    )
+    const sheet = workbook.getWorksheet('KPI summary')!
+    const total = summaryBlock(sheet, 'ED statistics, tracked cases').get('Total')!
+    // One Deceased among the three tracked cases, open ones included: the form's own denominator.
+    expect(total[14]).toBe('33.3%')
+    // One painkiller, 40 minutes after the door.
+    expect(total[15]).toBe('40')
+
+    const pain = summaryBlock(sheet, 'Pain Killer Statistics (KPI 8)').get('Total')!
+    // CTAS, 1 painkiller prescribed, the four bands, 1 pethidine, the three doses, the minutes.
+    expect(pain).toEqual(['Total', '1', '0', '1', '0', '0', '1', '0', '1', '0', '40'])
   })
 
   it('says on the Read me which range it covers and how many rows lack a CTAS', async () => {
@@ -507,6 +634,9 @@ describe('the three formats', () => {
     expect(text).toContain(`${DAY_ONE} to ${DAY_TWO}`)
     expect(text).toContain('Rows with no CTAS recorded 2')
     expect(text).toContain('select A2:T4')
+    // Phase 8b: the two statements that replaced "KPI 7 is not produced" and "I to N are blank".
+    expect(text).toContain('KPI 7 is the Deceased dispositions divided by every tracked case in the range')
+    expect(text).toContain('is in no band and in no dose column')
   })
 
   it('writes the QCH sheet with both header rows and no patient name column', async () => {
@@ -531,5 +661,37 @@ describe('the three formats', () => {
     expect(columnAt(sheet, 1, 2)).toContain(fmtFormDate(at(DAY_ONE, 10)))
     // One value, hand-checked: the 10:00 case ordered its lab at 10:30 Riyadh.
     expect(columnAt(sheet, QCH_GROUP_HEADER.indexOf('Lab Order Time') + 1, 2)).toContain('10:30')
+  })
+
+  /** Phase 8b: the columns the QCH sheet carried blank until Slice H, off the real rows. */
+  it('writes the case-management block, the discharge answers and the review mark', async () => {
+    const workbook = await workbookOf(
+      await exportWorkbookResponse(supervisor, QCH, ctxFor(supervisor.id), new Date()),
+    )
+    const sheet = workbook.getWorksheet('Navigator sheet')!
+    const mrns = columnAt(sheet, 2, 2)
+    const cell = (mrn: string, column: string): string =>
+      columnAt(sheet, QCH_GROUP_HEADER.indexOf(column) + 1, 2)[mrns.indexOf(mrn)] ?? ''
+
+    // The open case carries the case-management referral, in the sheet's own words.
+    expect(cell(seeded.open1, 'Referral to Case Management')).toBe('Complex care co.')
+    expect(cell(seeded.open1, 'Complex care Cordinator comment')).toBe('Meeting criteria')
+    expect(cell(seeded.open1, 'Complex care Coordinator Action')).toBe('enrolled')
+    expect(cell(seeded.open1, 'Time of call case manger')).toBe('11:00')
+    expect(cell(seeded.open1, 'Time of case manger replay')).toBe('11:30')
+    // Still a staff name, and still blank.
+    expect(cell(seeded.open1, 'Case Manager Name')).toBe('')
+
+    // The resolved case carries the two answers, the reviewer, and decision E's disposition.
+    expect(cell(seeded.resolved, 'intructions given by doctor')).toBe('Yes')
+    expect(cell(seeded.resolved, 'Family Engagement')).toBe('Not sure')
+    expect(cell(seeded.resolved, 'Reviewed By')).toBe(supervisor.displayName)
+    expect(cell(seeded.resolved, 'Final Decision')).toBe('Deceased')
+    expect(cell(seeded.resolved, 'ER-MD Decision')).toBe('Deceased')
+
+    // The case that recorded none of it keeps every one of those columns blank.
+    for (const column of ['Referral to Case Management', 'intructions given by doctor', 'Reviewed By']) {
+      expect(cell(seeded.open2, column), `${column} is blank on ${seeded.open2}`).toBe('')
+    }
   })
 })

@@ -27,6 +27,7 @@ import {
   BarSection,
   ByAreaSection,
   ByCtasSection,
+  DischargeCommunication,
   DocumentationSection,
   ExamToConsultSection,
   HeadlineTiles,
@@ -279,6 +280,7 @@ export function DashboardBody({
           )}
 
           <OutcomesSection kpi={kpi} range={range} />
+          <DischargeCommunication kpi={kpi} range={range} />
           <ByCtasSection kpi={kpi} range={range} />
           <ByAreaSection kpi={kpi} range={range} />
           <RepeatVisits kpi={kpi} range={range} />

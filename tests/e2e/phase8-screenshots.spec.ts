@@ -19,8 +19,8 @@ test.describe.configure({ mode: 'serial' })
 /** The seeded case with the fullest record: milestones, a consult, an admission chain, updates. */
 const RICH_MRN = '3200001'
 
-async function shoot(page: Page, name: string, suffix: string): Promise<void> {
-  const path = `design/screens/phase8-${name}-${suffix}.png`
+async function shoot(page: Page, name: string, suffix: string, prefix = 'phase8'): Promise<void> {
+  const path = `design/screens/${prefix}-${name}-${suffix}.png`
   await page.evaluate(() => document.fonts.ready)
   await page.screenshot({ path, fullPage: true })
   expect(statSync(path).size, `${path} looks blank`).toBeGreaterThan(MIN_BYTES)
@@ -78,5 +78,44 @@ test('phase 8 gate screenshots', async ({ page }, testInfo) => {
 
   await page.emulateMedia({ media: 'print' })
   await shoot(page, 'report', suffix)
+  await page.emulateMedia({ media: 'screen' })
+})
+
+/**
+ * The Slice H gate screenshots: the dashboard and the printed report with the Phase 8b panels on
+ * them — the two new Adaa KPI rows, the pain block, the seven action rows, the nine documentation
+ * rows and the discharge-communication section. Separate captures from the Phase 8 pair above,
+ * because those are that gate's evidence and this is this one's.
+ */
+test('phase 8b gate screenshots', async ({ page }, testInfo) => {
+  const mobile = testInfo.project.name === 'mobile'
+  const suffix = mobile ? 'mobile-390x844' : 'desktop-1280x800'
+  await fromClientIp(page, mobile ? '198.51.100.87' : '198.51.100.88')
+  await signIn(page, E2E_USERS.supervisor)
+
+  await page.goto('/dashboard')
+  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
+  // Every panel this slice added must be drawn before the shutter, not only present in the DOM.
+  await expect(page.getByRole('cell', { name: 'KPI 8 · Door to painkiller, median', exact: true })).toBeVisible()
+  await expect(page.locator('[data-pain-block]')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Discharge communication', exact: true })).toBeVisible()
+  await expect(page.locator('[data-chart-panel="cases"] svg[role="application"]')).toBeVisible()
+  await expect(page.locator('[data-chart="hbar"] svg[role="application"]').first()).toBeVisible()
+  await expect(page.locator('[data-chart="stacked"] svg[role="application"]')).toBeVisible()
+  await shoot(page, 'dashboard', suffix, 'phase8b')
+
+  // The same panels on paper, over the range the seeded fixture registers in.
+  const today = riyadhDateKey(new Date())
+  const monthAgo = riyadhDateKey(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))
+  await page.goto(`/report?from=${monthAgo}&to=${today}&status=all`)
+  await expect(page.locator('[data-report-header]')).toBeVisible()
+  await expect(page.locator('[data-pain-block]')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Discharge communication', exact: true })).toBeVisible()
+  await expect(page.locator('[data-chart="hbar"] svg[role="application"]').first()).toBeVisible()
+  // The seeded Phase 8b case is inside the printed range, which is why those panels have rows.
+  await expect(page.locator('[data-report-range]')).toContainText(`${monthAgo} to ${today}`)
+
+  await page.emulateMedia({ media: 'print' })
+  await shoot(page, 'report', suffix, 'phase8b')
   await page.emulateMedia({ media: 'screen' })
 })

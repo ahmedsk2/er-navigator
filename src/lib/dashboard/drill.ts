@@ -27,10 +27,15 @@ export const RANGE_LABELS: Record<Range, string> = {
  * Every section of the page that can be drilled into. One per chart or table the prototype picks
  * from, plus one per Phase 8 count row.
  *
- * Two of the Phase 8 sections are a grid rather than a list, so their row name carries both
- * coordinates joined by a pipe: `unitband:ICU|≤30 min`, `turnaround:CT|61–90 min`. The pipe is
- * safe where a colon is not — `parseDrill` splits on the first colon because reason names contain
- * colons of their own, and no band, unit or investigation type contains a pipe.
+ * Three of them are a grid rather than a list, so their row name carries both coordinates joined
+ * by a pipe: `unitband:ICU|≤30 min`, `turnaround:CT|61–90 min`, `painkiller:band|≤30 min`. The
+ * pipe is safe where a colon is not — `parseDrill` splits on the first colon because reason names
+ * contain colons of their own, and no band, unit or investigation type contains a pipe.
+ *
+ * Phase 8b added `painkiller` (the Adaa pain block: the four door-to-painkiller bands under
+ * `band`, the three pethidine doses under `dose`) and `communication` (decision D's two discharge
+ * answers). The three new documentation rows need no section of their own: they are `completeness`
+ * rows, and `quality` already resolves the whole list by name.
  */
 export const DRILL_SECTIONS = [
   'threshold',
@@ -45,6 +50,8 @@ export const DRILL_SECTIONS = [
   'dispo',
   'stayband',
   'treated',
+  'painkiller',
+  'communication',
   'target',
   'unitband',
   'turnaround',
@@ -117,6 +124,9 @@ type DashboardData = {
   kpi: {
     stayBands: NamedRows
     treated: NamedRows
+    painkiller: NamedRows
+    pethidine: NamedRows
+    communication: NamedRows
     targets: ReadonlyArray<{ key: string; name: string; missedIds: string[] }>
     admissionToUnit: ReadonlyArray<{ unit: string; bands: NamedRows }>
     turnaround: ReadonlyArray<{ type: string; orderToResult: NamedRows }>
@@ -178,6 +188,20 @@ export function resolveDrill(data: DashboardData, key: DrillKey): Drill | null {
       return named(data.kpi.stayBands, (r) => `Stay ${r.name}`)
     case 'treated':
       return named(data.kpi.treated, (r) => `Door to disposition: ${r.name}`)
+    case 'painkiller': {
+      // One section for the whole Adaa pain block, split the way the two grids are: `band` is a
+      // door-to-painkiller band, `dose` a pethidine dose. Anything else resolves to null.
+      const [kind, name] = splitGrid(key.name)
+      if (kind !== 'band' && kind !== 'dose') return null
+      const rows = kind === 'band' ? data.kpi.painkiller : data.kpi.pethidine
+      const row = rows.find((r) => r.name === name)
+      if (!row) return null
+      return { key, label: kind === 'band' ? `Door to painkiller ${row.name}` : `Pethidine ${row.name}`, ids: row.ids }
+    }
+    case 'communication':
+      // The cases that answered the question, which is the `n` the share is drawn over; the bar
+      // beside it is how many of them answered Yes.
+      return named(data.kpi.communication, (r) => `${r.name}: recorded`)
     case 'target': {
       const row = data.kpi.targets.find((r) => r.key === key.name)
       return row ? { key, label: `Missed: ${row.name}`, ids: row.missedIds } : null

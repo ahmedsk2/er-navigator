@@ -20,6 +20,8 @@
  */
 import {
   ADMISSION_BANDS,
+  PAINKILLER_BANDS,
+  PETHIDINE_DOSES_MG,
   TREATED_BANDS,
   UNIT_TYPES,
   adaaSummary,
@@ -29,6 +31,7 @@ import {
   unitTypeOf,
   type AdaaKpi,
   type AdaaSummaryRow,
+  type Answer,
   type Benchmark,
   type KpiCase,
 } from '@/src/lib/domain/kpi'
@@ -70,8 +73,38 @@ export const ADAA_HEADER: string[] = [
   'Time of Disposition / (hh:mm)',
 ]
 
-/** Columns I–N: the pain-management block. A clinical record, not a navigation one — see Read me. */
-const PAIN_BLOCK: string[] = ['', '', '', '', '', '']
+/**
+ * Columns I–N: the form's pain-management block, filled from decision F's fields.
+ *
+ * The form asks each question as a Yes/No, so an unanswered one is blank rather than a "No" — the
+ * receiving side counts the Yes answers and a false No would be a wrong denominator. The dose is
+ * written only when it is one of the three the form's dropdown offers: `kpi.ts` puts anything else
+ * in no band and lists it under the dashboard's Documentation section, and pasting a fourth value
+ * into the form would break its own validation.
+ */
+export function answerYesNo(answer: Answer | null): string {
+  if (answer === 'YES') return 'Yes'
+  if (answer === 'NO') return 'No'
+  return ''
+}
+
+export function pethidineDose(c: KpiCase): string {
+  if (c.pethidinePrescribed !== 'YES') return ''
+  const mg = c.pethidineDoseMg
+  return mg != null && (PETHIDINE_DOSES_MG as ReadonlyArray<number>).includes(mg) ? String(mg) : ''
+}
+
+/** I sickle-cell, J painkiller prescribed, K its day offset, L pethidine, M the dose, N the time. */
+function painBlock(c: KpiCase): string[] {
+  return [
+    answerYesNo(c.sickleCellTreatment),
+    answerYesNo(c.painkillerPrescribed),
+    dayOffset(c.registrationAt, c.painkillerAt),
+    answerYesNo(c.pethidinePrescribed),
+    pethidineDose(c),
+    fmtFormTime(c.painkillerAt),
+  ]
+}
 
 /**
  * The form's Admission Type vocabulary. `unitTypeOf` already sorts the critical-care codes from
@@ -86,14 +119,16 @@ export function admissionType(wardCode: string | null): string {
 }
 
 /**
- * The form's Discharge Type vocabulary, over the dispositions this app has. Deceased, LAMA and
- * "referred to UCC" are not dispositions here (brief §5), and an admission is not a discharge,
- * so those rows are blank and the Read me says why.
+ * The form's Discharge Type vocabulary, over the dispositions this app has. Decision E added
+ * Deceased and Referred to UCC, which the form has answers for; LAMA was declined and is still not
+ * a disposition here, and an admission is not a discharge, so those rows stay blank.
  */
 const DISCHARGE_TYPES: Record<string, string> = {
   DISCHARGED_HOME: 'Home',
   DISCHARGED_DAMA: 'DAMA',
   TRANSFERRED: 'Another Health Facility',
+  DECEASED: 'Deceased',
+  REFERRED_UCC: 'Referred to UCC',
 }
 
 export function dischargeType(disposition: string | null): string {
@@ -124,7 +159,7 @@ export function adaaRow(c: KpiCase): string[] {
     c.ctas == null ? '' : String(c.ctas),
     dayOffset(base, c.physicianAt),
     fmtFormTime(c.physicianAt),
-    ...PAIN_BLOCK,
+    ...painBlock(c),
     dayOffset(base, c.decisionAt),
     fmtFormTime(c.decisionAt),
     admissionType(c.disposition == null || c.disposition === 'ADMITTED' ? c.wardCode : null),
@@ -149,6 +184,21 @@ export const ADAA_SUMMARY_HEADER: string[] = [
   ...TREATED_BANDS.map((b) => b.name),
   'KPI 5 % within 4 h',
   'KPI 6 % DAMA',
+  // Phase 8b, appended so nothing to the left of them moves: KPI 7 is deaths over every tracked
+  // case in the group (open included, the form's own denominator), KPI 8 the door-to-painkiller
+  // total in the same shape as the three interval columns above.
+  'KPI 7 % deceased',
+  'KPI 8 door to painkiller (total minutes)',
+]
+
+/** The form's Summary Sheet rows 34–36: the bands, the doses, and what each is counted out of. */
+export const ADAA_PAIN_HEADER: string[] = [
+  'CTAS',
+  'Painkiller prescribed',
+  ...PAINKILLER_BANDS.map((b) => b.name),
+  'Pethidine prescribed',
+  ...PETHIDINE_DOSES_MG.map((mg) => `${mg} mg`),
+  'Door to painkiller (total minutes)',
 ]
 
 /**
@@ -211,6 +261,8 @@ function summaryLine(row: AdaaSummaryRow): SummaryRow {
       ...row.treated.map(String),
       pct(row.withinFourShare, row.treatedN),
       pct(row.damaShare, row.resolvedN),
+      pct(row.deceasedShare, row.total),
+      whole(row.kpi8TotalMin),
     ],
     bold: row.ctas === 'overall',
     fills: [
@@ -222,6 +274,37 @@ function summaryLine(row: AdaaSummaryRow): SummaryRow {
       ...row.treated.map(() => null),
       shareFill,
       null,
+      // KPI 7 has no benchmark in the form; KPI 8 is coloured by its mean, like KPI 1 to 3.
+      null,
+      meanFill('kpi8', row.kpi8TotalMin, row.kpi8N),
+    ],
+  }
+}
+
+/**
+ * One Pain Killer Statistics line per CTAS row. The counts are `kpi.ts`'s — `painkiller` is one
+ * number per `PAINKILLER_BANDS` entry and `pethidine` one per dose — and the two "prescribed"
+ * columns are the denominators they are counted out of, which is not the same number: a painkiller
+ * prescribed with no time given is in no band at all.
+ */
+function painLine(row: AdaaSummaryRow): SummaryRow {
+  return {
+    cells: [
+      CTAS_LABELS[row.ctas],
+      String(row.painkillerYesN),
+      ...row.painkiller.map(String),
+      String(row.pethidineYesN),
+      ...row.pethidine.map(String),
+      whole(row.kpi8TotalMin),
+    ],
+    bold: row.ctas === 'overall',
+    fills: [
+      null,
+      null,
+      ...row.painkiller.map(() => null),
+      null,
+      ...row.pethidine.map(() => null),
+      meanFill('kpi8', row.kpi8TotalMin, row.kpi8N),
     ],
   }
 }
@@ -230,10 +313,11 @@ const HEADING = (text: string): SummaryRow => ({ cells: [text], bold: true })
 const BLANK: SummaryRow = { cells: [] }
 
 export function adaaSummaryRows(cases: ReadonlyArray<KpiCase>): SummaryRow[] {
+  const summary = adaaSummary(cases)
   const rows: SummaryRow[] = [
     HEADING('ED statistics, tracked cases'),
     { cells: ADAA_SUMMARY_HEADER, bold: true },
-    ...adaaSummary(cases).map(summaryLine),
+    ...summary.map(summaryLine),
     BLANK,
     HEADING('Admission to unit (admission order to leaving the ED)'),
     { cells: ['Unit', ...ADMISSION_BANDS.map((b) => b.name)], bold: true },
@@ -243,6 +327,12 @@ export function adaaSummaryRows(cases: ReadonlyArray<KpiCase>): SummaryRow[] {
     const found = byUnit.find((u) => u.unit === unit)
     rows.push({ cells: [unit, ...(found?.bands ?? []).map((b) => String(b.value))] })
   }
+  rows.push(
+    BLANK,
+    HEADING('Pain Killer Statistics (KPI 8)'),
+    { cells: ADAA_PAIN_HEADER, bold: true },
+    ...summary.map(painLine),
+  )
   rows.push(BLANK, HEADING('Benchmark colours'), {
     cells: ['', ...Object.values(BENCHMARK_LABELS)],
     fills: [null, ...Object.keys(BENCHMARK_LABELS).map((b) => BENCHMARK_FILL[b as Benchmark])],
@@ -294,7 +384,22 @@ export function adaaReadMeRows(input: {
     },
     {
       cells: [
-        'KPI 6 here is DAMA only. LAMA is not a disposition in ER Navigator, so this figure is a lower bound on the form’s "LAMA or DAMA".',
+        'KPI 6 here is DAMA only. LAMA is still not a disposition in ER Navigator (decision E added Deceased and Referred to UCC and declined LAMA), so this figure remains a lower bound on the form’s "LAMA or DAMA".',
+      ],
+    },
+    {
+      cells: [
+        'KPI 7 is the Deceased dispositions divided by every tracked case in the range, open ones included — the form’s own denominator, "total patients". A rate over resolved cases alone would rise and fall within a week as cases close.',
+      ],
+    },
+    {
+      cells: [
+        'KPI 8 is the door to the painkiller being given, for the cases where one was prescribed and a time was recorded. The Pain Killer Statistics block under the admission block counts those cases into the form’s four bands and the pethidine prescriptions into its three doses, per CTAS; the two "prescribed" columns beside them are the denominators, which are not the same number.',
+      ],
+    },
+    {
+      cells: [
+        'A painkiller recorded as prescribed with no time given, or a pethidine with no dose or a dose that is not 50, 100 or 150 mg, is in no band and in no dose column. Those cases are listed on the dashboard’s Documentation section so they can be completed while the case is fresh.',
       ],
     },
     {
@@ -311,17 +416,12 @@ export function adaaReadMeRows(input: {
     HEADING('Blank until recorded'),
     {
       cells: [
-        'Columns I to N (sickle-cell treatment, painkiller prescribed, its calendar-day offset, pethidine, the dose and the time given) are always blank. They are a clinical record rather than a navigation one, so KPI 8 cannot be produced from this app.',
+        'Columns I to N (sickle-cell treatment, painkiller prescribed, its calendar-day offset, pethidine, the dose and the time given) are filled from the case’s pain-management block. Each question is blank where it was not answered, never "No": the form counts the Yes answers, so a false No would be a wrong denominator. The dose is written only when it is one of the form’s three.',
       ],
     },
     {
       cells: [
         'Admission Type is filled only for a patient who was admitted, or who is still in the ED with a ward already recorded; a ward left on a patient who was then discharged, transferred or left is not reported as an admission. It is blank when no ward was recorded. Discharge Type is blank for an admission, for "left without being seen" and for "other".',
-      ],
-    },
-    {
-      cells: [
-        'Deceased, LAMA and "referred to UCC" are not dispositions in ER Navigator, so no row can carry them and KPI 7 (mortality) is not produced.',
       ],
     },
     { cells: ['CTAS is blank where it was not recorded. Those rows are summarised on the "CTAS not recorded" line.'] },
@@ -347,7 +447,7 @@ export function adaaWorkbook(input: {
     tablePart(adaaManualSheet(input.cases)),
     freePart({
       name: ADAA_SUMMARY_SHEET,
-      widths: [20, 14, 16, 16, 18, 11, 11, 11, 11, 11, 11, 11, 18, 16],
+      widths: [20, 16, 16, 16, 18, 11, 11, 11, 11, 11, 11, 11, 18, 16, 16, 20],
       rows: adaaSummaryRows(input.cases),
     }),
     freePart({ name: READ_ME_SHEET, widths: [30, 96], rows: adaaReadMeRows(input) }),

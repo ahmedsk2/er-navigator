@@ -328,4 +328,50 @@ describe('Phase 8 panels', () => {
     expect(k.admissionToUnit.every((g) => g.bands.every((b) => b.value === 0))).toBe(true)
     expect(k.examToConsult).toEqual([])
   })
+
+  /**
+   * Phase 8b: the three lists this layer added, so the pain block and the discharge answers can be
+   * drilled into. Nothing in the base fixture records one, so the cases are overridden here; the
+   * arithmetic itself is `kpi.ts`'s and is tested there.
+   */
+  it('the pain block and the discharge answers arrive with their case ids', () => {
+    const cases = FIXTURE.map((c) =>
+      c.id === 'C1'
+        ? {
+            ...c,
+            // Registered 3 h ago, painkiller 20 minutes later: the first band.
+            painkillerPrescribed: 'YES' as const,
+            painkillerAt: new Date(c.registrationAt.getTime() + 20 * 60_000),
+            pethidinePrescribed: 'YES' as const,
+            pethidineDoseMg: 100,
+            instructionsGiven: 'YES' as const,
+            familyEngagement: 'NO' as const,
+          }
+        : c.id === 'C5'
+          ? { ...c, instructionsGiven: 'NOT_SURE' as const }
+          : c,
+    )
+    const panels = dashboard(cases, '30', NOW).kpi
+    expect(panels.painkiller.map((r) => [r.name, r.ids])).toEqual([
+      ['≤30 min', ['C1']],
+      ['>30 min–1 h', []],
+      ['>1–3 h', []],
+      ['>3 h', []],
+    ])
+    expect(panels.pethidine.map((r) => [r.name, r.ids])).toEqual([
+      ['50 mg', []],
+      ['100 mg', ['C1']],
+      ['150 mg', []],
+    ])
+    // The counts on the Adaa row and the ids on the drillable list are the same figures.
+    expect(panels.adaaOverall.painkiller).toEqual(panels.painkiller.map((r) => r.value))
+    expect(panels.adaaOverall.pethidine).toEqual(panels.pethidine.map((r) => r.value))
+    expect(panels.adaaOverall.painkillerYesN).toBe(1)
+    expect(panels.adaaOverall.pethidineYesN).toBe(1)
+    // Two cases answered "instructions given", one of them Yes; one answered "family engaged", No.
+    expect(panels.communication.map((r) => [r.name, r.n, r.within, r.ids, r.share])).toEqual([
+      ['Instructions given by doctor', 2, 1, ['C1', 'C5'], null],
+      ['Family engaged', 1, 0, ['C1'], null],
+    ])
+  })
 })

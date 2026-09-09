@@ -160,11 +160,16 @@ function bandOf(kpi: AdaaKpi, value: number | null): Benchmark | null {
 }
 
 /**
- * The panel's six rows, in the order the Phase 8 spec lists them: the three interval KPIs, the
- * within-four-hours share, DAMA, then the non-urgent share.
+ * The panel's eight rows, in the order the Phase 8b spec lists them: the three interval KPIs, the
+ * within-four-hours share, DAMA, mortality, door to painkiller, then the non-urgent share.
  *
  * A median is already null below MIN_N (`kpi.ts` guards it), and a share is too; both render as
  * "n<3" and carry no benchmark colour, because a benchmark on two cases is not a benchmark.
+ *
+ * KPI 7's `n` is `total` — every tracked case in the range, open ones included — because that is
+ * the denominator the Adaa form divides deaths by, and `deceasedShare` was computed over it
+ * (`kpi.ts`, `AdaaSummaryRow.deceasedShare`). It carries no benchmark; KPI 8 carries the minutes
+ * one, graded on its median exactly as KPI 1 to 3 are.
  */
 export function adaaRows(overall: AdaaSummaryRow): AdaaRow[] {
   const minutes = (kpi: AdaaKpi, med: number | null, n: number): AdaaRow => ({
@@ -187,6 +192,8 @@ export function adaaRows(overall: AdaaSummaryRow): AdaaRow[] {
     minutes('kpi3', overall.kpi3Med, overall.kpi3N),
     share('kpi5', overall.withinFourShare, overall.treatedN),
     share('kpi6', overall.damaShare, overall.resolvedN),
+    share('kpi7', overall.deceasedShare, overall.total),
+    minutes('kpi8', overall.kpi8Med, overall.kpi8N),
     share('kpi4', overall.nonUrgentShare, overall.withCtasN),
   ]
 }

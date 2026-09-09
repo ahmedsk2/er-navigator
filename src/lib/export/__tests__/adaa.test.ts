@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   ADAA_HEADER,
+  ADAA_PAIN_HEADER,
   ADAA_SUMMARY_HEADER,
   BENCHMARK_FILL,
   adaaManualSheet,
@@ -8,7 +9,9 @@ import {
   adaaRow,
   adaaSummaryRows,
   admissionType,
+  answerYesNo,
   dischargeType,
+  pethidineDose,
 } from '../adaa'
 import { dayOffset, fmtFormDate, fmtFormTime } from '../format'
 import type { ExportRange } from '../range'
@@ -157,6 +160,61 @@ describe('adaaRow', () => {
     expect(adaaRow(sameDay).slice(3, 5)).toEqual(['', '08:10'])
   })
 
+  /**
+   * Phase 8b, decision F: columns I to N. The block sits between the physician time (H) and the
+   * decision offset (O), so the two cells either side of it are asserted with it — a block written
+   * one column out would still look right on its own.
+   */
+  it('writes the pain-management block into columns I to N', () => {
+    const pain = caseWith({
+      mrn: '3200099',
+      registrationAt: new Date('2026-09-01T19:30:00Z'), // 22:30 Riyadh, 01-Sep
+      physicianAt: new Date('2026-09-01T22:00:00Z'), // 01:00 Riyadh, 02-Sep
+      sickleCellTreatment: 'YES',
+      painkillerPrescribed: 'YES',
+      painkillerAt: new Date('2026-09-01T22:20:00Z'), // 01:20 Riyadh, the next Riyadh day
+      pethidinePrescribed: 'YES',
+      pethidineDoseMg: 100,
+      decisionAt: new Date('2026-09-02T04:00:00Z'),
+    })
+    const row = adaaRow(pain)
+    expect(row[7]).toBe('01:00') // H, the column before the block
+    expect(row.slice(8, 14)).toEqual(['Yes', 'Yes', '1', 'Yes', '100', '01:20'])
+    expect(row[14]).toBe('1') // O, the column after it
+  })
+
+  it('leaves each pain question blank rather than writing a No the navigator did not give', () => {
+    // Nothing answered: six blank cells, not "No" four times.
+    expect(adaaRow(caseWith({})).slice(8, 14)).toEqual(['', '', '', '', '', ''])
+    // Answered No: the No is written, and the three cells that depend on a Yes stay blank.
+    const refused = caseWith({ sickleCellTreatment: 'NO', painkillerPrescribed: 'NO', pethidinePrescribed: 'NO' })
+    expect(adaaRow(refused).slice(8, 14)).toEqual(['No', 'No', '', 'No', '', ''])
+    expect(answerYesNo('YES')).toBe('Yes')
+    expect(answerYesNo('NO')).toBe('No')
+    expect(answerYesNo('NOT_SURE')).toBe('')
+    expect(answerYesNo(null)).toBe('')
+  })
+
+  it('writes the painkiller time with no day offset when it was given the same Riyadh day', () => {
+    const sameDay = caseWith({
+      registrationAt: new Date('2026-09-01T05:00:00Z'), // 08:00 Riyadh
+      painkillerPrescribed: 'YES',
+      painkillerAt: new Date('2026-09-01T05:45:00Z'), // 08:45 Riyadh
+    })
+    expect(adaaRow(sameDay).slice(8, 14)).toEqual(['', 'Yes', '', '', '', '08:45'])
+  })
+
+  it('writes only a dose the form’s dropdown has, and only when pethidine was prescribed', () => {
+    const with_ = (over: Parameters<typeof caseWith>[0]) => pethidineDose(caseWith(over))
+    expect(with_({ pethidinePrescribed: 'YES', pethidineDoseMg: 50 })).toBe('50')
+    expect(with_({ pethidinePrescribed: 'YES', pethidineDoseMg: 150 })).toBe('150')
+    // Off the list, or missing: blank, and `kpi.ts` puts the case in no band either.
+    expect(with_({ pethidinePrescribed: 'YES', pethidineDoseMg: 75 })).toBe('')
+    expect(with_({ pethidinePrescribed: 'YES', pethidineDoseMg: null })).toBe('')
+    // A dose left on a case whose answer says No is not reported as a prescription.
+    expect(with_({ pethidinePrescribed: 'NO', pethidineDoseMg: 100 })).toBe('')
+  })
+
   it('is one row per case, in the order it was given them', () => {
     const sheet = adaaManualSheet([OVERNIGHT, caseWith({})])
     expect(sheet.name).toBe('ED KPIs manual')
@@ -174,13 +232,23 @@ describe('the form’s value vocabularies', () => {
     expect(admissionType(null)).toBe('')
   })
 
-  it('maps only the three dispositions the form has a discharge type for', () => {
+  it('maps every disposition the form has a discharge type for, decision E’s two included', () => {
     expect(dischargeType('DISCHARGED_HOME')).toBe('Home')
     expect(dischargeType('DISCHARGED_DAMA')).toBe('DAMA')
     expect(dischargeType('TRANSFERRED')).toBe('Another Health Facility')
+    expect(dischargeType('DECEASED')).toBe('Deceased')
+    expect(dischargeType('REFERRED_UCC')).toBe('Referred to UCC')
     expect(dischargeType('ADMITTED')).toBe('')
     expect(dischargeType('LEFT_WITHOUT_BEING_SEEN')).toBe('')
     expect(dischargeType(null)).toBe('')
+  })
+
+  it('leaves Admission Type alone for the two new dispositions: neither is an admission', () => {
+    const dead = caseWith({ status: 'RESOLVED', disposition: 'DECEASED', wardCode: 'ICU', departedAt: new Date('2026-09-01T09:00:00Z'), resolvedAt: new Date('2026-09-01T09:00:00Z') })
+    expect(adaaRow(dead)[16]).toBe('')
+    expect(adaaRow(dead)[17]).toBe('Deceased')
+    expect(adaaRow(caseWith({ ...dead, disposition: 'REFERRED_UCC' }))[16]).toBe('')
+    expect(adaaRow(caseWith({ ...dead, disposition: 'REFERRED_UCC' }))[17]).toBe('Referred to UCC')
   })
 })
 
@@ -258,6 +326,104 @@ describe('the KPI summary sheet', () => {
     expect(labels).toContain('Ward')
     expect(labels).toContain('Benchmark colours')
   })
+
+  it('appends KPI 7 and KPI 8 to the CTAS table without moving anything to their left', () => {
+    expect(ADAA_SUMMARY_HEADER.slice(-2)).toEqual(['KPI 7 % deceased', 'KPI 8 door to painkiller (total minutes)'])
+    // KPI 5 and KPI 6 are still columns 13 and 14: nothing before the two new ones has moved.
+    expect(ADAA_SUMMARY_HEADER[12]).toBe('KPI 5 % within 4 h')
+    expect(ADAA_SUMMARY_HEADER[13]).toBe('KPI 6 % DAMA')
+  })
+})
+
+/**
+ * Phase 8b: KPI 7, KPI 8 and the form's Pain Killer Statistics block, over cases built for them —
+ * one death, one referral to the UCC, and three painkillers that land in three different bands.
+ */
+describe('the KPI summary sheet, Phase 8b', () => {
+  const resolvedAt = new Date('2026-09-01T09:00:00Z')
+  const outcome = (id: string, disposition: string) =>
+    caseWith({ id, mrn: id, status: 'RESOLVED', ctas: 3, departedAt: resolvedAt, resolvedAt, disposition })
+  /** Registered 08:00 Riyadh; the painkiller `minutes` later, so the band is arithmetic, not luck. */
+  const pain = (id: string, minutes: number, dose: number | null) =>
+    caseWith({
+      id,
+      mrn: id,
+      ctas: 3,
+      registrationAt: new Date('2026-09-01T05:00:00Z'),
+      painkillerPrescribed: 'YES',
+      painkillerAt: new Date(new Date('2026-09-01T05:00:00Z').getTime() + minutes * 60_000),
+      pethidinePrescribed: dose == null ? 'NO' : 'YES',
+      pethidineDoseMg: dose,
+    })
+
+  const cases = [
+    outcome('d1', 'DECEASED'),
+    outcome('u1', 'REFERRED_UCC'),
+    pain('p1', 20, 50),
+    pain('p2', 90, null),
+    // Prescribed but never timed: counted as prescribed, in no band, and KPI 8 cannot see it.
+    caseWith({ id: 'p3', mrn: 'p3', ctas: 3, painkillerPrescribed: 'YES', painkillerAt: null }),
+  ]
+  const rows = adaaSummaryRows(cases)
+  const rowFor = (heading: string, label: string): string[] => {
+    const start = rows.findIndex((r) => r.cells[0] === heading)
+    const found = rows.slice(start).find((r) => r.cells[0] === label)
+    if (!found) throw new Error(`no "${label}" row under "${heading}"`)
+    return found.cells
+  }
+
+  it('divides the deaths by every tracked case in the group, open ones included', () => {
+    // Five cases in all, one of them Deceased: 20.0 %, whatever their status.
+    expect(rowFor('ED statistics, tracked cases', 'Total')[14]).toBe('20.0%')
+    expect(rowFor('ED statistics, tracked cases', 'Total')[1]).toBe('5')
+    // Below MIN_N the share is withheld, exactly as the app withholds it on screen.
+    expect(adaaSummaryRows([outcome('d1', 'DECEASED')]).find((r) => r.cells[0] === 'Total')!.cells[14]).toBe('n<3')
+  })
+
+  it('totals the door-to-painkiller minutes and colours the cell by their mean', () => {
+    const total = rowFor('ED statistics, tracked cases', 'Total')
+    expect(total[15]).toBe('110') // 20 + 90 minutes; p3 has no time and is in neither
+    // The mean is 55 minutes, which is under an hour: world class.
+    const line = rows.find((r) => r.cells[0] === 'Total' && r.cells.length === ADAA_SUMMARY_HEADER.length)!
+    expect(line.fills?.[15]).toBe(BENCHMARK_FILL.world)
+    expect(line.fills?.[14]).toBeNull() // KPI 7 has no benchmark in the form
+  })
+
+  it('lays the Pain Killer Statistics block out per CTAS with its two denominators', () => {
+    expect(rows.map((r) => r.cells[0])).toContain('Pain Killer Statistics (KPI 8)')
+    expect(ADAA_PAIN_HEADER).toEqual([
+      'CTAS',
+      'Painkiller prescribed',
+      '≤30 min',
+      '>30 min–1 h',
+      '>1–3 h',
+      '>3 h',
+      'Pethidine prescribed',
+      '50 mg',
+      '100 mg',
+      '150 mg',
+      'Door to painkiller (total minutes)',
+    ])
+    // Three painkillers prescribed, two of them timed: 20 min in the first band, 90 in the third.
+    // One pethidine, 50 mg. The prescribed columns are the denominators, and they do not agree
+    // with the bands, which is the point of stating them.
+    expect(rowFor('Pain Killer Statistics (KPI 8)', 'Total')).toEqual([
+      'Total',
+      '3',
+      '1',
+      '0',
+      '1',
+      '0',
+      '1',
+      '1',
+      '0',
+      '0',
+      '110',
+    ])
+    // Every case here is CTAS 3, so the level row repeats the total and CTAS 1 is empty.
+    expect(rowFor('Pain Killer Statistics (KPI 8)', 'CTAS 3').slice(1)).toEqual(['3', '1', '0', '1', '0', '1', '1', '0', '0', '110'])
+    expect(rowFor('Pain Killer Statistics (KPI 8)', 'CTAS 1').slice(1)).toEqual(['0', '0', '0', '0', '0', '0', '0', '0', '0', ''])
+  })
 })
 
 describe('the Read me', () => {
@@ -287,8 +453,23 @@ describe('the Read me', () => {
     expect(text).toContain('1 h 00.6 min')
     expect(text).toContain('Asia/Riyadh')
     expect(text).toContain('DD-MMM-YYYY')
-    expect(text).toContain('KPI 8 cannot be produced')
-    expect(text).toContain('KPI 7 (mortality) is not produced')
+  })
+
+  it('says what KPI 7 and KPI 8 are, and no longer says they cannot be produced', () => {
+    expect(text).toContain('LAMA is still not a disposition in ER Navigator')
+    expect(text).toContain('KPI 7 is the Deceased dispositions divided by every tracked case in the range, open ones included')
+    expect(text).toContain('KPI 8 is the door to the painkiller being given')
+    expect(text).toContain('Pain Killer Statistics block')
+    // The two lines Slice H removes, because they stopped being true.
+    expect(text).not.toContain('KPI 8 cannot be produced')
+    expect(text).not.toContain('KPI 7 (mortality) is not produced')
+    expect(text).not.toContain('Columns I to N (sickle-cell treatment, painkiller prescribed, its calendar-day offset, pethidine, the dose and the time given) are always blank')
+  })
+
+  it('says where a painkiller with no time, or a pethidine with no on-list dose, ends up', () => {
+    expect(text).toContain('is in no band and in no dose column')
+    expect(text).toContain('dashboard’s Documentation section')
+    expect(text).toContain('never "No"')
   })
 
   it('counts the rows whose triage cells were left blank', () => {
