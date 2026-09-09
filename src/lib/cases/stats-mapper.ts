@@ -106,9 +106,9 @@ export type CaseStatsRow = Prisma.CaseGetPayload<{ select: typeof CASE_STATS_SEL
  * One caller overrides the `updates` relation with a select of its own — `CASE_EXPORT_SELECT` in
  * src/lib/export/load.ts, which takes every update oldest-first with its text and author for the
  * Updates sheet — and it does not ask for `action`. Rather than require a column that select does
- * not have, the field is optional here and a row without it yields an empty `updateActions`. When
- * the export needs the deck's categories (Slice H) it adds `action: true` to its own override and
- * nothing else changes.
+ * not have, the field is optional here and a row without it yields no kinds AND no untagged
+ * count, which is the honest answer for a caller that never asked. When the export needs the
+ * deck's categories (Slice H) it adds `action: true` to its own override and nothing else changes.
  */
 type StatsRowInput = Omit<CaseStatsRow, 'updates'> & {
   updates: ReadonlyArray<{ createdAt: Date; action?: CaseForStats['updateActions'][number] | null }>
@@ -129,11 +129,18 @@ export function toCaseForStats(row: StatsRowInput): CaseForStats {
   // export's takes all of them oldest-first, and both must yield the same "last update at".
   let lastUpdateAt: Date | null = null
   // Phase 8b: the DISTINCT action categories on the case, in first-seen order. A Set, because the
-  // deck counts a case once per category however many updates carried it.
+  // deck counts a case once per category however many updates carried it — and, separately, the
+  // number of updates that named no category, which a set of kinds cannot express.
   const updateActions = new Set<CaseForStats['updateActions'][number]>()
+  let untaggedUpdatesCount = 0
   for (const u of row.updates) {
     if (!lastUpdateAt || u.createdAt.getTime() > lastUpdateAt.getTime()) lastUpdateAt = u.createdAt
+    // A caller whose select did not ask for `action` (the export's) has no opinion on tagging, so
+    // it contributes neither a kind nor an untagged update. `'action' in u` is the distinction
+    // between "not asked for" and "asked for and empty"; `u.action == null` cannot see it.
+    if (!('action' in u)) continue
     if (u.action) updateActions.add(u.action)
+    else untaggedUpdatesCount += 1
   }
 
   return {
@@ -198,6 +205,7 @@ export function toCaseForStats(row: StatsRowInput): CaseForStats {
     // needs to look a user up.
     reviewedByName: row.reviewedBy?.displayName ?? null,
     updateActions: [...updateActions],
+    untaggedUpdatesCount,
     otherTexts: row.reasons
       .filter((r): r is typeof r & { otherText: string } => !!r.otherText && r.otherText.trim() !== '')
       .map((r) => ({ stageName: r.reason.stage.name, text: r.otherText })),

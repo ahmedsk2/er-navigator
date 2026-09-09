@@ -55,6 +55,7 @@ export const BASE_CASE: CaseForExport = {
   reviewedAt: null,
   reviewedByName: null,
   updateActions: [],
+  untaggedUpdatesCount: 0,
   otherTexts: [],
   navigatorName: 'Nadia Navigator',
   navigatorUsername: 'nadia',

@@ -231,6 +231,7 @@ describe('toCaseForStats', () => {
       reviewedAt: null,
       reviewedByName: null,
       updateActions: [],
+      untaggedUpdatesCount: 0,
       otherTexts: [],
     })
 
@@ -384,22 +385,30 @@ describe('toCaseForStats', () => {
       }),
     )
     expect([...mapped.updateActions].sort()).toEqual(['BED_MANAGEMENT', 'LEADERSHIP_ESCALATION'])
+    // The untagged ones are COUNTED, not inferred: the deck's seventh row is "an update was
+    // written and no action was named", which a set of distinct kinds cannot express.
+    expect(mapped.untaggedUpdatesCount).toBe(1)
     // The count is every update, tagged or not; the newest is still found by scanning.
     expect(mapped.updatesCount).toBe(4)
     expect(mapped.lastUpdateAt).toEqual(at('2026-09-08T09:00:00Z'))
     expect(toCaseForStats(row()).updateActions).toEqual([])
+    expect(toCaseForStats(row()).untaggedUpdatesCount).toBe(0)
   })
 
   /**
    * The export's own select overrides `updates` and does not ask for `action` (Slice H adds it).
-   * A row without the field must map to no actions rather than to a type error or a crash.
+   * Such a row must map to no kinds AND to no untagged updates — "not asked for" is not the same
+   * answer as "asked for and empty", and reporting one update as untagged here would be a figure
+   * the query never established.
    */
-  it('accepts an update row with no action field at all', () => {
+  it('accepts an update row with no action field at all, and calls it neither tagged nor untagged', () => {
     const mapped = toCaseForStats({
       ...row({ _count: { updates: 1 } }),
       updates: [{ createdAt: at('2026-09-08T06:00:00Z') }],
     })
     expect(mapped.updateActions).toEqual([])
+    expect(mapped.untaggedUpdatesCount).toBe(0)
+    expect(mapped.updatesCount).toBe(1)
     expect(mapped.lastUpdateAt).toEqual(at('2026-09-08T06:00:00Z'))
   })
 })

@@ -148,6 +148,12 @@ export type CaseForStats = CaseClock & {
   reviewedByName: string | null
   /** The DISTINCT action categories on this case's updates (decision C), in no particular order. */
   updateActions: ReadonlyArray<UpdateActionKind>
+  /**
+   * How many of those updates carried no category at all. Counted rather than inferred: the
+   * deck's seventh row is "an update was written and no action was named", and a set of distinct
+   * kinds cannot say whether one plain update was written or nine.
+   */
+  untaggedUpdatesCount: number
   otherTexts: ReadonlyArray<{ stageName: string; text: string }>
 }
 
