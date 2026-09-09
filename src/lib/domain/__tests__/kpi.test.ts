@@ -89,6 +89,7 @@ function base(id: string, over: Partial<KpiCase> = {}): KpiCase {
     reviewedAt: null,
     reviewedByName: null,
     updateActions: [],
+    untaggedUpdatesCount: 0,
     ...over,
   }
 }
@@ -110,6 +111,7 @@ const b = base('b', {
   stageNames: ['Referral / consulted team', 'Admission process'],
   medAdminInformedAt: T(2),
   updatesCount: 1,
+  untaggedUpdatesCount: 1,
   lastUpdateAt: T(2),
   triageAt: T(26.25),
   physicianAt: T(26),
@@ -136,6 +138,7 @@ const c = base('c', {
   bedAssignedAt: T(4),
   handoverAt: T(3.5),
   updatesCount: 2,
+  untaggedUpdatesCount: 2,
   lastUpdateAt: T(3),
   consults: [{ departmentName: 'Internal Medicine', consultedAt: T(12), seenAt: null, repliedAt: T(11.5) }],
   investigations: [
@@ -289,13 +292,16 @@ describe('the weekly deck', () => {
       ['Update without an action tag', 2],
     ])
     // A tagged update counts under its category and not as untagged; a mixed case counts both.
-    const tagged = base('t1', { updatesCount: 1, updateActions: ['PRO_SOCIAL_WORK'] })
-    const mixed = base('t2', { updatesCount: 3, updateActions: ['DAMA_MANAGEMENT', 'FAX_RCC'] })
-    const rows = actionsDocumented([tagged, mixed]).byKind
+    const tagged = base('t1', { updatesCount: 1, updateActions: ['PRO_SOCIAL_WORK'], untaggedUpdatesCount: 0 })
+    const mixed = base('t2', { updatesCount: 3, updateActions: ['DAMA_MANAGEMENT', 'FAX_RCC'], untaggedUpdatesCount: 1 })
+    // Two updates both tagged "bed management": two tagged updates, none untagged.
+    const repeated = base('t3', { updatesCount: 2, updateActions: ['BED_MANAGEMENT'], untaggedUpdatesCount: 0 })
+    const rows = actionsDocumented([tagged, mixed, repeated]).byKind
     const by = Object.fromEntries(rows.map((r) => [r.name, r.ids]))
     expect(by['PRO / social work']).toEqual(['t1'])
     expect(by['DAMA management']).toEqual(['t2'])
     expect(by['External transfer / fax / RCC']).toEqual(['t2'])
+    expect(by['Case / bed management']).toEqual(['t3'])
     expect(by['Update without an action tag']).toEqual(['t2'])
   })
 
@@ -513,10 +519,20 @@ describe('Adaa', () => {
     const rows = painkillerBands([pk('a1', 30), pk('a2', 30.5, 50), pk('a3', 60, 100), pk('a4', 61, 100), pk('a5', 180), pk('a6', 181, 150), base('none')])
     expect(rows.map((r) => [r.name, r.value])).toEqual([
       ['≤30 min', 1],
-      ['31–60 min', 2],
-      ['1–3 h', 2],
+      ['>30 min–1 h', 2],
+      ['>1–3 h', 2],
       ['>3 h', 1],
     ])
+    // Prescribed with no time, or an off-list dose: in no band, counted in the denominators and flagged.
+    const noTime = base('nt', { registrationAt: T(5), painkillerPrescribed: 'YES', painkillerAt: null, pethidinePrescribed: 'YES', pethidineDoseMg: 75 })
+    const noDose = base('nd', { registrationAt: T(5), painkillerPrescribed: 'YES', painkillerAt: T(4), pethidinePrescribed: 'YES', pethidineDoseMg: null })
+    expect(painkillerBands([noTime, noDose]).map((r) => r.value)).toEqual([0, 0, 1, 0])
+    expect(pethidineDoses([noTime, noDose]).map((r) => r.value)).toEqual([0, 0, 0])
+    const summary = adaaSummary([noTime, noDose]).at(-1)!
+    expect(summary).toMatchObject({ painkillerYesN: 2, pethidineYesN: 2, kpi8N: 1 })
+    const gaps = completeness([noTime, noDose, a], NOW)
+    expect(gaps.painkillerNoTime.ids).toEqual(['nt'])
+    expect(gaps.pethidineNoDose.ids).toEqual(['nt', 'nd'])
     expect(pethidineDoses([pk('a2', 30.5, 50), pk('a3', 60, 100), pk('a4', 61, 100), pk('a6', 181, 150), base('none')]).map((r) => [r.name, r.value])).toEqual([
       ['50 mg', 1],
       ['100 mg', 2],
@@ -529,9 +545,13 @@ describe('Adaa', () => {
     const ucc = base('y', { status: 'RESOLVED', registrationAt: T(6), departedAt: T(2), resolvedAt: T(2), disposition: 'REFERRED_UCC', ctas: 5, sickleCellTreatment: 'YES' })
     const given = base('z', { registrationAt: T(4), painkillerPrescribed: 'YES', painkillerAt: T(3), pethidinePrescribed: 'YES', pethidineDoseMg: 100, ctas: 3 })
     const overall = adaaSummary([...ALL, dead, ucc, given]).at(-1)!
+    expect(overall.total).toBe(8)
     expect(overall.resolvedN).toBe(5)
     expect(overall.deceasedN).toBe(1)
-    expect(overall.deceasedShare).toBeCloseTo(1 / 5, 10)
+    // The form divides deaths by TOTAL patients: 8 tracked cases, open ones included.
+    expect(overall.deceasedShare).toBeCloseTo(1 / 8, 10)
+    expect(overall.painkillerYesN).toBe(1)
+    expect(overall.pethidineYesN).toBe(1)
     expect(overall.uccN).toBe(1)
     expect(overall.kpi8N).toBe(1)
     expect(overall.kpi8TotalMin).toBe(60)

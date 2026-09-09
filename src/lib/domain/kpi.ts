@@ -102,6 +102,8 @@ export type KpiCase = CaseClock & {
   reviewedByName: string | null
   /** The distinct action kinds recorded on the case's updates. */
   updateActions: ReadonlyArray<UpdateActionKind>
+  /** Updates written with no action tag (the loader counts them; distinct kinds cannot). */
+  untaggedUpdatesCount: number
 }
 
 /** A count with a drill-down. `ids` are case ids, deduplicated; `value` may exceed `ids.length` where the unit is a row, and the function says so. */
@@ -294,13 +296,13 @@ export type ActionKind = (typeof ACTION_KINDS)[number][0]
 export type Actions = { any: IdRow; none: IdRow; byKind: IdRow[] }
 
 function actionKindsOf(c: KpiCase): ActionKind[] {
-  const tagged = c.updateActions ?? []
-  const kinds = new Set<ActionKind>(tagged)
+  const kinds = new Set<ActionKind>(c.updateActions ?? [])
   if (c.medAdminInformedAt) kinds.add('LEADERSHIP_ESCALATION')
   if (c.bedRequestedAt) kinds.add('BED_MANAGEMENT')
   if (c.transferRequestedAt) kinds.add('FAX_RCC')
-  // Updates beyond the tagged ones: text written with no category chosen.
-  if (c.updatesCount > tagged.length) kinds.add('UNTAGGED')
+  // Text written with no category chosen. A count, not a comparison against the distinct kinds:
+  // two updates both tagged "bed management" are two tagged updates, not one (verification 8b).
+  if ((c.untaggedUpdatesCount ?? 0) > 0) kinds.add('UNTAGGED')
   return [...kinds]
 }
 
@@ -359,6 +361,10 @@ export type Completeness = {
   noStay: IdRow
   /** Resolved and not yet marked reviewed by a supervisor (decision H). */
   resolvedNotReviewed: IdRow
+  /** Painkiller recorded as prescribed with no time given: in no KPI 8 figure until the time is entered. */
+  painkillerNoTime: IdRow
+  /** Pethidine recorded as prescribed with no dose, or a dose outside 50 / 100 / 150 mg. */
+  pethidineNoDose: IdRow
 }
 
 /** True when every recorded instant in the sequence is at or after the one before it. */
@@ -408,6 +414,11 @@ export function completeness(cases: ReadonlyArray<KpiCase>, now: Date): Complete
     outOfOrder: row('Times out of order', isOutOfOrder),
     noStay: row('Stay cannot be computed (leaving before registration)', (c) => elapsedHours(c, now) == null),
     resolvedNotReviewed: row('Resolved, not yet reviewed', (c) => c.status === 'RESOLVED' && !c.reviewedAt),
+    painkillerNoTime: row('Painkiller prescribed, no time given recorded', (c) => c.painkillerPrescribed === 'YES' && !c.painkillerAt),
+    pethidineNoDose: row(
+      'Pethidine prescribed, dose missing or not 50 / 100 / 150 mg',
+      (c) => c.pethidinePrescribed === 'YES' && !(PETHIDINE_DOSES_MG as ReadonlyArray<number>).includes(c.pethidineDoseMg ?? -1),
+    ),
   }
 }
 
@@ -616,8 +627,8 @@ export function kpi8Minutes(c: KpiCase): number | null {
 /** The form's "Pain Killer Statistics" block: (min, max] minutes, the first closed at 30. */
 export const PAINKILLER_BANDS: ReadonlyArray<BandDef> = [
   { name: '≤30 min', min: 0, max: 30 + 1e-9 },
-  { name: '31–60 min', min: 30 + 1e-9, max: 60 + 1e-9 },
-  { name: '1–3 h', min: 60 + 1e-9, max: 180 + 1e-9 },
+  { name: '>30 min–1 h', min: 30 + 1e-9, max: 60 + 1e-9 },
+  { name: '>1–3 h', min: 60 + 1e-9, max: 180 + 1e-9 },
   { name: '>3 h', min: 180 + 1e-9, max: null },
 ]
 
@@ -702,7 +713,12 @@ export type AdaaSummaryRow = {
   /** Only on the 'overall' row: CTAS 4–5 among cases with a CTAS. */
   nonUrgentShare: number | null
   withCtasN: number
-  /** KPI 7: Deceased among resolved cases (decision E made Deceased a disposition). */
+  /**
+   * KPI 7 as the form defines it: deaths divided by TOTAL patients, here every tracked case in
+   * the group, open ones included (the form's own denominator; a resolved-only rate would rise
+   * and fall within a week as cases close). Decision E made Deceased a disposition. `deceasedN`
+   * and `resolvedN` sit beside it for the drill-down and for anyone who wants the other rate.
+   */
   deceasedShare: number | null
   deceasedN: number
   /** Referred to UCC among resolved cases (the form's "Total Number referred to UCC"). */
@@ -715,6 +731,9 @@ export type AdaaSummaryRow = {
   painkiller: number[]
   /** One count per PETHIDINE_DOSES_MG entry. */
   pethidine: number[]
+  /** Cases recorded as painkiller prescribed / pethidine prescribed: the true denominators of the bands and doses above. */
+  painkillerYesN: number
+  pethidineYesN: number
   sickleCellYesN: number
 }
 
@@ -755,7 +774,7 @@ function summaryRow(ctas: AdaaCtasKey, cases: ReadonlyArray<KpiCase>, all: Reado
     resolvedN: resolved.length,
     nonUrgentShare: ctas === 'overall' ? share(nonUrgent, withCtas.length) : null,
     withCtasN: ctas === 'overall' ? withCtas.length : 0,
-    deceasedShare: share(deceased, resolved.length),
+    deceasedShare: share(deceased, cases.length),
     deceasedN: deceased,
     uccN: ucc,
     kpi8TotalMin: k8.total,
@@ -763,6 +782,8 @@ function summaryRow(ctas: AdaaCtasKey, cases: ReadonlyArray<KpiCase>, all: Reado
     kpi8Med: k8.med,
     painkiller: painkillerBands(cases).map((r) => r.value),
     pethidine: pethidineDoses(cases).map((r) => r.value),
+    painkillerYesN: cases.filter((c) => c.painkillerPrescribed === 'YES').length,
+    pethidineYesN: cases.filter((c) => c.pethidinePrescribed === 'YES').length,
     sickleCellYesN: cases.filter((c) => c.sickleCellTreatment === 'YES').length,
   }
 }
