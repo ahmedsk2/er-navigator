@@ -12,6 +12,7 @@
  */
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { acknowledgeAlert as acknowledgeAlertService } from '@/src/lib/alerts/service'
 import { auditContext, isForbiddenError, requireUser, type AuthUser } from '@/src/lib/auth/session'
 import * as service from '@/src/lib/cases/service'
 import type {
@@ -101,6 +102,23 @@ export async function reopenCase(id: string, version: number): Promise<ReopenCas
   }
   if (result.ok) revalidateCase(id)
   return result
+}
+
+/**
+ * Phase 6: the editor's header offers this to a SUPERVISOR or an ADMIN when the case has an
+ * alert nobody has acknowledged (`/admin/alerts` offers the same thing from the other end). The
+ * permission is `alert.acknowledge`, checked in the service like every other mutation.
+ */
+export async function acknowledgeAlert(id: string, alertId: string): Promise<{ ok: boolean }> {
+  const { user, ctx } = await currentActor()
+  try {
+    const result = await acknowledgeAlertService(user, alertId, ctx)
+    if (result.ok) revalidateCase(id)
+    return { ok: result.ok }
+  } catch (error) {
+    if (isForbiddenError(error)) return { ok: false }
+    throw error
+  }
 }
 
 export async function voidCase(id: string, input: unknown): Promise<VoidCaseResult> {

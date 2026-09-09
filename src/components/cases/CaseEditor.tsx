@@ -13,6 +13,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import {
+  acknowledgeAlert as acknowledgeAlertAction,
   addCaseUpdate as addCaseUpdateAction,
   createCase as createCaseAction,
   reopenCase as reopenCaseAction,
@@ -92,6 +93,12 @@ export type CaseEditorProps = {
   initialUpdates: CaseUpdateView[]
   readOnly: boolean
   canVoid: boolean
+  /**
+   * Phase 6: the deepest threshold the alerts worker has recorded on this case that nobody has
+   * acknowledged, or null. Only ever passed for a SUPERVISOR or an ADMIN (`alert.acknowledge`),
+   * so its presence is also the permission to act on it.
+   */
+  alert?: { id: string; thresholdHours: number; firedAt: string } | null
   /** Taken on the server so the first client render is byte-identical. */
   nowIso: string
 }
@@ -114,6 +121,7 @@ export function CaseEditor(props: CaseEditorProps) {
   const [voidReasonText, setVoidReasonText] = useState('')
   const [voidOpen, setVoidOpen] = useState(false)
   const [now, setNow] = useState(() => new Date(props.nowIso))
+  const [alert, setAlert] = useState(props.alert ?? null)
 
   // The clock ticks only while the case is open; a resolved case is frozen at its departure time.
   // `now` starts at the server's instant so the first client render matches the server's HTML.
@@ -343,6 +351,14 @@ export function CaseEditor(props: CaseEditorProps) {
       } else handleFailure(result)
     })
 
+  const onAcknowledge = (): Promise<void> =>
+    run(async () => {
+      if (!caseId || !alert) return
+      const result = await acknowledgeAlertAction(caseId, alert.id)
+      if (result.ok) setAlert(null)
+      else setForbidden(true)
+    })
+
   const onVoid = (): Promise<void> =>
     run(async () => {
       if (!caseId) return
@@ -368,6 +384,22 @@ export function CaseEditor(props: CaseEditorProps) {
           {fmtHours(elapsed)}
         </div>
       </div>
+
+      {alert ? (
+        <div
+          data-alert-banner
+          role="status"
+          className="mx-4 mb-2.5 flex flex-wrap items-center justify-between gap-2 rounded-card border border-band-h6 bg-panel p-3"
+        >
+          <p className="text-body text-ink-2">
+            Past the <span className="num font-semibold">{alert.thresholdHours}h</span> threshold —
+            recorded {fmtStamp(alert.firedAt)}, not yet acknowledged.
+          </p>
+          <Button disabled={busy} onClick={() => void onAcknowledge()}>
+            Acknowledge
+          </Button>
+        </div>
+      ) : null}
 
       {status === 'VOIDED' ? (
         <div className="mx-4 mb-2.5 rounded-card border border-danger bg-panel p-3 text-body text-danger" role="status">

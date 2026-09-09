@@ -39,4 +39,17 @@ describe('the route gate agrees with the session module', () => {
     expect(proxy).toContain(`pathname.startsWith('/api/')`)
     expect(proxy).toContain('status: 401')
   })
+
+  /**
+   * A cookie whose session is gone — deactivated, expired, logged out elsewhere — reaches the
+   * page, which redirects to /login?expired=1. Only the gate can clear a cookie, so it must
+   * recognise that parameter; if it did not, it would send the browser straight back and the two
+   * would redirect at each other forever.
+   */
+  it('clears the cookie on /login?expired instead of bouncing back to the board', () => {
+    expect(proxy).toContain(`searchParams.has('expired')`)
+    expect(proxy).toContain('cookieAttrs(0)')
+    const session = readFileSync(path.resolve(__dirname, '../session.ts'), 'utf8')
+    expect(session).toContain(`redirect('/login?expired=1')`)
+  })
 })

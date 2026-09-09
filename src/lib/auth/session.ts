@@ -252,7 +252,14 @@ export async function requireUser(opts: { as?: 'page' | 'api' } = {}): Promise<A
   const current = await getSession()
   if (current) return current.user
   if (opts.as === 'api') throw new UnauthorizedError()
-  redirect('/login')
+  /**
+   * `?expired=1`, not a bare /login: reaching this line means the gate saw a session cookie and
+   * let the request through, and the session behind it turned out to be gone — expired, logged
+   * out elsewhere, or the user deactivated by an Admin (Phase 6). A render cannot clear a
+   * cookie, so the gate clears it when it sees this parameter; without it the gate would send
+   * the still-cookied browser straight back here and the two would loop.
+   */
+  redirect('/login?expired=1')
 }
 
 /** requireUser + the permission matrix. Throws ForbiddenError, having written the audit row. */
