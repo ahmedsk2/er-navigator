@@ -58,3 +58,21 @@
 html { color-scheme: light; }
 body { background: var(--color-bg); color: var(--color-ink); font-family: var(--font-sans); }
 .num { font-variant-numeric: tabular-nums; }
+
+/*
+  The shift handover sheet (Phase 3). On paper the board stops being an app: the search box, the
+  filter chips, the tab bar, the floating button and the coloured screen rows all go, and the
+  print-only table takes their place — hairlines, 11 px, no colour to run a ward printer dry.
+  Ported from the prototype's `@media print { .no-print { display: none } }` rule.
+*/
+.print-only { display: none; }
+
+@media print {
+  @page { margin: 12mm; }
+  html, body { background: #fff; }
+  .no-print { display: none !important; }
+  .print-only { display: block; }
+  table.print-only { display: table; }
+  tr, td, th { break-inside: avoid; }
+  thead { display: table-header-group; }
+}
