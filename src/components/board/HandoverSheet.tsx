@@ -6,9 +6,10 @@
  * screen rows, and shows this instead. Same rows, same order, same clock — a plain table with
  * hairlines, 11 px, no colour to run out of a ward printer's toner.
  */
+import { Fragment } from 'react'
 import { elapsedOf, identityChips, idleHours, resolvedText, stalenessText } from '@/src/lib/board/rows'
 import type { BoardRow } from '@/src/lib/board/types'
-import { fmtSheetStamp, fmtStamp } from '@/src/lib/cases/local-time'
+import { fmtClock, fmtSheetStamp, fmtStamp } from '@/src/lib/cases/local-time'
 import { fmtHours } from '@/src/lib/domain/time'
 
 const HEAD = 'border border-line px-1.5 py-1 text-left font-bold'
@@ -19,6 +20,31 @@ function lastUpdateText(row: BoardRow, now: Date): string {
   const staleness = stalenessText(idleHours(row, now))
   if (staleness) return staleness
   return row.lastUpdateAt ? fmtStamp(row.lastUpdateAt) : '–'
+}
+
+/**
+ * The case's time sequence in one line under its row (Phase 8): "08:12 Registration · +0h 14m
+ * Triage · …", the same `timeline()` steps the case page lists, printed compactly because the
+ * sheet's job is to be read at a shift handover, not to be a per-case slide.
+ *
+ * A case with nothing recorded but its registration prints no line at all: the registration time
+ * is already in its own column, and an empty row is one more line for a ward printer for nothing.
+ */
+function TimelineRow({ row }: { row: BoardRow }) {
+  if (row.timeline.length < 2) return null
+  return (
+    <tr className="break-inside-avoid" data-timeline-row={row.mrn}>
+      <td className={`${CELL} text-[10px] leading-tight`} colSpan={7}>
+        {row.timeline.map((step, i) => (
+          <span key={step.key} className="whitespace-nowrap">
+            {i > 0 ? <span className="text-muted"> · </span> : null}
+            <span className="num">{fmtClock(step.at)}</span> {step.label}
+            {step.fromPrevious == null ? null : <span className="num"> (+{fmtHours(step.fromPrevious)})</span>}
+          </span>
+        ))}
+      </td>
+    </tr>
+  )
 }
 
 export function HandoverSheet({
@@ -54,7 +80,8 @@ export function HandoverSheet({
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.id} className="break-inside-avoid">
+            <Fragment key={row.id}>
+            <tr className="break-inside-avoid">
               {/* CTAS and the ED area ride with the MRN rather than costing two more columns on
                   a sheet that already has seven and has to fit a ward printer's page. */}
               <td className={`num ${CELL} font-bold`}>
@@ -72,6 +99,8 @@ export function HandoverSheet({
               <td className={`num ${CELL}`}>{lastUpdateText(row, now)}</td>
               <td className={CELL}>{resolvedText(row)}</td>
             </tr>
+            <TimelineRow row={row} />
+            </Fragment>
           ))}
         </tbody>
       </table>
