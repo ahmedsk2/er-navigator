@@ -26,6 +26,18 @@ test('phase 3 gate screenshots', async ({ page }, testInfo) => {
   const mobile = testInfo.project.name === 'mobile'
   const suffix = mobile ? 'mobile-390x844' : 'desktop-1280x800'
   await fromClientIp(page, mobile ? '198.51.100.81' : '198.51.100.82')
+  /**
+   * The phone project's user agent is Safari's, so the Phase 7 install banner would sit above
+   * the rows in every mobile capture here. These four are the board's own gate screenshots;
+   * the banner has its own, in `tests/e2e/pwa.spec.ts` (`design/screens/phase7-install-*`).
+   */
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.setItem('ern.installBanner.dismissed.v1', '1')
+    } catch {
+      // A context with storage blocked: the banner shows, which is only a cosmetic difference.
+    }
+  })
   await signIn(page, E2E_USERS.navigator)
 
   // The seeded fixtures only: another spec file may have opened cases against the same database.

@@ -21,6 +21,7 @@ import {
   sortByElapsed,
 } from '@/src/lib/board/rows'
 import { BOARD_FILTERS, type BoardFilter, type BoardPayload } from '@/src/lib/board/types'
+import { InstallPrompt } from '@/src/components/shell/InstallPrompt'
 import { BoardRowItem } from './BoardRowItem'
 import { HandoverSheet } from './HandoverSheet'
 
@@ -122,6 +123,10 @@ export function Board({ initial, initialQuery, printedBy }: { initial: BoardPayl
           ))}
         </div>
       </div>
+
+      {/* Below the filters, above the rows: seen on arrival, never in the way of the list, and
+          gone for good once dismissed or installed (Phase 7). */}
+      <InstallPrompt />
 
       <HandoverSheet rows={visible} now={now} printedBy={printedBy} />
 

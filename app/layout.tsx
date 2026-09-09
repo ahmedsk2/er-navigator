@@ -16,6 +16,23 @@ export const metadata: Metadata = {
   description: 'Tracks ED patients whose stay is running long. Qatif Central Hospital ER Navigators.',
   applicationName: 'ER Navigator',
   robots: { index: false, follow: false },
+  // The PWA (Phase 7). These become <link rel="manifest">, <link rel="icon"> and
+  // <link rel="apple-touch-icon"> in the head of every page; `app/manifest.ts` is what the first
+  // one points at, and proxy.ts keeps all of them reachable signed out so an install can start.
+  manifest: '/manifest.webmanifest',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: '32x32' },
+      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+    ],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
+  appleWebApp: {
+    // iOS has no manifest: these are what make "Add to Home Screen" open without browser chrome.
+    capable: true,
+    title: 'ER Nav',
+    statusBarStyle: 'default',
+  },
 }
 
 export const viewport: Viewport = { width: 'device-width', initialScale: 1, themeColor: '#1f7a8c' }
