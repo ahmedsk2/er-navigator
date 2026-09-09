@@ -13,3 +13,4 @@ tests
 .env
 .env.*
 .claude
+dist

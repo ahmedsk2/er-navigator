@@ -21,7 +21,7 @@
 #   db       postgres 16 with the first-boot init baked in (docker/postgres/Dockerfile)
 #   migrate  one-shot: prisma migrate deploy + role sync + seed as the OWNER role, exits 0
 #   app      Next.js standalone on :3000; runtime connects as the limited APP role
-#   worker   (Phase 6) threshold alerts, same image, different command
+#   worker   threshold alerts, same image, `node worker.js`, no inbound traffic
 services:
   db:
     build:
@@ -118,6 +118,53 @@ services:
       retries: 3
       start_period: 40s
       start_interval: 2s
+
+  # Threshold alerts (locked plan section 6). The same runner image with a different command, so
+  # a deploy can never leave the worker on an older build than the app. It serves nothing, so it
+  # is on `internal` only and coolify-proxy cannot reach it; it connects as the limited APP role,
+  # which may INSERT into Alert, CaseUpdate and AuditLog and delete none of them.
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    command: ["node", "worker.js"]
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${APP_DB_USER:-ernav_app}:${APP_DB_PASSWORD}@db:5432/${POSTGRES_DB:-ernav}?schema=public
+      APP_URL: ${APP_URL:-https://nav.towardpcc.com}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Riyadh}
+      TZ: UTC
+      ALERT_INTERVAL_MINUTES: ${ALERT_INTERVAL_MINUTES:-5}
+      # username=address pairs for the active supervisors and admins. Empty = alerts are recorded
+      # and logged, never emailed (User has no address column; the data model is authoritative).
+      ALERT_EMAIL_MAP: ${ALERT_EMAIL_MAP:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-ER Navigator <no-reply@towardpcc.com>}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    networks:
+      - internal
+    healthcheck:
+      # The worker touches /tmp/heartbeat at the end of every cycle. Unhealthy means no cycle has
+      # finished for fifteen minutes, which at the default five-minute interval is three misses.
+      test: ["CMD", "sh", "-c", "test $(( $(date +%s) - $(stat -c %Y /tmp/heartbeat) )) -lt 900"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
 networks:
   coolify:
