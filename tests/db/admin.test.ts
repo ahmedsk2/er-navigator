@@ -514,6 +514,16 @@ describe('admin reference lists', () => {
       error: 'validation',
     })
 
+    // A neighbour of this file's own first, so the reorder below swaps with a row this test owns.
+    // The suites share one database and run in parallel: tests/db/cases.test.ts adds an area at
+    // sortOrder 900 and deletes it in its afterAll, and a new area lands right after it — so a
+    // move "up" from the end of the list once swapped with that row and hit P2025 when the other
+    // suite deleted it between the read and the update.
+    const neighbour = await addListItem(admin, { kind: 'area', name: `${name} neighbour`, code: `${code}N` }, ctxFor(admin.id))
+    expect(neighbour.ok).toBe(true)
+    if (!neighbour.ok) throw new Error('unreachable')
+    areas.push(neighbour.id)
+
     const added = await addListItem(admin, { kind: 'area', name, code }, ctxFor(admin.id))
     expect(added.ok).toBe(true)
     if (!added.ok) throw new Error('unreachable')
@@ -528,8 +538,12 @@ describe('admin reference lists', () => {
     expect(afterRename.code).toBe(code)
 
     const beforeMove = afterRename.sortOrder
+    const neighbourBefore = (await prisma.edArea.findUniqueOrThrow({ where: { id: neighbour.id } })).sortOrder
+    expect(neighbourBefore).toBeLessThan(beforeMove)
     expect(await moveListItem(admin, { kind: 'area', id: added.id, direction: 'up' }, ctxFor(admin.id))).toMatchObject({ ok: true })
-    expect((await prisma.edArea.findUniqueOrThrow({ where: { id: added.id } })).sortOrder).toBeLessThan(beforeMove)
+    // The two swapped places: the moved row took its neighbour's order and the neighbour took its.
+    expect((await prisma.edArea.findUniqueOrThrow({ where: { id: added.id } })).sortOrder).toBe(neighbourBefore)
+    expect((await prisma.edArea.findUniqueOrThrow({ where: { id: neighbour.id } })).sortOrder).toBe(beforeMove)
 
     expect(await setListItemActive(admin, { kind: 'area', id: added.id, active: false }, ctxFor(admin.id))).toMatchObject({ ok: true })
     expect((await prisma.edArea.findUniqueOrThrow({ where: { id: added.id } })).active).toBe(false)
