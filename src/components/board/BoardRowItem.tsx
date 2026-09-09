@@ -9,7 +9,16 @@
  * (Phase 4) reuses it from a server component, and it has no state either way.
  */
 import Link from 'next/link'
-import { bandOf, elapsedOf, idleHours, isStale, reasonText, resolvedText, stalenessText } from '@/src/lib/board/rows'
+import {
+  bandOf,
+  elapsedOf,
+  identityChips,
+  idleHours,
+  isStale,
+  reasonText,
+  resolvedText,
+  stalenessText,
+} from '@/src/lib/board/rows'
 import type { BoardRow } from '@/src/lib/board/types'
 import { fmtStamp } from '@/src/lib/cases/local-time'
 import { fmtHours, spokenHours, type Band } from '@/src/lib/domain/time'
@@ -50,8 +59,19 @@ export function BoardRowItem({ row, now }: { row: BoardRow; now: Date }) {
         <span className={`w-1.5 shrink-0 rounded-r-[3px] ${BAND_BG[rowBand]}`} aria-hidden />
 
         <span className="min-w-0 flex-1">
-          <span className="flex items-baseline gap-2">
+          <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <span className="num text-[16px] font-bold">{row.mrn}</span>
+            {/* Phase 8: CTAS and the ED area, only when they were recorded, so a row that has
+                neither reads exactly as it did before. */}
+            {identityChips(row).map((chip) => (
+              <span
+                key={chip}
+                data-chip={chip}
+                className="num rounded-chip border border-line px-1.5 py-px text-caption text-ink-2"
+              >
+                {chip}
+              </span>
+            ))}
             <span className="num text-caption text-muted">reg {fmtStamp(row.registrationAt)}</span>
           </span>
 

@@ -118,6 +118,15 @@ model Case {
   primaryReasonId    String?
   medAdminInformedAt DateTime?
 
+  // Phase 8 collection fields (docs/specs/phase8-brief.md §5). Every KPI in both ED decks and in
+  // the national Adaa form is reported per CTAS level, and the March deck splits everything by ED
+  // area, so both are recorded on the case and both are optional — a navigator who does not know
+  // one leaves it blank. `ctas` is 1..5, checked by zod (validation.ts) rather than by a database
+  // constraint, so an Admin is never locked out by a schema migration; `areaId` points at the
+  // Admin-editable `EdArea` list. Neither can hold a patient identifier.
+  ctas   Int?
+  areaId String?
+
   // general journey milestones (single events)
   triageAt    DateTime?
   roomAt      DateTime?
@@ -153,6 +162,7 @@ model Case {
   openedBy      User    @relation("CaseOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
   primaryReason Reason? @relation("CasePrimaryReason", fields: [primaryReasonId], references: [id], onDelete: Restrict)
   ward          Ward?   @relation(fields: [wardId], references: [id], onDelete: Restrict)
+  area          EdArea? @relation(fields: [areaId], references: [id], onDelete: Restrict)
 
   reasons        CaseReason[]
   consults       CaseConsult[]
@@ -229,14 +239,17 @@ model CaseConsult {
 }
 
 model CaseInvestigation {
-  id          String            @id @default(cuid())
-  caseId      String
-  type        InvestigationType
-  orderedAt   DateTime?
-  collectedAt DateTime? // LAB only: sample collected
-  receivedAt  DateTime? // LAB only: received by lab
-  doneAt      DateTime? // imaging: scan done
-  resultedAt  DateTime? // LAB: resulted; imaging: reported
+  id            String            @id @default(cuid())
+  caseId        String
+  type          InvestigationType
+  orderedAt     DateTime?
+  collectedAt   DateTime? // LAB only: sample collected
+  receivedAt    DateTime? // LAB only: received by lab
+  doneAt        DateTime? // imaging: scan done
+  // Imaging only (Phase 8): the verbal/preliminary report, which is what the ward acts on hours
+  // before the official one. A LAB row keeps it null.
+  preliminaryAt DateTime?
+  resultedAt    DateTime? // LAB: resulted; imaging: reported
 
   case Case @relation(fields: [caseId], references: [id], onDelete: Restrict)
 
@@ -244,6 +257,21 @@ model CaseInvestigation {
 }
 
 model Ward {
+  id        String  @id @default(cuid())
+  code      String  @unique
+  name      String
+  active    Boolean @default(true)
+  sortOrder Int
+
+  cases Case[]
+}
+
+// The ED areas a patient is assigned to (Phase 8). Not in Appendix A: the list comes from the
+// navigators' own August sheet and the monthly ER Journey deck, and it is Admin-editable from
+// Admin → Reference lists exactly as departments and wards are. `name` is the name of a place in
+// the department, never a person's — see tests/unit/phi-guard.test.ts, which lists this model
+// with the other reference tables for that reason.
+model EdArea {
   id        String  @id @default(cuid())
   code      String  @unique
   name      String

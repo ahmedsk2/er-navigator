@@ -127,6 +127,27 @@ export const WARDS: ReadonlyArray<{ code: string; name: string }> = [
   { code: 'OBW', name: 'OB Ward' },
 ]
 
+/**
+ * The ED areas a patient is assigned to (Phase 8).
+ *
+ * NOT in Appendix A. This list comes from the navigators' own August collection sheet and the
+ * monthly ER Journey deck (docs/specs/phase8-brief.md §5), which split every figure by area. Like
+ * the wards it only seeds an empty table: from there Admin → Reference lists owns it, and the
+ * hard rule about not renaming the taxonomy is about Appendix A, not about this.
+ */
+export const ED_AREAS: ReadonlyArray<{ code: string; name: string }> = [
+  { code: 'RESUS', name: 'Resuscitation area' },
+  { code: 'ACUTE', name: 'Acute area' },
+  { code: 'RAZ', name: 'Rapid assessment zone' },
+  { code: 'POOL', name: 'Pooling area' },
+  { code: 'ISO', name: 'Isolation' },
+  { code: 'NEGP', name: 'Negative pressure room' },
+]
+
+/** The triage acuity levels the ED decks and the Adaa form report every KPI per. */
+export const CTAS_LEVELS = [1, 2, 3, 4, 5] as const
+export type CtasLevel = (typeof CTAS_LEVELS)[number]
+
 /** Display labels for enums. The enum values themselves live in prisma/schema.prisma. */
 export const DISPOSITION_LABELS = {
   ADMITTED: 'Admitted',
@@ -148,19 +169,25 @@ export const INVESTIGATION_STEPS = {
     ['receivedAt', 'Received by lab'],
     ['resultedAt', 'Resulted'],
   ],
+  // Imaging only (Phase 8): "Preliminary report" is the verbal read the ward acts on, hours
+  // before the official one, recorded between the scan and the report. A LAB row has no such
+  // step, which is why this is a per-type list and not one shared chain.
   CT: [
     ['orderedAt', 'Ordered'],
     ['doneAt', 'Scan done'],
+    ['preliminaryAt', 'Preliminary report'],
     ['resultedAt', 'Reported'],
   ],
   US: [
     ['orderedAt', 'Ordered'],
     ['doneAt', 'Scan done'],
+    ['preliminaryAt', 'Preliminary report'],
     ['resultedAt', 'Reported'],
   ],
   XR: [
     ['orderedAt', 'Ordered'],
     ['doneAt', 'Done'],
+    ['preliminaryAt', 'Preliminary report'],
     ['resultedAt', 'Reported'],
   ],
 } as const

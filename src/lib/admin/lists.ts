@@ -1,6 +1,6 @@
 /**
- * Admin → Reference lists: departments, wards, and the reasons under each stage. Add, rename,
- * deactivate/reactivate, reorder. Stages themselves are fixed (Phase 6 spec, "Do not").
+ * Admin → Reference lists: departments, wards, ED areas, and the reasons under each stage. Add,
+ * rename, deactivate/reactivate, reorder. Stages themselves are fixed (Phase 6 spec, "Do not").
  *
  * Renaming keeps the id, so every case already tagged with that reason stays tagged: the row is
  * updated, never replaced. Nothing is deleted — a list entry is deactivated, which hides it from
@@ -16,12 +16,16 @@ import { prisma } from '@/src/lib/db'
 import { inDisplayOrder, nextSortOrder, planMove, type Direction } from './reorder'
 import { fail, type AdminFailure } from './types'
 
-export type ListKind = 'department' | 'ward' | 'reason'
+/** `area` is Phase 8's `EdArea`; it behaves exactly as `ward` does, code and all. */
+export type ListKind = 'department' | 'ward' | 'area' | 'reason'
+
+/** The two kinds whose natural key is a short code as well as a name. */
+const CODED_KINDS = new Set<ListKind>(['ward', 'area'])
 
 export type ListItem = {
   id: string
   name: string
-  /** Wards have a code; departments and reasons do not. */
+  /** Wards and ED areas have a code; departments and reasons do not. */
   code: string | null
   active: boolean
   sortOrder: number
@@ -34,6 +38,7 @@ export type StageLists = { id: string; code: string; name: string; reasons: List
 export type ReferenceLists = {
   departments: ListItem[]
   wards: ListItem[]
+  areas: ListItem[]
   stages: StageLists[]
 }
 
@@ -44,13 +49,14 @@ const codeSchema = z
   .transform((v) => v.toUpperCase())
   .refine((v) => /^[A-Z0-9-]{2,12}$/.test(v), { message: 'Use 2 to 12 letters, digits or dashes.' })
 
-const kindSchema = z.enum(['department', 'ward', 'reason'])
+const kindSchema = z.enum(['department', 'ward', 'area', 'reason'])
 const directionSchema = z.enum(['up', 'down'])
 
 export async function loadReferenceLists(): Promise<ReferenceLists> {
-  const [departments, wards, stages] = await Promise.all([
+  const [departments, wards, areas, stages] = await Promise.all([
     prisma.department.findMany({ select: { id: true, name: true, active: true, sortOrder: true } }),
     prisma.ward.findMany({ select: { id: true, code: true, name: true, active: true, sortOrder: true } }),
+    prisma.edArea.findMany({ select: { id: true, code: true, name: true, active: true, sortOrder: true } }),
     prisma.stage.findMany({
       orderBy: { sortOrder: 'asc' },
       select: {
@@ -67,6 +73,7 @@ export async function loadReferenceLists(): Promise<ReferenceLists> {
   return {
     departments: inDisplayOrder(departments).map((d) => ({ ...d, code: null, isOther: false })),
     wards: inDisplayOrder(wards).map((w) => ({ ...w, isOther: false })),
+    areas: inDisplayOrder(areas).map((a) => ({ ...a, isOther: false })),
     stages: stages.map((s) => ({
       id: s.id,
       code: s.code,
@@ -84,6 +91,9 @@ async function itemsOf(kind: ListKind, stageId: string | null): Promise<Existing
   }
   if (kind === 'ward') {
     return prisma.ward.findMany({ select: { id: true, name: true, active: true, sortOrder: true } })
+  }
+  if (kind === 'area') {
+    return prisma.edArea.findMany({ select: { id: true, name: true, active: true, sortOrder: true } })
   }
   return prisma.reason.findMany({
     where: stageId ? { stageId } : undefined,
@@ -107,6 +117,12 @@ async function findItem(
       select: { id: true, name: true, active: true, sortOrder: true, code: true },
     })
   }
+  if (kind === 'area') {
+    return prisma.edArea.findUnique({
+      where: { id },
+      select: { id: true, name: true, active: true, sortOrder: true, code: true },
+    })
+  }
   return prisma.reason.findUnique({
     where: { id },
     select: { id: true, name: true, active: true, sortOrder: true, isOther: true, stageId: true },
@@ -116,7 +132,15 @@ async function findItem(
 const LABEL: Record<ListKind, string> = {
   department: 'department',
   ward: 'ward',
+  area: 'ED area',
   reason: 'reason',
+}
+
+const ENTITY: Record<ListKind, string> = {
+  department: 'Department',
+  ward: 'Ward',
+  area: 'EdArea',
+  reason: 'Reason',
 }
 
 async function writeAudit(
@@ -127,8 +151,7 @@ async function writeAudit(
   after: unknown,
   tx: Parameters<typeof audit>[2],
 ): Promise<void> {
-  const entity = kind === 'department' ? 'Department' : kind === 'ward' ? 'Ward' : 'Reason'
-  await audit({ action: 'list.update', entity, entityId: id, before, after }, ctx, tx)
+  await audit({ action: 'list.update', entity: ENTITY[kind], entityId: id, before, after }, ctx, tx)
 }
 
 // --- add ---------------------------------------------------------------------------------------
@@ -164,14 +187,17 @@ export async function addListItem(
   const sortOrder = nextSortOrder(siblings)
 
   let code: string | null = null
-  if (kind === 'ward') {
+  if (CODED_KINDS.has(kind)) {
     const parsedCode = codeSchema.safeParse(parsed.data.code ?? '')
     if (!parsedCode.success) {
-      return fail('validation', parsedCode.error.issues[0]?.message ?? 'Give the ward a short code.')
+      return fail('validation', parsedCode.error.issues[0]?.message ?? `Give the ${LABEL[kind]} a short code.`)
     }
     code = parsedCode.data
-    const clash = await prisma.ward.findUnique({ where: { code }, select: { id: true } })
-    if (clash) return fail('duplicate', `The ward code "${code}" is already used.`)
+    const clash =
+      kind === 'ward'
+        ? await prisma.ward.findUnique({ where: { code }, select: { id: true } })
+        : await prisma.edArea.findUnique({ where: { code }, select: { id: true } })
+    if (clash) return fail('duplicate', `The ${LABEL[kind]} code "${code}" is already used.`)
   }
 
   const id = await prisma.$transaction(async (tx) => {
@@ -180,10 +206,12 @@ export async function addListItem(
         ? await tx.department.create({ data: { name, sortOrder }, select: { id: true } })
         : kind === 'ward'
           ? await tx.ward.create({ data: { name, code: code!, sortOrder }, select: { id: true } })
-          : await tx.reason.create({
-              data: { name, sortOrder, stageId: stageId!, isOther: false },
-              select: { id: true },
-            })
+          : kind === 'area'
+            ? await tx.edArea.create({ data: { name, code: code!, sortOrder }, select: { id: true } })
+            : await tx.reason.create({
+                data: { name, sortOrder, stageId: stageId!, isOther: false },
+                select: { id: true },
+              })
     await writeAudit(ctx, kind, created.id, null, { name, code, sortOrder, stageId, active: true }, tx)
     return created.id
   })
@@ -220,6 +248,7 @@ export async function renameListItem(
   await prisma.$transaction(async (tx) => {
     if (kind === 'department') await tx.department.update({ where: { id }, data: { name } })
     else if (kind === 'ward') await tx.ward.update({ where: { id }, data: { name } })
+    else if (kind === 'area') await tx.edArea.update({ where: { id }, data: { name } })
     else await tx.reason.update({ where: { id }, data: { name } })
     await writeAudit(ctx, kind, id, { name: item.name }, { name }, tx)
   })
@@ -251,6 +280,7 @@ export async function setListItemActive(
   await prisma.$transaction(async (tx) => {
     if (kind === 'department') await tx.department.update({ where: { id }, data: { active } })
     else if (kind === 'ward') await tx.ward.update({ where: { id }, data: { active } })
+    else if (kind === 'area') await tx.edArea.update({ where: { id }, data: { active } })
     else await tx.reason.update({ where: { id }, data: { active } })
     await writeAudit(ctx, kind, id, { name: item.name, active: item.active }, { name: item.name, active }, tx)
   })
@@ -290,6 +320,8 @@ export async function moveListItem(
         await tx.department.update({ where: { id: row.id }, data: { sortOrder: row.sortOrder } })
       } else if (kind === 'ward') {
         await tx.ward.update({ where: { id: row.id }, data: { sortOrder: row.sortOrder } })
+      } else if (kind === 'area') {
+        await tx.edArea.update({ where: { id: row.id }, data: { sortOrder: row.sortOrder } })
       } else {
         await tx.reason.update({ where: { id: row.id }, data: { sortOrder: row.sortOrder } })
       }

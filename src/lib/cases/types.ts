@@ -27,6 +27,8 @@ export type DraftInvestigation = {
   collectedAt: TimeString
   receivedAt: TimeString
   doneAt: TimeString
+  /** Imaging only: the verbal report. A LAB row carries null (Phase 8). */
+  preliminaryAt: TimeString
   resultedAt: TimeString
 }
 
@@ -35,6 +37,10 @@ export type CaseDraft = {
   mrn: string
   registrationAt: string
   shift: Shift | null
+  /** Triage acuity 1..5, or null when it was not recorded (Phase 8). */
+  ctas: number | null
+  /** The `EdArea` the patient was assigned to, or null (Phase 8). */
+  areaId: string | null
   stages: string[]
   reasons: DraftReason[]
   primaryReasonId: string | null
@@ -85,10 +91,12 @@ export type ReferenceReason = {
 export type ReferenceStage = { id: string; code: string; name: string; reasons: ReferenceReason[] }
 export type ReferenceDepartment = { id: string; name: string; retired?: boolean }
 export type ReferenceWard = { id: string; code: string; name: string; retired?: boolean }
+export type ReferenceArea = { id: string; code: string; name: string; retired?: boolean }
 export type ReferenceData = {
   stages: ReferenceStage[]
   departments: ReferenceDepartment[]
   wards: ReferenceWard[]
+  areas: ReferenceArea[]
 }
 
 // --- server action results ------------------------------------------------------------------

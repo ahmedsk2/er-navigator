@@ -27,12 +27,27 @@ export type InvestigationForStats = {
   collectedAt: Date | null
   receivedAt: Date | null
   doneAt: Date | null
+  /** Imaging only (Phase 8); a LAB row is always null. */
+  preliminaryAt: Date | null
   resultedAt: Date | null
 }
 
+/**
+ * One case, as every number in the app is computed from.
+ *
+ * Phase 8 widened it so that it structurally satisfies `KpiCase` in `src/lib/domain/kpi.ts`: the
+ * Adaa KPIs need the door-to-doctor and doctor-to-decision milestones, the admission-to-unit
+ * bands need the whole admission chain and the ward, the "actions documented" panel needs the
+ * update count and the transfer and escalation steps, and the by-CTAS and by-area sections need
+ * the two new collection fields. `departedAt` and `resolvedAt` are restated here so they are
+ * required rather than optional as `CaseClock` leaves them — `toCaseForStats` has always set
+ * both, and `KpiCase` reads them as plain nullable fields.
+ */
 export type CaseForStats = CaseClock & {
   id: string
   mrn: string
+  departedAt: Date | null
+  resolvedAt: Date | null
   shift: 'MORNING' | 'EVENING' | 'NIGHT' | null
   primaryReasonName: string | null
   stageNames: ReadonlyArray<string>
@@ -40,9 +55,28 @@ export type CaseForStats = CaseClock & {
   disposition: string | null
   consults: ReadonlyArray<ConsultForStats>
   investigations: ReadonlyArray<InvestigationForStats>
+  // The journey milestones the Adaa KPIs are measured between, and the per-case timeline lists.
+  triageAt: Date | null
+  roomAt: Date | null
+  physicianAt: Date | null
+  decisionAt: Date | null
+  // The admission chain, plus the escalation and transfer steps "actions documented" counts.
   admOrderAt: Date | null
   bedRequestedAt: Date | null
   bedAssignedAt: Date | null
+  handoverAt: Date | null
+  transferRequestedAt: Date | null
+  transferAcceptedAt: Date | null
+  transportArrivedAt: Date | null
+  medAdminInformedAt: Date | null
+  /** The ward's short code (ICU, FMW …), which is how `unitTypeOf` tells an ICU from a ward. */
+  wardCode: string | null
+  /** Phase 8 collection fields: the triage acuity, and the name of the ED area. */
+  ctas: number | null
+  areaName: string | null
+  /** How many updates the case has, and when the newest was written. */
+  updatesCount: number
+  lastUpdateAt: Date | null
   otherTexts: ReadonlyArray<{ stageName: string; text: string }>
 }
 
@@ -147,7 +181,12 @@ export function consultRows(cases: ReadonlyArray<CaseForStats>): ConsultRow[] {
 
 export type InvestigationRow = { type: keyof typeof INVESTIGATION_STEPS; name: string; n: number; ids: string[]; toMid: number | null; toDone: number | null }
 
-/** Per test type: order→mid step (collected / scan done) and order→final (resulted / reported). */
+/**
+ * Per test type: order→mid step (collected / scan done) and order→final (resulted / reported).
+ * `mid` and `last` are read off `INVESTIGATION_STEPS` by position, and Phase 8's "Preliminary
+ * report" was inserted between the scan and the official report, so both are unchanged: still
+ * `doneAt` and still `resultedAt`.
+ */
 export function investigationRows(cases: ReadonlyArray<CaseForStats>): InvestigationRow[] {
   return (Object.keys(INVESTIGATION_STEPS) as Array<keyof typeof INVESTIGATION_STEPS>)
     .map((type) => {

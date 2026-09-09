@@ -31,10 +31,27 @@ export const CASE_STATS_SELECT = {
   resolvedAt: true,
   shift: true,
   disposition: true,
+  triageAt: true,
+  roomAt: true,
+  physicianAt: true,
+  decisionAt: true,
   admOrderAt: true,
   bedRequestedAt: true,
   bedAssignedAt: true,
+  handoverAt: true,
+  transferRequestedAt: true,
+  transferAcceptedAt: true,
+  transportArrivedAt: true,
+  medAdminInformedAt: true,
+  ctas: true,
   primaryReason: { select: { name: true } },
+  ward: { select: { code: true } },
+  area: { select: { name: true } },
+  // Two reads of the same relation, both cheap: the count, and the newest row's timestamp.
+  // `take: 1` is a hint, not a contract — the export widens this same select to every update in
+  // ascending order, so `toCaseForStats` finds the newest by scanning rather than by position.
+  _count: { select: { updates: true } },
+  updates: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true } },
   reasons: {
     select: {
       otherText: true,
@@ -56,6 +73,7 @@ export const CASE_STATS_SELECT = {
       collectedAt: true,
       receivedAt: true,
       doneAt: true,
+      preliminaryAt: true,
       resultedAt: true,
     },
   },
@@ -74,6 +92,13 @@ export function toCaseForStats(row: CaseStatsRow): CaseForStats {
         .map((r) => r.reason.stage.name),
     ),
   ]
+
+  // Order-independent on purpose: the dashboard's select takes the newest update only, the
+  // export's takes all of them oldest-first, and both must yield the same "last update at".
+  let lastUpdateAt: Date | null = null
+  for (const u of row.updates) {
+    if (!lastUpdateAt || u.createdAt.getTime() > lastUpdateAt.getTime()) lastUpdateAt = u.createdAt
+  }
 
   return {
     id: row.id,
@@ -100,11 +125,26 @@ export function toCaseForStats(row: CaseStatsRow): CaseForStats {
       collectedAt: i.collectedAt,
       receivedAt: i.receivedAt,
       doneAt: i.doneAt,
+      preliminaryAt: i.preliminaryAt,
       resultedAt: i.resultedAt,
     })),
+    triageAt: row.triageAt,
+    roomAt: row.roomAt,
+    physicianAt: row.physicianAt,
+    decisionAt: row.decisionAt,
     admOrderAt: row.admOrderAt,
     bedRequestedAt: row.bedRequestedAt,
     bedAssignedAt: row.bedAssignedAt,
+    handoverAt: row.handoverAt,
+    transferRequestedAt: row.transferRequestedAt,
+    transferAcceptedAt: row.transferAcceptedAt,
+    transportArrivedAt: row.transportArrivedAt,
+    medAdminInformedAt: row.medAdminInformedAt,
+    wardCode: row.ward?.code ?? null,
+    ctas: row.ctas,
+    areaName: row.area?.name ?? null,
+    updatesCount: row._count.updates,
+    lastUpdateAt,
     otherTexts: row.reasons
       .filter((r): r is typeof r & { otherText: string } => !!r.otherText && r.otherText.trim() !== '')
       .map((r) => ({ stageName: r.reason.stage.name, text: r.otherText })),

@@ -1,5 +1,8 @@
+import ExcelJS from 'exceljs'
 import { expect, test } from '@playwright/test'
 import { prisma } from '../../src/lib/db'
+import { riyadhDateKey } from '../../src/lib/export/range'
+import { CASES_HEADER } from '../../src/lib/export/rows'
 import { CASE_URL, fromClientIp, openCase, signIn, uniqueMrn } from './fixtures/case-flow'
 import { E2E_USERS } from './fixtures/seed-users'
 
@@ -27,6 +30,10 @@ const REASON = 'No bed available on accepting ward'
  * is a name no other spec or fixture uses.
  */
 const RETIRED_TEAM = 'E2E Retired Team'
+
+/** One of the six seeded ED areas (prisma/seed.ts, src/lib/domain/taxonomy.ts). */
+const AREA_NAME = 'Rapid assessment zone'
+const AREA_CODE = 'RAZ'
 
 test('a navigator opens a case, adds an update and resolves it as discharged home', async ({ page }) => {
   await fromClientIp(page, '198.51.100.41')
@@ -273,6 +280,70 @@ test('the referral sections appear with the reason that needs them', async ({ pa
   }))
   expect(width.inner).toBe(390)
   expect(width.scroll).toBeLessThanOrEqual(width.inner)
+})
+
+/**
+ * Phase 8, Slice D. A navigator sets the CTAS level and the ED area on a new case; the board row
+ * shows them beside the MRN, and the workbook's Cases sheet carries them in their own columns.
+ *
+ * The export half runs the reader in Node rather than in the page: the route serves an .xlsx,
+ * which the browser cannot assert on, and exceljs is already a dependency of the writer.
+ */
+test('CTAS and the ED area reach the board row and the export', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.53')
+  // A supervisor, not a navigator: the same case screen, and `export.xlsx` as well (a navigator
+  // is refused it — tests/e2e/export.spec.ts).
+  const taps = await signIn(page, E2E_USERS.supervisor)
+  const mrn = uniqueMrn()
+  const url = await openCase(page, mrn, STAGE, REASON, taps)
+
+  await page.getByRole('group', { name: 'CTAS' }).getByRole('button', { name: '3', exact: true }).click()
+  await page.getByRole('group', { name: 'ED area' }).getByRole('button', { name: AREA_NAME }).click()
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
+
+  // Both chips come back pressed on a fresh load, so the values really were stored.
+  await page.goto(url)
+  await expect(
+    page.getByRole('group', { name: 'CTAS' }).getByRole('button', { name: '3', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true')
+  await expect(
+    page.getByRole('group', { name: 'ED area' }).getByRole('button', { name: AREA_NAME }),
+  ).toHaveAttribute('aria-pressed', 'true')
+
+  // The board row carries both as small chips after the MRN.
+  await page.goto('/')
+  const boardRow = page.locator(`a[data-mrn="${mrn}"]`)
+  await expect(boardRow).toBeVisible()
+  await expect(boardRow.locator('[data-chip="CTAS 3"]')).toBeVisible()
+  await expect(boardRow.locator(`[data-chip="${AREA_CODE}"]`)).toBeVisible()
+
+  // And the workbook's Cases sheet has them in their own columns, after Shift. The window is
+  // yesterday to today in Riyadh, because `blankDraft` registers a new case six hours ago and a
+  // run just after midnight would otherwise miss its own row.
+  const today = riyadhDateKey(new Date())
+  const yesterday = riyadhDateKey(new Date(Date.now() - 24 * 60 * 60 * 1000))
+  const response = await page.request.get(`/api/export.xlsx?from=${yesterday}&to=${today}&status=all`)
+  expect(response.status()).toBe(200)
+  const book = new ExcelJS.Workbook()
+  // exceljs declares its own `Buffer` interface, which Node's does not structurally satisfy
+  // (the same cast tests/db/export.test.ts makes).
+  await book.xlsx.load(Buffer.from(await response.body()) as unknown as ExcelJS.Buffer)
+  const sheet = book.getWorksheet('Cases')!
+
+  // `getRow(1).values` is 1-based and sparse, so index 0 is empty and a header's index is its
+  // column number.
+  const header = (sheet.getRow(1).values as ExcelJS.CellValue[]).map((v) => String(v ?? ''))
+  expect(header.slice(1)).toEqual(CASES_HEADER)
+
+  const cells: string[] = []
+  sheet.eachRow((row, index) => {
+    if (index > 1 && String(row.getCell(header.indexOf('MRN')).value ?? '') === mrn) {
+      cells.push(String(row.getCell(header.indexOf('CTAS')).value ?? ''))
+      cells.push(String(row.getCell(header.indexOf('ED area')).value ?? ''))
+    }
+  })
+  expect(cells, `the workbook has one row for MRN ${mrn}`).toEqual(['3', AREA_NAME])
 })
 
 test('out-of-order times warn but never block the save', async ({ page }) => {

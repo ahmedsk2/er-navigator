@@ -26,6 +26,8 @@ function row(over: Partial<BoardRow> & Pick<BoardRow, 'id' | 'mrn'>): BoardRow {
     registrationAt: hoursBefore(1),
     departedAt: null,
     resolvedAt: null,
+    ctas: null,
+    area: null,
     primaryReason: null,
     departments: [],
     disposition: null,

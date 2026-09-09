@@ -49,6 +49,7 @@ import { conflictMessage } from '@/src/lib/cases/conflict'
 import {
   ADMISSION_STEPS,
   CONSULT_STEPS,
+  CTAS_LEVELS,
   DISPOSITION_LABELS,
   INVESTIGATION_LABELS,
   INVESTIGATION_STEPS,
@@ -75,12 +76,15 @@ const BAND_TEXT: Record<Band, string> = {
 const INVESTIGATION_TYPES = ['LAB', 'CT', 'US', 'XR'] as const
 const DISPOSITIONS = Object.keys(DISPOSITION_LABELS) as Array<keyof typeof DISPOSITION_LABELS>
 const SHIFTS = Object.keys(SHIFT_LABELS) as Array<keyof typeof SHIFT_LABELS>
+/** `Chips` is a string list, so the five CTAS levels travel as strings and come back as numbers. */
+const CTAS_OPTIONS = CTAS_LEVELS.map(String)
 
 const BLANK_INVESTIGATION = {
   orderedAt: null,
   collectedAt: null,
   receivedAt: null,
   doneAt: null,
+  preliminaryAt: null,
   resultedAt: null,
 } as const
 
@@ -163,6 +167,7 @@ export function CaseEditor(props: CaseEditorProps) {
     () => new Map(reference.departments.map((d) => [d.id, d.name])),
     [reference],
   )
+  const areaName = useMemo(() => new Map(reference.areas.map((a) => [a.id, a.name])), [reference])
   /**
    * The rows an Admin deactivated while this case already carried them (Phase 7, C4/C10). They
    * come from `loadReferenceForCase`, are only ever present on an existing case, and render as
@@ -174,6 +179,10 @@ export function CaseEditor(props: CaseEditorProps) {
   )
   const retiredWards = useMemo(
     () => new Set(reference.wards.filter((w) => w.retired).map((w) => w.id)),
+    [reference],
+  )
+  const retiredAreas = useMemo(
+    () => new Set(reference.areas.filter((a) => a.retired).map((a) => a.id)),
     [reference],
   )
 
@@ -534,6 +543,34 @@ export function CaseEditor(props: CaseEditorProps) {
             </Field>
           </div>
         </div>
+
+        {/* Phase 8. Both optional: every KPI in the ED decks and the Adaa form is reported per
+            CTAS and the March deck splits everything by area, but a navigator who does not know
+            one leaves it blank. Single-select, and tapping the chip again clears it — the same
+            gesture the Ward row uses. */}
+        <FieldGroup label="CTAS">
+          <Chips
+            groupLabel="CTAS"
+            options={CTAS_OPTIONS}
+            value={draft.ctas == null ? [] : [String(draft.ctas)]}
+            onChange={(values) => {
+              const last = values[values.length - 1]
+              set({ ctas: last === undefined ? null : Number(last) })
+            }}
+            disabled={disabled}
+          />
+        </FieldGroup>
+        <FieldGroup label="ED area">
+          <Chips
+            groupLabel="ED area"
+            options={reference.areas.map((a) => a.id)}
+            value={draft.areaId ? [draft.areaId] : []}
+            onChange={(ids) => set({ areaId: ids[ids.length - 1] ?? null })}
+            labelOf={(id) => areaName.get(id) ?? id}
+            retiredOf={(id) => retiredAreas.has(id)}
+            disabled={disabled}
+          />
+        </FieldGroup>
       </Section>
 
       {/* 3. Where is the delay */}

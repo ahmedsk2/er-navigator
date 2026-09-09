@@ -3,7 +3,7 @@ import type { Role, User } from '@prisma/client'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { AuditContext } from '@/src/lib/audit'
 import { ForbiddenError, type AuthUser } from '@/src/lib/auth/session'
-import { loadReference } from '@/src/lib/cases/reference'
+import { loadReference, loadReferenceForCase } from '@/src/lib/cases/reference'
 import {
   addCaseUpdate,
   createCase,
@@ -27,6 +27,7 @@ const cases: string[] = []
 /** Reference rows this file creates so it can retire them without touching the seed. */
 const extraReasons: string[] = []
 const extraDepartments: string[] = []
+const extraAreas: string[] = []
 let reference: ReferenceData
 
 async function makeUser(role: Role): Promise<User> {
@@ -94,6 +95,16 @@ async function makeDepartment(): Promise<string> {
   return row.id
 }
 
+/** The same, for an ED area (Phase 8): this file's own row, so the seeded six stay untouched. */
+async function makeArea(): Promise<string> {
+  const suffix = randomBytes(4).toString('hex')
+  const row = await prisma.edArea.create({
+    data: { code: `P8${suffix.toUpperCase()}`, name: `p8 retired area ${suffix}`, sortOrder: 900, active: true },
+  })
+  extraAreas.push(row.id)
+  return row.id
+}
+
 const HOUR = 36e5
 
 function draft(overrides: Partial<CaseDraft> = {}): CaseDraft {
@@ -101,6 +112,8 @@ function draft(overrides: Partial<CaseDraft> = {}): CaseDraft {
     mrn: '851557',
     registrationAt: new Date(Date.now() - 6 * HOUR).toISOString(),
     shift: 'MORNING',
+    ctas: null,
+    areaId: null,
     stages: [],
     reasons: [{ reasonId: reasonNamed('reg', 'Registration desk/system delay'), otherText: null }],
     primaryReasonId: null,
@@ -157,6 +170,7 @@ afterAll(async () => {
   }
   if (extraReasons.length > 0) await prisma.reason.deleteMany({ where: { id: { in: extraReasons } } })
   if (extraDepartments.length > 0) await prisma.department.deleteMany({ where: { id: { in: extraDepartments } } })
+  if (extraAreas.length > 0) await prisma.edArea.deleteMany({ where: { id: { in: extraAreas } } })
   if (users.length > 0) {
     await prisma.auditLog.deleteMany({ where: { OR: [{ actorId: { in: users } }, { entityId: { in: users } }] } })
     await prisma.user.deleteMany({ where: { id: { in: users } } })
@@ -173,7 +187,7 @@ describe('createCase', () => {
       reasons: [{ reasonId: reasonNamed('ref', 'Referral sent, awaiting acceptance'), otherText: null }],
       consults: [{ departmentId, consultedAt: new Date().toISOString(), seenAt: null, repliedAt: null }],
       investigations: [
-        { type: 'LAB', orderedAt: null, collectedAt: null, receivedAt: null, doneAt: null, resultedAt: null },
+        { type: 'LAB', orderedAt: null, collectedAt: null, receivedAt: null, doneAt: null, preliminaryAt: null, resultedAt: null },
       ],
     })
 
@@ -338,6 +352,174 @@ describe('saveCase', () => {
     const attempt = await saveCase(supervisor, id, draft({ mrn: '333333', version: 2 }), ctxFor(supervisor.id))
     expect(attempt).toMatchObject({ ok: false, error: 'conflict' })
     expect((await prisma.case.findUniqueOrThrow({ where: { id } })).mrn).toBe('851557')
+  })
+})
+
+/**
+ * Phase 8, Slice D: CTAS, the ED area and the imaging preliminary report. Three optional fields
+ * that must survive a create, a save and a resolve, and appear in the audit trail like every
+ * other column — the reports are built on them, so a field that silently fails to save is worse
+ * than one that was never added.
+ */
+describe('CTAS, the ED area and the preliminary report time', () => {
+  const areaNamed = (code: string): string => {
+    const found = reference.areas.find((a) => a.code === code)
+    if (!found) throw new Error(`the seed has no "${code}" ED area`)
+    return found.id
+  }
+
+  it('creates a case with all three, and the audit row carries them', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const areaId = areaNamed('RAZ')
+    const doneAt = new Date(Date.now() - 3 * HOUR).toISOString()
+    const preliminaryAt = new Date(Date.now() - 2.5 * HOUR).toISOString()
+    const resultedAt = new Date(Date.now() - 1 * HOUR).toISOString()
+
+    const id = await openCase(nurse, {
+      ctas: 3,
+      areaId,
+      reasons: [{ reasonId: reasonNamed('inv', 'Imaging: report delay'), otherText: null }],
+      investigations: [
+        { type: 'CT', orderedAt: null, collectedAt: null, receivedAt: null, doneAt, preliminaryAt, resultedAt },
+      ],
+    })
+
+    const row = await prisma.case.findUniqueOrThrow({ where: { id }, include: { investigations: true } })
+    expect(row.ctas).toBe(3)
+    expect(row.areaId).toBe(areaId)
+    expect(row.investigations[0]!.preliminaryAt?.toISOString()).toBe(preliminaryAt)
+
+    const created = await prisma.auditLog.findFirstOrThrow({ where: { entity: 'Case', entityId: id } })
+    expect(created.after).toMatchObject({ ctas: 3, areaId })
+    const after = created.after as { investigations: Array<{ preliminaryAt: string | null }> }
+    expect(after.investigations[0]!.preliminaryAt).toBe(preliminaryAt)
+  })
+
+  it('changes and clears all three on a save, with both values in the audit row', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const first = areaNamed('ACUTE')
+    const second = areaNamed('RESUS')
+    const preliminaryAt = new Date(Date.now() - 2 * HOUR).toISOString()
+    const id = await openCase(nurse, {
+      ctas: 4,
+      areaId: first,
+      investigations: [
+        { type: 'US', orderedAt: null, collectedAt: null, receivedAt: null, doneAt: null, preliminaryAt, resultedAt: null },
+      ],
+    })
+
+    const changed = await saveCase(nurse, id, draft({ ctas: 2, areaId: second, version: 1 }), ctxFor(nurse.id))
+    expect(changed).toMatchObject({ ok: true, version: 2 })
+    const afterChange = await prisma.case.findUniqueOrThrow({ where: { id }, include: { investigations: true } })
+    expect(afterChange.ctas).toBe(2)
+    expect(afterChange.areaId).toBe(second)
+    // The draft dropped the investigation row, so the diff removed it rather than orphaning it.
+    expect(afterChange.investigations).toHaveLength(0)
+
+    const cleared = await saveCase(nurse, id, draft({ ctas: null, areaId: null, version: 2 }), ctxFor(nurse.id))
+    expect(cleared).toMatchObject({ ok: true, version: 3 })
+    const afterClear = await prisma.case.findUniqueOrThrow({ where: { id } })
+    expect(afterClear.ctas).toBeNull()
+    expect(afterClear.areaId).toBeNull()
+
+    const audits = await prisma.auditLog.findMany({
+      where: { entity: 'Case', entityId: id },
+      orderBy: { at: 'asc' },
+    })
+    expect(audits.map((a) => a.action)).toEqual(['case.create', 'case.update', 'case.update'])
+    expect(audits[1]!.before).toMatchObject({ ctas: 4, areaId: first })
+    expect(audits[1]!.after).toMatchObject({ ctas: 2, areaId: second })
+    expect(audits[2]!.after).toMatchObject({ ctas: null, areaId: null })
+  })
+
+  it('keeps all three through a resolve', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const areaId = areaNamed('ISO')
+    const preliminaryAt = new Date(Date.now() - 2 * HOUR).toISOString()
+    const id = await openCase(nurse)
+    const departedAt = new Date().toISOString()
+
+    const resolved = await resolveCase(
+      nurse,
+      id,
+      draft({
+        ctas: 1,
+        areaId,
+        investigations: [
+          { type: 'XR', orderedAt: null, collectedAt: null, receivedAt: null, doneAt: null, preliminaryAt, resultedAt: null },
+        ],
+        disposition: 'DISCHARGED_HOME',
+        departedAt,
+        version: 1,
+      }),
+      ctxFor(nurse.id),
+    )
+    expect(resolved).toMatchObject({ ok: true, version: 2 })
+
+    const row = await prisma.case.findUniqueOrThrow({ where: { id }, include: { investigations: true } })
+    expect(row.status).toBe('RESOLVED')
+    expect(row.ctas).toBe(1)
+    expect(row.areaId).toBe(areaId)
+    expect(row.investigations[0]!.preliminaryAt?.toISOString()).toBe(preliminaryAt)
+
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: { entity: 'Case', entityId: id, action: 'case.resolve' },
+    })
+    expect(audit.after).toMatchObject({ status: 'RESOLVED', ctas: 1, areaId })
+  })
+
+  it('refuses a CTAS outside 1 to 5 and writes nothing', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const id = await openCase(nurse)
+    const refused = await saveCase(nurse, id, draft({ ctas: 6, version: 1 }), ctxFor(nurse.id))
+    expect(refused).toMatchObject({ ok: false, error: 'validation' })
+    if (refused.ok || refused.error !== 'validation') throw new Error('unreachable')
+    expect(refused.issues.some((i) => i.path === 'ctas')).toBe(true)
+    expect((await prisma.case.findUniqueOrThrow({ where: { id } })).version).toBe(1)
+  })
+
+  it('refuses an ED area that is not on the list', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const result = await createCase(nurse, draft({ areaId: 'no-such-area' }), ctxFor(nurse.id))
+    expect(result).toMatchObject({ ok: false, error: 'validation' })
+    if (result.ok || result.error !== 'validation') throw new Error('unreachable')
+    expect(result.issues.some((i) => i.message === 'That ED area is no longer on the list.')).toBe(true)
+  })
+
+  /** The Phase 7 retired-row pattern (`loadReferenceForCase`), now for areas. */
+  it('keeps a retired area on the case that carries it, and refuses it anywhere else', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const retiredAreaId = await makeArea()
+    const carrier = await openCase(nurse, { areaId: retiredAreaId })
+    const bystander = await openCase(nurse)
+
+    // What Admin → Reference lists does.
+    await prisma.edArea.update({ where: { id: retiredAreaId }, data: { active: false } })
+
+    // The case-aware reference offers it back, flagged retired, so the editor can show a chip.
+    const forCarrier = await loadReferenceForCase(carrier)
+    expect(forCarrier.areas.find((a) => a.id === retiredAreaId)).toMatchObject({ retired: true })
+    expect((await loadReference()).areas.some((a) => a.id === retiredAreaId)).toBe(false)
+
+    // And the unchanged draft still saves, which is what a deactivation used to break.
+    expect(await saveCase(nurse, carrier, draft({ areaId: retiredAreaId, version: 1 }), ctxFor(nurse.id))).toMatchObject({
+      ok: true,
+      version: 2,
+    })
+    // Deselecting it saves too, and after that it can never come back.
+    expect(await saveCase(nurse, carrier, draft({ areaId: null, version: 2 }), ctxFor(nurse.id))).toMatchObject({
+      ok: true,
+      version: 3,
+    })
+    expect((await prisma.case.findUniqueOrThrow({ where: { id: carrier } })).areaId).toBeNull()
+
+    // A case that never carried it is refused, and so is a brand new one.
+    const added = await saveCase(nurse, bystander, draft({ areaId: retiredAreaId, version: 1 }), ctxFor(nurse.id))
+    expect(added).toMatchObject({ ok: false, error: 'validation' })
+    expect(await createCase(nurse, draft({ areaId: retiredAreaId }), ctxFor(nurse.id))).toMatchObject({
+      ok: false,
+      error: 'validation',
+    })
   })
 })
 

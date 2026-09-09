@@ -5,7 +5,7 @@ import type { AuditContext } from '@/src/lib/audit'
 import type { AuthUser } from '@/src/lib/auth/session'
 import { loadBoardRowsByIds } from '@/src/lib/board/load'
 import { loadReference } from '@/src/lib/cases/reference'
-import { createCase, resolveCase, voidCase } from '@/src/lib/cases/service'
+import { addCaseUpdate, createCase, resolveCase, voidCase } from '@/src/lib/cases/service'
 import type { CaseDraft, ReferenceData } from '@/src/lib/cases/types'
 import { resolveDrill } from '@/src/lib/dashboard/drill'
 import { loadCasesForStats } from '@/src/lib/dashboard/load'
@@ -82,6 +82,8 @@ function draft(over: Partial<CaseDraft> = {}): CaseDraft {
     mrn: nextTestMrn(),
     registrationAt: new Date(Date.now() - 8 * HOUR).toISOString(),
     shift: 'NIGHT',
+    ctas: null,
+    areaId: null,
     stages: [],
     reasons: [{ reasonId: reasonNamed('adm', 'No bed available on accepting ward'), otherText: null }],
     primaryReasonId: null,
@@ -179,6 +181,7 @@ describe('loadCasesForStats', () => {
           collectedAt: at(1),
           receivedAt: at(1.5),
           doneAt: null,
+          preliminaryAt: null,
           resultedAt: at(4),
         },
       ],
@@ -211,6 +214,66 @@ describe('loadCasesForStats', () => {
     expect(data.investigations.find((r) => r.type === 'LAB')?.ids).toContain(id)
     expect(data.byStage.find((r) => r.name === 'Admission process')?.ids.filter((x) => x === id)).toEqual([id])
     expect(data.otherQueue.find((q) => q.id === id)?.text).toBe('Pharmacy closed for stock take')
+  })
+
+  /**
+   * Phase 8: `CaseForStats` was widened so it satisfies `KpiCase`. The mapper's unit test proves
+   * the mapping; this proves the widened `select` really produces those columns and joins against
+   * a real Postgres — including `_count`, which is the one field the query computes rather than
+   * reads, and the ward code and area name the KPI module needs rather than their ids.
+   */
+  it('reads every KpiCase field the loader was widened for', async () => {
+    const nurse = await makeUser('NAVIGATOR')
+    const registrationAt = new Date(Date.now() - 9 * HOUR)
+    const at = (hoursAfter: number) => new Date(registrationAt.getTime() + hoursAfter * HOUR).toISOString()
+    const area = await prisma.edArea.findFirstOrThrow({ where: { code: 'RAZ' } })
+    const ward = reference.wards.find((w) => w.code === 'ICU')!
+
+    const { id } = await openCase(nurse, {
+      registrationAt: registrationAt.toISOString(),
+      ctas: 2,
+      areaId: area.id,
+      triageAt: at(0.2),
+      physicianAt: at(0.5),
+      decisionAt: at(3),
+      admOrderAt: at(3.2),
+      bedRequestedAt: at(3.5),
+      bedAssignedAt: at(6),
+      handoverAt: at(6.5),
+      transferRequestedAt: at(4),
+      medAdminInformedAt: at(5),
+      disposition: 'ADMITTED',
+      wardId: ward.id,
+      investigations: [
+        {
+          type: 'CT',
+          orderedAt: at(1),
+          collectedAt: null,
+          receivedAt: null,
+          doneAt: at(2),
+          preliminaryAt: at(2.5),
+          resultedAt: at(4),
+        },
+      ],
+    })
+    await addCaseUpdate(nurse, id, 'Bed coordinator called', ctxFor(nurse.id))
+    await addCaseUpdate(nurse, id, 'Ward says one hour', ctxFor(nurse.id))
+
+    const row = mine(await loadCasesForStats()).find((c) => c.id === id)!
+    expect(row, 'the case is in the dashboard read').toBeDefined()
+    expect(row.ctas).toBe(2)
+    expect(row.areaName).toBe(area.name)
+    expect(row.wardCode).toBe('ICU')
+    expect(row.triageAt?.toISOString()).toBe(at(0.2))
+    expect(row.physicianAt?.toISOString()).toBe(at(0.5))
+    expect(row.decisionAt?.toISOString()).toBe(at(3))
+    expect(row.handoverAt?.toISOString()).toBe(at(6.5))
+    expect(row.transferRequestedAt?.toISOString()).toBe(at(4))
+    expect(row.medAdminInformedAt?.toISOString()).toBe(at(5))
+    expect(row.investigations[0]!.preliminaryAt?.toISOString()).toBe(at(2.5))
+    // The count is `_count`, not `updates.length`: the select only fetches the newest row.
+    expect(row.updatesCount).toBe(2)
+    expect(row.lastUpdateAt).toBeInstanceOf(Date)
   })
 
   it('never returns a voided case, so no drill-down can reach one', async () => {

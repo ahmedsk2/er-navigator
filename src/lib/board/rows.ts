@@ -107,6 +107,18 @@ export function countsOf(openRegistrations: ReadonlyArray<string>, now: Date): B
   return { open: openRegistrations.length, past6, past12 }
 }
 
+/**
+ * The small chips a row carries beside its MRN (Phase 8): the CTAS level and the ED area code,
+ * each only when it was recorded. One function so the screen row and the printed handover sheet
+ * cannot drift apart, and so a case with neither shows nothing at all rather than two dashes.
+ */
+export function identityChips(row: BoardRow): string[] {
+  const chips: string[] = []
+  if (row.ctas != null) chips.push(`CTAS ${row.ctas}`)
+  if (row.area) chips.push(row.area)
+  return chips
+}
+
 /** Line 2: the primary reason, then the consulted teams. */
 export function reasonText(row: BoardRow): string {
   const reason = row.primaryReason ?? 'No reason set'

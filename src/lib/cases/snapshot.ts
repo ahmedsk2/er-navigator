@@ -26,6 +26,7 @@ export type SnapshotInvestigation = {
   collectedAt: Time
   receivedAt: Time
   doneAt: Time
+  preliminaryAt: Time
   resultedAt: Time
 }
 
@@ -39,6 +40,8 @@ export type SnapshotSource = {
   status: CaseStatus
   primaryReasonId: string | null
   medAdminInformedAt: Time
+  ctas: number | null
+  areaId: string | null
   triageAt: Time
   roomAt: Time
   roomType: RoomType | null
@@ -80,6 +83,8 @@ export function caseSnapshot(c: SnapshotSource): Record<string, unknown> {
     status: c.status,
     primaryReasonId: c.primaryReasonId,
     medAdminInformedAt: iso(c.medAdminInformedAt),
+    ctas: c.ctas,
+    areaId: c.areaId,
     triageAt: iso(c.triageAt),
     roomAt: iso(c.roomAt),
     roomType: c.roomType,
@@ -121,6 +126,7 @@ export function caseSnapshot(c: SnapshotSource): Record<string, unknown> {
         collectedAt: iso(x.collectedAt),
         receivedAt: iso(x.receivedAt),
         doneAt: iso(x.doneAt),
+        preliminaryAt: iso(x.preliminaryAt),
         resultedAt: iso(x.resultedAt),
       })),
   }

@@ -27,6 +27,13 @@ export type InvestigationTimes = {
   collectedAt?: TimeValue
   receivedAt?: TimeValue
   doneAt?: TimeValue
+  /**
+   * Imaging only (Phase 8). It sits between the scan and the official report in
+   * `INVESTIGATION_STEPS`, so the loop below produces "CT reported is before CT preliminary
+   * report" when the two are the wrong way round — a warning, never a refused save, like every
+   * other out-of-order pair here.
+   */
+  preliminaryAt?: TimeValue
   resultedAt?: TimeValue
 }
 

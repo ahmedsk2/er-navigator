@@ -21,6 +21,13 @@ export type BoardRow = {
   registrationAt: string
   departedAt: string | null
   resolvedAt: string | null
+  /** Triage acuity 1..5, or null when it was not recorded (Phase 8). */
+  ctas: number | null
+  /**
+   * The ED area's short code (RESUS, RAZ …), or null. The code, not the name, for the same
+   * reason `ward` is a code: it is what fits on a phone row beside the MRN.
+   */
+  area: string | null
   /** The primary delay reason's name, or null when none was chosen. */
   primaryReason: string | null
   /** Consulted department names, in the taxonomy's order. */

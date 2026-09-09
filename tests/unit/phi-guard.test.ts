@@ -10,14 +10,14 @@ import { describe, expect, it } from 'vitest'
  * `User` is the one model left out on purpose: `User.displayName` and, since Phase 7,
  * `User.email` are contact details for a member of hospital staff who signs in to this app —
  * they identify the nurse, never the patient, and the rule they are subject to is the audit
- * trail, not the PHI ban. The reference lists (Stage, Reason, Department, Ward) carry a `name`
- * that is the name of a stage, a reason, a team or a ward, so for those four models `name`
- * alone is allowed and every other pattern still applies. The patient is identified by the MRN
- * on Case and by nothing else, which is what these assertions check (widened from the Case
- * model alone after the final review, 2026-09-09).
+ * trail, not the PHI ban. The reference lists (Stage, Reason, Department, Ward and, from Phase 8,
+ * EdArea) carry a `name` that is the name of a stage, a reason, a team, a ward or an area of the
+ * department, so for those five models `name` alone is allowed and every other pattern still
+ * applies. The patient is identified by the MRN on Case and by nothing else, which is what these
+ * assertions check (widened from the Case model alone after the final review, 2026-09-09).
  */
 const STAFF_MODELS = new Set(['User'])
-const REFERENCE_MODELS = new Set(['Stage', 'Reason', 'Department', 'Ward'])
+const REFERENCE_MODELS = new Set(['Stage', 'Reason', 'Department', 'Ward', 'EdArea'])
 const PATTERN = /name|national|iqama|civil|passport|dob|birth|phone|mobile/i
 
 function modelsIn(schema: string): Map<string, string[]> {

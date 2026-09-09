@@ -8,7 +8,18 @@ const meta = new Map([
   ['r-refout', { requiresDepartment: false, requiresReferralNo: true, isOther: false }],
   ['r-other', { requiresDepartment: false, requiresReferralNo: false, isOther: true }],
 ])
-const { draft, resolve } = buildCaseSchemas(meta, () => NOW)
+/**
+ * The ED areas this "request" knows (Phase 8). `caseSchemas(reference)` builds exactly this set
+ * from the request's reference data: the active areas for a new case, and for an existing one the
+ * active areas plus the single retired area that case already carries.
+ */
+const ACTIVE_AREA = 'a-resus'
+const RETIRED_ON_THIS_CASE = 'a-oldpool'
+const OTHER_RETIRED_AREA = 'a-gone'
+
+const { draft, resolve } = buildCaseSchemas(meta, () => NOW, new Set([ACTIVE_AREA]))
+/** What `loadReferenceForCase` produces for a case that carries a since-deactivated area. */
+const forCarrier = buildCaseSchemas(meta, () => NOW, new Set([ACTIVE_AREA, RETIRED_ON_THIS_CASE]))
 
 const base = () => ({
   mrn: '851557',
@@ -65,6 +76,61 @@ describe('case draft rules (locked plan section 4)', () => {
     expect(issues(draft.safeParse({ ...base(), reasons: [{ reasonId: 'r-bed' }, { reasonId: 'r-bed' }], primaryReasonId: 'r-bed' }))).toContain(
       'reasons: A reason is selected twice.',
     )
+  })
+
+  // --- Phase 8: CTAS and the ED area ----------------------------------------------------------
+
+  it('accepts CTAS 1 to 5, and null or absent for "not recorded"', () => {
+    for (const ctas of [1, 2, 3, 4, 5]) {
+      expect(draft.safeParse({ ...base(), ctas }).success, `CTAS ${ctas}`).toBe(true)
+    }
+    expect(draft.safeParse({ ...base(), ctas: null }).success).toBe(true)
+    expect(draft.safeParse(base()).success).toBe(true)
+  })
+
+  it('rejects a CTAS outside 1 to 5, and a fractional one', () => {
+    for (const ctas of [0, 6, -1, 2.5]) {
+      expect(issues(draft.safeParse({ ...base(), ctas })), `CTAS ${ctas}`).toContain(
+        'ctas: CTAS is a whole number from 1 to 5.',
+      )
+    }
+  })
+
+  it('accepts an ED area this request knows and refuses one it does not', () => {
+    expect(draft.safeParse({ ...base(), areaId: ACTIVE_AREA }).success).toBe(true)
+    expect(draft.safeParse({ ...base(), areaId: null }).success).toBe(true)
+    expect(issues(draft.safeParse({ ...base(), areaId: OTHER_RETIRED_AREA }))).toContain(
+      'areaId: That ED area is no longer on the list.',
+    )
+  })
+
+  /**
+   * The Phase 7 retired-row rule, applied to areas: an area an Admin deactivated is still
+   * accepted on the case that already carries it (its schema was built from
+   * `loadReferenceForCase`), and still refused everywhere else.
+   */
+  it('accepts a retired area on the case that carries it, and nowhere else', () => {
+    expect(forCarrier.draft.safeParse({ ...base(), areaId: RETIRED_ON_THIS_CASE }).success).toBe(true)
+    expect(issues(draft.safeParse({ ...base(), areaId: RETIRED_ON_THIS_CASE }))).toContain(
+      'areaId: That ED area is no longer on the list.',
+    )
+    // And the same rule holds on resolve, which is built from the same refinements.
+    const resolved = { ...base(), departedAt: new Date('2026-09-08T11:00:00Z'), disposition: 'DISCHARGED_HOME' }
+    expect(forCarrier.resolve.safeParse({ ...resolved, areaId: RETIRED_ON_THIS_CASE }).success).toBe(true)
+    expect(issues(resolve.safeParse({ ...resolved, areaId: RETIRED_ON_THIS_CASE }))).toContain(
+      'areaId: That ED area is no longer on the list.',
+    )
+  })
+
+  it('takes an optional preliminary report time on an investigation row', () => {
+    const r = draft.safeParse({
+      ...base(),
+      investigations: [{ type: 'CT', doneAt: '2026-09-08T07:00:00Z', preliminaryAt: '2026-09-08T07:30:00Z' }],
+    })
+    expect(r.success).toBe(true)
+    if (r.success) expect(r.data.investigations[0]!.preliminaryAt).toBeInstanceOf(Date)
+    // A lab row simply never sends one.
+    expect(draft.safeParse({ ...base(), investigations: [{ type: 'LAB' }] }).success).toBe(true)
   })
 
   it('accepts ISO strings for times and coerces them', () => {

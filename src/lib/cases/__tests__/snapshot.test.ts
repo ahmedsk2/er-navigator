@@ -14,6 +14,8 @@ function source(overrides: Partial<SnapshotSource> = {}): SnapshotSource {
     status: 'OPEN',
     primaryReasonId: 'reason_a',
     medAdminInformedAt: null,
+    ctas: null,
+    areaId: null,
     triageAt: null,
     roomAt: null,
     roomType: null,
@@ -74,8 +76,8 @@ describe('caseSnapshot', () => {
           { departmentId: 'd_a', consultedAt: null, seenAt: null, repliedAt: null },
         ],
         investigations: [
-          { type: 'XR', orderedAt: null, collectedAt: null, receivedAt: null, doneAt: null, resultedAt: null },
-          { type: 'CT', orderedAt: null, collectedAt: null, receivedAt: null, doneAt: null, resultedAt: null },
+          { type: 'XR', orderedAt: null, collectedAt: null, receivedAt: null, doneAt: null, preliminaryAt: null, resultedAt: null },
+          { type: 'CT', orderedAt: null, collectedAt: null, receivedAt: null, doneAt: null, preliminaryAt: null, resultedAt: null },
         ],
       }),
     )
@@ -90,8 +92,8 @@ describe('caseSnapshot', () => {
           { departmentId: 'd_z', consultedAt: REG, seenAt: null, repliedAt: null },
         ],
         investigations: [
-          { type: 'CT', orderedAt: null, collectedAt: null, receivedAt: null, doneAt: null, resultedAt: null },
-          { type: 'XR', orderedAt: null, collectedAt: null, receivedAt: null, doneAt: null, resultedAt: null },
+          { type: 'CT', orderedAt: null, collectedAt: null, receivedAt: null, doneAt: null, preliminaryAt: null, resultedAt: null },
+          { type: 'XR', orderedAt: null, collectedAt: null, receivedAt: null, doneAt: null, preliminaryAt: null, resultedAt: null },
         ],
       }),
     )

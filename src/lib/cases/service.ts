@@ -91,6 +91,10 @@ function updateView(row: { id: string; createdAt: Date; text: string; author: { 
  * case already carries passes even after it is deactivated; a retired row it does NOT carry is
  * absent from that reference and is still refused. `createCase` passes the strict active-only
  * list, so a new case can never be opened on a retired row.
+ *
+ * The ED area is policed by the same reference, but one layer up: `caseSchemas(reference)` hands
+ * its area ids to `buildCaseSchemas`, so an unknown `areaId` is a zod issue on the `areaId` path
+ * rather than a check here (src/lib/domain/validation.ts).
  */
 function checkReferenceIds(d: ValidatedDraft, reference: ReferenceData): ValidationIssue[] {
   const issues: ValidationIssue[] = []
@@ -113,6 +117,8 @@ function caseScalarData(d: ValidatedDraft) {
     mrn: d.mrn,
     registrationAt: d.registrationAt,
     shift: d.shift ?? null,
+    ctas: d.ctas ?? null,
+    areaId: blankToNull(d.areaId),
     primaryReasonId: d.primaryReasonId ?? null,
     roomType: d.roomType ?? null,
     triageAt: d.triageAt ?? null,
@@ -234,6 +240,7 @@ async function applyChildren(
         collectedAt: i.collectedAt ?? null,
         receivedAt: i.receivedAt ?? null,
         doneAt: i.doneAt ?? null,
+        preliminaryAt: i.preliminaryAt ?? null,
         resultedAt: i.resultedAt ?? null,
       },
     })
@@ -247,6 +254,7 @@ async function applyChildren(
         collectedAt: i.collectedAt ?? null,
         receivedAt: i.receivedAt ?? null,
         doneAt: i.doneAt ?? null,
+        preliminaryAt: i.preliminaryAt ?? null,
         resultedAt: i.resultedAt ?? null,
       })),
     })
@@ -323,6 +331,7 @@ export async function createCase(
             collectedAt: i.collectedAt ?? null,
             receivedAt: i.receivedAt ?? null,
             doneAt: i.doneAt ?? null,
+            preliminaryAt: i.preliminaryAt ?? null,
             resultedAt: i.resultedAt ?? null,
           })),
         },
