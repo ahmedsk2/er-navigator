@@ -2,6 +2,10 @@
 
 One line per finished slice, newest first. The gate reports reference this file.
 
+## Phase 2
+
+- 2026-09-09 [ERN-P2.1] The case vertical slice: `/cases/new` and `/cases/[id]` with the prototype's editor section for section (identity and registration with the quick chips, stage and reason chips with Other text and the primary selector, departments and consult chains, investigation, admission and transfer chains, journey times, append-only updates, resolve/reopen, the "Check these times" panel); six server actions in `app/cases/actions.ts` over `src/lib/cases/service.ts` (create, save, add update, resolve, reopen, void) with optimistic locking, the 409 "changed by" payload from the newest audit row, the pending `OtherReview` lifecycle and one before/after audit row per mutation; read-only rendering for VIEWER and for voided cases; reference-data loader wired into `buildCaseSchemas`; UI atoms under `src/components/ui/`; 270 unit and database tests (237 without a database), 38 Playwright checks at both viewports, screenshots in `design/screens/phase2-*`. Opening a case takes 8 UI actions including sign-in.
+
 ## Phase 1
 
 - 2026-09-09 [ERN-P1.8] Lead review and merge: remembered devices now slide the browser-side cookie lifetime on every request (route gate re-stamps `ern_session` and `ern_remember`), runbook NUL byte removed and the CI NUL guard extended to docs, nested worktrees excluded from lint/tests/tsc. Verified after merge: 236 unit and database tests, 22 Playwright tests, typecheck, lint, build.

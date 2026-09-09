@@ -1,3 +1,6 @@
+import Link from 'next/link'
+import { requireUser } from '@/src/lib/auth/session'
+import { can } from '@/src/lib/authz/policy'
 import { THRESHOLDS_H } from '@/src/lib/domain/taxonomy'
 
 const bands = [
@@ -10,14 +13,26 @@ const bands = [
 ] as const
 
 // The board itself lands in Phase 3. Until then this is the signed-in home: the band legend
-// (kept from the Phase 0 holding page) and a note about what is coming.
-export default function Home() {
+// (kept from the Phase 0 holding page), the way in to the Phase 2 case editor, and a note about
+// what is coming.
+export default async function Home() {
+  const user = await requireUser()
+
   return (
     <>
       <p className="text-body text-ink-2">
         The board arrives in Phase 3. Until then this page confirms your account, your role and
         the elapsed-time bands every case will be coloured by.
       </p>
+
+      {can(user.role, 'case.create') ? (
+        <Link
+          href="/cases/new"
+          className="mt-6 flex min-h-11 items-center justify-center rounded-button bg-accent px-4 text-body font-semibold text-white"
+        >
+          New case
+        </Link>
+      ) : null}
 
       <section className="mt-6 rounded-card border border-line bg-panel p-4 shadow-panel">
         <div className="flex items-baseline justify-between">

@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs'
 import { LOCKOUT_MS } from '../../src/lib/auth/lockout'
 import { prisma } from '../../src/lib/db'
+import { seedE2EUsers } from './fixtures/seed-users'
 
 /**
  * One fixture the e2e suite cannot create through the UI: an account that is already locked.
@@ -30,4 +31,8 @@ export default async function globalSetup(): Promise<void> {
     update: { passwordHash, active: true, failedLogins: 0, lockedUntil },
   })
   await prisma.$disconnect()
+
+  // Phase 2: the navigator, supervisor and viewer accounts the case tests sign in as, seeded
+  // through the owner role so the previous run's fixture cases can be cleared too.
+  await seedE2EUsers()
 }

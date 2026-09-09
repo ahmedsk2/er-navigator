@@ -87,7 +87,10 @@ jobs:
       - name: playwright (mobile + desktop)
         run: pnpm exec playwright test
         env:
+          # The app runs as the limited role; the Phase 2 fixtures seed their users and clear the
+          # previous run's cases as the owner, which is the only role allowed to delete a Case.
           DATABASE_URL: ${{ env.APP_URL_DB }}
+          E2E_OWNER_DATABASE_URL: ${{ env.OWNER_URL }}
           CI: 'true'
       - uses: actions/upload-artifact@v4
         if: failure()
