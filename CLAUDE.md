@@ -28,4 +28,4 @@ Coolify application on the shared OCI host, deployed by merging to `main`. A dep
 
 ## Cost discipline
 
-Fable leads and reviews; Sonnet implements specified slices in worktrees, tests first; Haiku does mechanical work. One session per phase; the gate report and `docs/CHANGELOG.md` are the handoff. `docs/PLAN.md` Section 6 has the full playbook.
+Fable leads and reviews; Opus implements specified slices in worktrees, tests first; Sonnet and Haiku only for trivial mechanics. One session per phase; the gate report and `docs/CHANGELOG.md` are the handoff. `docs/PLAN.md` Section 6 has the full playbook.

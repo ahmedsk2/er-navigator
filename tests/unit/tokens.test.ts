@@ -26,7 +26,7 @@ function contrast(a: string, b: string): number {
 }
 
 const grounds = ['color-bg', 'color-panel'] as const
-const textTokens = ['color-ink', 'color-muted', 'color-accent', 'color-band-h4-ink', 'color-band-ok', 'color-band-h6', 'color-band-h12', 'color-band-h24']
+const textTokens = ['color-ink', 'color-ink-2', 'color-muted', 'color-accent', 'color-accent-ink', 'color-band-h4-ink', 'color-band-ok', 'color-band-h6', 'color-band-h12', 'color-band-h24', 'color-danger']
 const bandTokens = ['color-band-ok', 'color-band-h4', 'color-band-h6', 'color-band-h12', 'color-band-h24']
 
 describe('design tokens', () => {

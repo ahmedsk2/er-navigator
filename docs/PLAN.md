@@ -17,9 +17,12 @@ Read order for any session: `CLAUDE.md` (short), then the section of this plan f
 
 **Inputs still missing (Gate 0 asks for them)**
 
-- `ER_Navigator_Tool_Design.md`: the locked design document the plan names as pre-read 1. Everything it locks is already reflected in the prototype and plan, so work can start; it is still wanted for cross-checking.
-- The visual design template. Section 4 tells Ahmed exactly which Envato Elements items to download and where to put them.
 - `ER_Navigator_Cases_FirstPass_Extraction.xlsx`: Phase 8 only.
+
+**Inputs received on 9 September (Gate 0)**
+
+- `docs/reference/ER_Navigator_Tool_Design.md` (Draft v3). Reconciled against Appendix A and the schema: every stage and reason matches; v3's single "Imaging acquisition delay (CT / US / X-ray / KUB, sub-select)" is the three imaging reasons Appendix A already carries; "Isolation/negative pressure room (tag alongside any ward)" is the `isolation` flag on the case; "Time flagged" is `openedAt`; "Navigator (creator)" comes from the login. One difference: v3 lists Dermatology as a tentative department; Appendix A (which wins) does not include it, and Admin can add it in Phase 6 if QCH refers there. RCC is read as Regional Coordination Center.
+- The five Envato items, unzipped under `Documents\Navigators\design-template\` (Tailwick, Vristo, LuminaHealth, MedAxis, Hospenta). Licensed files; never committed.
 
 **Infrastructure found and verified this session**
 
@@ -64,7 +67,8 @@ The locked plan wins on workflow, taxonomy, rules, screens and permissions. This
 | Email | nodemailer over SMTP | Same. Credentials come from Coolify env vars; provider decided at Gate 0 (Section 9) | The host has a working relay; sending from `towardpcc.com` needs an SPF change first |
 | Backups | Nightly dump script, 30-day retention | Phase 7: `scripts/backup.sh` on the host's systemd timer, `pg_dump` to a dated gzip, 30 local days, upload to the `coolify-backups` bucket. The laptop sync already mirrors that bucket, which gives the third copy for free | Plugs into the backup chain Ahmed already runs and drills |
 | Client IP for rate limiting | Not specified | Read `CF-Connecting-IP` | Safe only because the origin is locked to Cloudflare. If those ports are ever opened, this must change in the same commit (towardpcc has the same dependency) |
-| Repository | Not specified; Ahmed allowed an open repo for now | `github.com/ahmedsk2/er-navigator`, private, read-only deploy key in Coolify (the host's existing pattern). Can be flipped public at any time | Private costs nothing here and the deploy path does not need public access |
+| Repository | Not specified; Ahmed allowed an open repo for now | `github.com/ahmedsk2/er-navigator`, PUBLIC during the build by Ahmed's decision (9 September), read-only deploy key in Coolify; flipped private when the build finishes. Nothing hospital-specific beyond the plan and prototype, and never a secret or a patient identifier, may enter it | Ahmed's call; the deploy path does not care either way |
+| Model tiers for delegation | Not specified | Fable leads and reviews; Opus does the implementation slices; Sonnet and Haiku only for trivial mechanics (formatting, renames, doc sweeps). Ahmed asked for Opus over Sonnet and Haiku on 9 September | Fewer iterations per slice at a modest cost increase |
 | Design tokens | "the attached template" (missing) | Extracted from the Envato items in Section 4 once Ahmed downloads them. Until then the prototype palette is the baseline in `app/globals.css` | The threshold colours are information design and are not up for restyling |
 | Timezone, week start, language | UTC storage, Asia/Riyadh display, Sunday, English | Unchanged | |
 
@@ -121,7 +125,7 @@ Rules that apply to every command run on the host: scope everything to this app'
 
 The locked plan uses the template for visual language only: colour, type, spacing, radius, elevation. It keeps the prototype's information design: a left threshold band on every row, tabular numerals for all times, no all-caps labels, no decorative cards, and one memorable element, the elapsed clock. That is the brief for choosing a template: calm, dense, readable one-handed, with a token system that is easy to lift.
 
-**Recommended downloads (Envato Elements, all licensed per project; register the project name "ER Navigator" when downloading)**
+**Downloads (received 9 September; Envato Elements, licensed per project)**
 
 | Priority | Item | Use it for | Why this one |
 | --- | --- | --- | --- |
@@ -155,7 +159,7 @@ The locked plan's phases, gates, report format and commit format are unchanged. 
 
 Cross-cutting checklist for every feature slice, unchanged: schema → zod → server action → UI → audit row → unit test → e2e step → `docs/CHANGELOG.md` line. A slice missing a layer is not done.
 
-Model tiers used below: **Fable** = Claude Fable 5.1 (lead). **Sonnet** = Claude Sonnet 5 subagent. **Haiku** = Claude Haiku 4.5 subagent. Section 6 explains the split.
+Model tiers used below: **Fable** = Claude Fable 5.1 (lead). **Opus** = Claude Opus 5 subagent, the default for implementation (Ahmed's preference, 9 September). **Sonnet** and **Haiku** only for trivial mechanics. Section 6 explains the split.
 
 ### Phase 0: discovery and scaffold (mostly done 2026-09-08)
 
@@ -178,7 +182,7 @@ To build: the session design decided at Gate 0 (Section 1, Sessions row) with bc
 
 Tests: formula tests (done), PHI guard (done), role matrix test (every action x every role), lockout test, audit wrapper test, a DB privilege test that asserts `has_table_privilege('ernav_app','"AuditLog"','DELETE')` is false.
 
-Recipe: Fable designs the auth and audit module boundaries and reviews at the gate (one session). Sonnet implements the credentials flow and the audit wrapper from the design in a worktree, tests first. Haiku writes the role-matrix test table from Section 2 of the locked plan.
+Recipe: Fable designs the auth and audit module boundaries and reviews at the gate (one session). Opus implements the credentials flow and the audit wrapper from the design in a worktree, tests first, and writes the role-matrix test table from Section 2 of the locked plan.
 
 ### Phase 2: case vertical slice
 
@@ -188,13 +192,13 @@ Tests: zod rules from locked plan section 4, one unit test per rule; Playwright:
 
 Free text is the realistic PHI path (update text, resolution note, Other text, void reason): a shared `freeText` zod schema trims and caps every one of them, and, if Ahmed approves Section 9 question 10, adds a warning to the existing warnings channel when a 10-digit run appears (Saudi ID, Iqama and mobile numbers are 10 digits; MRNs vary, so warn rather than block). Every free-text field carries a persistent "MRN only, no names" hint. The runbook already has the owner-role scrub procedure for the day a name slips through.
 
-Recipe: Fable writes `validation.ts` and `warnings.ts` itself (they encode the rules; getting them wrong is the expensive failure) and reviews the server actions. Sonnet builds the editor UI from the prototype section by section, one component per subagent, each with its own Playwright step. Screenshots at both viewports at the gate.
+Recipe: Fable writes `validation.ts` and `warnings.ts` itself (they encode the rules; getting them wrong is the expensive failure) and reviews the server actions. Opus builds the editor UI from the prototype section by section, one component per subagent, each with its own Playwright step. Screenshots at both viewports at the gate.
 
 ### Phase 3: board
 
 Sorting by elapsed time, bands, MRN search, Open/Resolved/All filter, staleness at 2 h, counts strip, 30 s polling, floating New case (hidden for VIEWER), print handover sheet.
 
-Recipe: Sonnet ports the board from the prototype. Fable reviews information density on the mobile screenshot and the print sheet. First Lighthouse run recorded here.
+Recipe: Opus ports the board from the prototype. Fable reviews information density on the mobile screenshot and the print sheet. First Lighthouse run recorded here.
 
 ### Phase 4: dashboard
 
@@ -202,7 +206,7 @@ All sections from locked plan section 5.4, drill-down everywhere, date ranges, S
 
 Tests: a fixture set of about 40 cases with hand-computed answers; one unit test per aggregate. Load the `dataviz` skill for chart review.
 
-Recipe: Fable writes `aggregates.ts` and the fixture answers (the numbers must be right). Sonnet builds the sections and drill-downs. A small Workflow of adversarial verifiers checks the fixture answers independently before the gate.
+Recipe: Fable writes `aggregates.ts` and the fixture answers (the numbers must be right). Opus builds the sections and drill-downs. A small Workflow of adversarial verifiers checks the fixture answers independently before the gate.
 
 ### Phase 5: export and print report
 
@@ -210,7 +214,7 @@ exceljs streamed workbook (Summary, Cases, Consults, Investigations, Updates), `
 
 Tests: exported Cases sheet row count equals the filtered query count; hours columns equal `elapsedHours`.
 
-Recipe: Sonnet end to end, Fable reviews the sheet mapping against the prototype's export columns.
+Recipe: Opus end to end, Fable reviews the sheet mapping against the prototype's export columns.
 
 ### Phase 6: admin and alerts
 
@@ -218,13 +222,13 @@ Users, reference lists, Other promotion (re-tags the originating case, closes th
 
 Preconditions this phase must build first: a `worker` Dockerfile target (the runner image has no TypeScript runtime; bundle `worker/alerts.ts` with esbuild into the runner image and run it with `node`, reusing the entrypoint allowlist) and a seeded system user (fixed username, `active = false`, role NAVIGATOR) to own the "Reached Nh threshold" updates, because `CaseUpdate.authorId` is required. The Phase 8 importer uses the same user.
 
-Recipe: Fable designs the worker's idempotency (unique on caseId+threshold does the heavy lifting) and the email template. Sonnet builds admin screens. Test: promoting an Other reason re-tags the case and closes the review.
+Recipe: Fable designs the worker's idempotency (unique on caseId+threshold does the heavy lifting) and the email template. Opus builds admin screens. Test: promoting an Other reason re-tags the case and closes the review.
 
 ### Phase 7: hardening and deployment
 
 `slop-remover` pass, `security-pan-check:sec-web` and `sec-code` passes and fixes, `npm audit` clean of high/critical, Lighthouse mobile at or above 90 on Board and Case editor, CSP tightened (hashed inline styles), PWA manifest and install prompt, `scripts/backup.sh` on the host timer with a restore drill recorded, Uptime Kuma monitor on `/api/ready`, `docs/RUNBOOK.md` complete (start, stop, restore, add a user, rotate secrets). Gate 7 = production ready.
 
-Recipe: Fable runs the security review and the restore drill personally. Haiku does the slop pass and doc sweeps.
+Recipe: Fable runs the security review and the restore drill personally. Opus does the slop pass; Haiku the doc sweeps.
 
 ### Phase 8: only if asked
 
@@ -251,9 +255,9 @@ Fable is the most capable model available here and the most expensive per token.
 
 **Split the work by what fails expensively**
 
-- Fable: architecture and module boundaries, the rules code (`validation.ts`, `warnings.ts`, `aggregates.ts`), security (auth, audit, DB privileges, headers), gate reviews, any bug that survives one Sonnet attempt, and the final answers to Ahmed's questions.
-- Sonnet: implementing a well-specified slice (a server action from its zod schema, a UI section from the prototype, a Playwright step), in a worktree, with the test written first.
-- Haiku: mechanical work. Porting constants, renames, formatting, doc updates, lockfile bumps, writing table-driven tests from a matrix that already exists.
+- Fable: architecture and module boundaries, the rules code (`validation.ts`, `warnings.ts`, `aggregates.ts`), security (auth, audit, DB privileges, headers), gate reviews, any bug that survives one Opus attempt, and the final answers to Ahmed's questions.
+- Opus: implementing a well-specified slice (a server action from its zod schema, a UI section from the prototype, a Playwright step), in a worktree, with the test written first; also table-driven tests from an existing matrix.
+- Sonnet or Haiku: only trivial mechanics where a wrong answer is obvious and cheap: formatting, renames, lockfile bumps, doc sweeps.
 - Effort setting: `low` for mechanical subagents, default for implementation, `high` only for gate review and security review. `max` is not needed anywhere in this project.
 
 **Keep every Fable turn small**
@@ -276,7 +280,7 @@ Fable is the most capable model available here and the most expensive per token.
 
 - Re-reading large files a second time in the same session. Read once, keep the summary in the plan or the CLAUDE.md.
 - Long gate reports. The locked plan gives the exact five-line shape; use it.
-- Letting the lead model write boilerplate (CRUD forms, table rows, seed data) that a subagent produces identically.
+- Letting the lead model write boilerplate (CRUD forms, table rows, seed data) that an Opus subagent produces identically.
 - Debugging a deploy by re-deploying. Read the Coolify deployment log once, fix the cause, push once.
 - Re-litigating locked decisions at each gate. The do-not list in the locked plan section 9 is final; this plan's Section 1 is final once Gate 0 passes.
 
@@ -314,18 +318,32 @@ Fable is the most capable model available here and the most expensive per token.
 
 ---
 
-## 9. Gate 0 questions for Ahmed
+## 9. Gate 0: questions and answers
 
-1. Please add `ER_Navigator_Tool_Design.md` to `docs/reference/` (or say it is superseded by the prototype and plan).
-2. Download the Section 4 items into `Documents\Navigators\design-template\` and say when they are there.
-3. SMTP for alerts: use the existing Infomaniak relay (`mail.dmc-im.com`, from `info@dmc-im.com`), or a `towardpcc.com` sender (needs an SPF change and DKIM)? Alerts stay log-only until this is answered.
-4. First ADMIN username and display name. The seed created `admin` (display name Ahmed) with a generated password that lives only in Coolify's environment; once login exists (Phase 1) change it and delete `ADMIN_PASSWORD` from both Coolify copies.
-5. Hospital header text for the printed report and handover sheet (exact wording, English).
-6. Confirm Next.js 16 and Prisma 7 instead of the plan's Next.js 15 (Section 1).
-7. Keep the repository private with a deploy key (recommended), or make it public as you offered?
-8. Preview deployments: Coolify can build PRs on `pr-N.nav.towardpcc.com`. Wanted from Phase 2, or not at all?
-9. Sessions (Section 1): option A, hand-rolled opaque-cookie sessions in a `Session` table, recommended; or option B, Auth.js with JWT sessions plus a per-request active/locked check. Both meet the locked plan's cookie, expiry and rotation rules; only A is "database sessions" literally.
-10. Free text: may the case editor warn (not block) when an update, note or Other text contains a 10-digit number, and show an "MRN only, no names" hint on those fields? This is one rule beyond the locked plan's validation list.
+Answered by Ahmed on 9 September, with the items he left to my judgement ("go as you see fit") decided and marked.
+
+1. Design document: received (`docs/reference/ER_Navigator_Tool_Design.md`, Draft v3) and reconciled in Section 0.
+2. Templates: received, five items under `design-template\`.
+3. SMTP sender: **navigator@towardpcc.com**, per Ahmed. Recorded in Coolify as `SMTP_FROM`. **Not deliverable yet, and not something to fix silently:** `towardpcc.com` publishes `v=spf1 -all` and DMARC `p=reject` with strict alignment on purpose. The TowardPCC project's ADR-0004 decision 5 says the apex sends nothing, its mail goes out as `towardpicu.com`, and its daily residency canary (`check-residency.mjs`, `checkSpf`) fails the moment SPF is widened. So a `towardpcc.com` sender needs Ahmed to (a) decide that towardpcc.com may send after all, amend ADR-0004 and the canary, and add SPF and DKIM for the chosen relay; or (b) use `navigator@towardpicu.com` through the relay QCH already uses. Alerts stay log-only until one of these is done; Phase 6 will not start the email step without it.
+4. First ADMIN: `admin`, display name Ahmed, as seeded; password lives only in Coolify. Decided by me; change in Phase 1 if wanted.
+5. Report header: "Qatif Central Hospital, Emergency Department. ER Navigator" as the placeholder, held in a settings row Admin can edit (Phase 6). Decided by me.
+6. Next.js 16 and Prisma 7: confirmed.
+7. Repository: public during the build, private at the end. Done.
+8. Preview deployments: not for now. Decided by me; adds a build per PR on a shared host for little gain before Phase 3.
+9. Sessions: option A, hand-rolled opaque-cookie database sessions. Decided by me on the recommendation in Section 1.
+10. Free text: warn, never block, plus the "MRN only, no names" hint. Decided by me.
+11. Delegation: Opus for implementation slices rather than Sonnet and Haiku, per Ahmed.
+
+**GATE 0 REPORT**
+
+```
+GATE 0 REPORT
+Built: scaffold (Next.js 16, TypeScript strict, Tailwind 4, Prisma 7, Postgres 16), authoritative schema and migrations, Appendix A seed, duration formulas with tests, PHI guard, token contrast test, security headers, health and readiness probes, Dockerfile and compose (isolated Postgres, owner and app roles, env allowlist), CI (verify + e2e), repo, DNS, Coolify app, push-to-deploy, live at nav.towardpcc.com, plan, runbook, design-asset guide
+Tests: unit 61/61, e2e 2/2 (CI green at 792e563)
+Screenshots: design/screens/phase0-home-mobile-390x844.png, design/screens/phase0-home-desktop-1280x800.png
+Deviations from spec: Next.js 16 not 15; Prisma 7; schema, migrations, seed, formula tests and PHI guard pulled forward from Phase 1; amber band #B8790F (+ text variant) instead of #C98A1B; seed is insert-if-missing; sessions hand-rolled, not Auth.js; deploy is stop-then-start, not rolling; Dermatology not seeded (Appendix A wins over design doc v3)
+Questions: SMTP sender (item 3 above) needs Ahmed's decision before Phase 6 email
+```
 
 ---
 

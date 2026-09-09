@@ -12,7 +12,7 @@ Reviewed 2026-09-08 against the Elements catalogue (admin templates, UX/UI kits)
 
 Optional fallbacks: Vristo (Next.js/Tailwind admin, https://elements.envato.com/vristo-tailwind-reactjs-nextjs-admin-template-TNR7P9L) if Tailwick's Next.js variant disappoints; Hospenta Healthcare Mobile App UI Kit (https://elements.envato.com/hospenta-healthcare-mobile-app-ui-kit-LMXN9HM) for phone-form spacing.
 
-Put each unzipped item in its own folder under `C:\Users\ahmed\Documents\Navigators\design-template\`. They are licensed files: they never go into this repository.
+Received 9 September and unzipped under `C:\Users\ahmed\Documents\Navigators\design-template\` (tailwick/, vristo/, luminahealth/, medaxis/, hospenta/). They are licensed files: they never go into this repository.
 
 ## Why these and not the others
 
@@ -34,3 +34,7 @@ Put each unzipped item in its own folder under `C:\Users\ahmed\Documents\Navigat
 - Left threshold band on rows, tabular numerals for all times, no all-caps labels, no decorative cards, the elapsed clock is the one memorable element.
 - Touch targets at least 44 px; body text at least 15 px on mobile; contrast AA.
 - Nothing from a template's content, copy, logos or component names enters the codebase.
+
+## Extraction result (Phase 0.3, 2026-09-09)
+
+Done. The decisions, with the template each value came from, are in `design/tokens.md`; the values are in `app/globals.css`; the font is IBM Plex Sans self-hosted through `next/font` (tabular figures, an Arabic companion face for Phase 8, no runtime fetch). The prototype's information design is unchanged. Before/after screenshots: `design/screens/phase0-*` and `design/screens/tokens-*`.
