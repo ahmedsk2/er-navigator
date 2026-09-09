@@ -142,7 +142,9 @@ test('a viewer sees the same editor read-only and cannot reach the new-case form
   await expect(viewer.getByRole('button', { name: 'Mark resolved' })).toHaveCount(0)
   await expect(viewer.getByRole('button', { name: 'Void' })).toHaveCount(0)
 
-  await viewer.goto('/cases/new')
+  // Phase 7: the refusal is an HTTP 403 carrying app/forbidden.tsx, not a 200 that reads like one.
+  const refused = await viewer.goto('/cases/new')
+  expect(refused?.status()).toBe(403)
   await expect(viewer.getByRole('heading', { name: 'Not allowed' })).toBeVisible()
 
   await editing.close()

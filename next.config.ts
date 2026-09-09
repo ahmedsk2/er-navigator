@@ -1,27 +1,19 @@
 import type { NextConfig } from 'next'
 
-// Security headers per plan section 7. CSP starts strict-but-workable for Phase 0 and is
-// tightened (hashed inline styles, nonce for Next's runtime) in Phase 7.
+/**
+ * Security headers per plan section 7, minus the CSP.
+ *
+ * The Content-Security-Policy is NOT here. It carries a per-request nonce, which a static
+ * config cannot mint, so `proxy.ts` builds and sets the whole policy — the one place it lives
+ * (Phase 7). Everything below is the same on every response and stays where a config can state
+ * it once; `tests/e2e/headers.spec.ts` checks both halves arrive together.
+ */
 const securityHeaders = [
   { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
   { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()' },
-  {
-    key: 'Content-Security-Policy',
-    value: [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline'",
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data:",
-      "font-src 'self'",
-      "connect-src 'self'",
-      "frame-ancestors 'none'",
-      "base-uri 'self'",
-      "form-action 'self'",
-    ].join('; '),
-  },
 ]
 
 const nextConfig: NextConfig = {
@@ -30,6 +22,12 @@ const nextConfig: NextConfig = {
   ...(process.env.NEXT_OUTPUT_STANDALONE === '1' ? { output: 'standalone' as const } : {}),
   poweredByHeader: false,
   reactStrictMode: true,
+  experimental: {
+    // Lets a page call `forbidden()` from next/navigation, which answers 403 and renders
+    // app/forbidden.tsx. Used by `requireAction()` so a VIEWER on /cases/new gets a status a
+    // proxy and a log can see, not a 200 whose body says no (Phase 7).
+    authInterrupts: true,
+  },
   async headers() {
     return [{ source: '/(.*)', headers: securityHeaders }]
   },
