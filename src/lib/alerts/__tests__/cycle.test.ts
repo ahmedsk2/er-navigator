@@ -20,7 +20,7 @@ type StoredAlert = { id: string; caseId: string; thresholdHours: number; emailSe
 class FakeStore implements AlertStore {
   cases: AlertCase[] = []
   alerts: StoredAlert[] = []
-  people: Recipient[] = [{ username: 'sami', displayName: 'Sami Supervisor' }]
+  people: Recipient[] = [{ username: 'sami', displayName: 'Sami Supervisor', email: 'sami@example.org' }]
   updates: Array<{ caseId: string; thresholdHours: number }> = []
   recipientLookups = 0
   private next = 1
@@ -111,7 +111,6 @@ function cycle(now: Date, over: Partial<Parameters<typeof runAlertCycle>[0]> = {
   return runAlertCycle({
     store,
     mailer,
-    addressOf: (username) => (username === 'sami' ? 'sami@example.org' : null),
     logger,
     now,
     appUrl: 'https://nav.towardpcc.com',
@@ -235,7 +234,7 @@ describe('runAlertCycle', () => {
 
   it('records the alert and warns when a supervisor has no address on file', async () => {
     store.cases = [caseAt('c1', 6)]
-    store.people = [{ username: 'unlisted', displayName: 'No Address' }]
+    store.people = [{ username: 'unlisted', displayName: 'No Address', email: null }]
 
     const summary = await cycle(T0)
     expect(summary.alertsFired).toBe(2)

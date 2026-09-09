@@ -87,7 +87,7 @@ Every key the compose file passes through. Secrets are 48-character alphanumeric
 | `ADMIN_USERNAME`, `ADMIN_DISPLAY_NAME`, `ADMIN_PASSWORD` | first ADMIN, created by the seed only if the username does not exist yet |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | threshold alert email (Phase 6): the `navigator@towardpcc.com` mailbox's own SMTP settings, as in a mail client (no relay). `SMTP_FROM` is set; Ahmed enters the other four in Coolify (both copies) and redeploys. Empty host = log only. Deliverability needs the provider's DKIM selector record in Cloudflare; SPF and DMARC stay unchanged |
 | `ALERT_INTERVAL_MINUTES` | how often the `worker` scans the open cases. Default 5. The healthcheck allows 15 minutes between cycles, so anything above ~7 needs the healthcheck widened too |
-| `ALERT_EMAIL_MAP` | who the 6 h+ alerts go to: `username=address` pairs, comma or space separated (`sami=sami@x.org, ahmed=ahmed@x.org`). The **roles** come from the database every cycle (active SUPERVISOR and ADMIN); the **addresses** come from here, because `User` has no address column and the locked plan's data model is authoritative. A supervisor with no entry is skipped and logged at warn level, never guessed at. Empty = alerts are still recorded, just not emailed |
+| *(no recipient variable)* | who the 6 h+ alerts go to is **not** an environment variable. It is the active SUPERVISOR and ADMIN users that have an email address in **Admin → Users**, read from the database on every cycle — so adding or removing someone takes effect within one interval, with no redeploy. Someone on those roles with no address is skipped and logged at warn level, never guessed at; nobody with an address = alerts are still recorded, just not emailed. Phase 7 removed `ALERT_EMAIL_MAP`; delete it from both Coolify copies if it is still set |
 | `ALERT_HEARTBEAT_FILE` | the file the worker touches at the end of every cycle. Default and healthcheck path: `/tmp/heartbeat`. Leave unset |
 | `LOG_LEVEL` | `info` |
 
@@ -163,9 +163,11 @@ Then take a fresh backup, and remember the previous dumps (local, bucket, laptop
 Its own container, no inbound traffic, the same image as `app`. Every `ALERT_INTERVAL_MINUTES` it
 scans the OPEN cases and, the first time one passes 4, 6, 12 or 24 hours, writes an `Alert`, the
 `system` user's "Reached {t}h threshold" update and an `alert.fire` audit row in one transaction;
-from 6 hours up it also emails the active supervisors and admins. It never fills in "medical admin
-informed". A unique index on `(caseId, thresholdHours)` is what makes a restart or a second worker
-harmless. Acknowledging is done in the app: Admin → Alerts, or the case editor's header.
+from 6 hours up it also emails the active supervisors and admins **that have an email address in
+Admin → Users** — that list is the whole directory and is re-read every cycle, so a change there
+takes effect within one interval without a redeploy. It never fills in "medical admin informed".
+A unique index on `(caseId, thresholdHours)` is what makes a restart or a second worker harmless.
+Acknowledging is done in the app: Admin → Alerts, or the case editor's header.
 
 ```bash
 U=jqcjqhmcmizxs1u51wnqlfwv
@@ -189,9 +191,14 @@ leaving mail switched off until the DKIM record is in place.
 ## Add a user
 
 Admin → Users, as an ADMIN: create (the temporary password is shown once — read it out, it cannot
-be recovered), change role, reset password, deactivate. Deactivating and resetting a password
-delete that user's sessions immediately. Nobody is ever deleted, and an administrator cannot
+be recovered), change role, set or clear the work email, reset password, deactivate. Deactivating
+and resetting a password delete that user's sessions immediately; changing an email does not, it
+is contact data rather than a credential. Nobody is ever deleted, and an administrator cannot
 deactivate or change the role of their own account: ask another administrator.
+
+The Email column is the alerts directory: a supervisor or administrator with an address there
+receives the 6 h+ threshold mail, and emptying the box and pressing Save takes them off the list
+without touching anything else.
 
 First login (Phase 1): sign in at https://nav.towardpcc.com/login with ADMIN_USERNAME and the
 ADMIN_PASSWORD that was in Coolify when the database was first seeded, then change it at
@@ -205,8 +212,28 @@ role: UPDATE "User" SET "lockedUntil" = NULL, "failedLogins" = 0 WHERE username 
 
 Uptime Kuma (`uptime.towardpcc.com`): add an HTTP monitor on `https://nav.towardpcc.com/api/ready` expecting `ready` (Phase 7). OCI alarms already cover host down and CPU.
 
+## Security headers
+
+Every response carries HSTS, `X-Frame-Options: DENY`, `X-Content-Type-Options`, a strict
+Referrer-Policy and a minimal Permissions-Policy from `next.config.ts`, plus a
+Content-Security-Policy built per request in `proxy.ts` — the only place that can mint the
+nonce it carries. There is exactly one source for the CSP, and a unit test fails if a second
+one appears in the config.
+
+```bash
+curl -sI https://nav.towardpcc.com/login | grep -i 'content-security-policy'
+# script-src 'self' 'nonce-<16 random bytes, different every request>' 'strict-dynamic'
+```
+
+`script-src` has no `'unsafe-inline'` and no `'unsafe-eval'`. `style-src` keeps
+`'unsafe-inline'` because Recharts writes `style="…"` attributes on the dashboard's charts and
+a style attribute cannot carry a nonce; measured, removing it leaves the dashboard chartless
+and changes nothing anywhere else. If a page ever renders blank after a deploy, check the
+browser console for a CSP refusal before anything else.
+
 ## History
 
+- 2026-09-09 (Phase 7): `ALERT_EMAIL_MAP` removed — alert recipients are now the users with an email in Admin → Users. CSP moved into `proxy.ts` with a per-request nonce and no `'unsafe-inline'` for scripts. A refused page answers HTTP 403. Installable as a PWA (`/manifest.webmanifest`, `/icons/*`, `/apple-touch-icon.png`, all public). Lighthouse mobile: board 98/100, case editor 96/100 (performance/accessibility). `pnpm audit` clean at moderate and above, with three `pnpm.overrides` pins.
 - 2026-09-08: repository, deploy key, DNS record, Coolify application and GitHub push webhook (id 676338800) created. First deploy (commit ac3672f, fingerprint cf6c356bcc69ff4b) verified: migrations applied, seed counts 10/48/16/8/1, app role privileges AuditLog DELETE=f, CaseUpdate DELETE=f, Case DELETE=f, superuser=f; Traefik router Host(nav.towardpcc.com) → app:3000; db on `internal` plus the per-app network.
 - 2026-09-08 (later): adversarial review found that Coolify's env file put the owner and admin passwords in the app container (fixed by the entrypoint allowlist), that the seed would overwrite Admin edits (now insert-if-missing), that rotating the app role password would break the app (now reconciled on every deploy), that compose deploys are stop-then-start (documented), and that the Prisma client leaked a pool per query in production (fixed).
 - 2026-09-08 23:17 to 23:24 (Riyadh): OUTAGE, about 7 minutes. A scripted documentation edit wrote a NUL and a newline into a comment in `docker/entrypoint.sh`; `sh` then failed with an unterminated quote and the app container crash-looped after a deploy. Fixed by rewriting the file and pushing; CI now runs `sh -n` on every shell script and rejects NUL bytes. Lesson: never patch shell scripts with escape-bearing text through a scripted replace, and parse them before pushing.

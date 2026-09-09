@@ -11,7 +11,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import type { Prisma, Role, Shift } from '@prisma/client'
 import { cookies, headers } from 'next/headers'
-import { redirect } from 'next/navigation'
+import { forbidden, redirect } from 'next/navigation'
 import { cache } from 'react'
 import { auditQuietly, contextFrom, type AuditContext } from '@/src/lib/audit'
 import { can, type Action } from '@/src/lib/authz/policy'
@@ -262,9 +262,31 @@ export async function requireUser(opts: { as?: 'page' | 'api' } = {}): Promise<A
   redirect('/login?expired=1')
 }
 
-/** requireUser + the permission matrix. Throws ForbiddenError, having written the audit row. */
+/**
+ * requireUser + the permission matrix.
+ *
+ * A page (the default) gets Next's `forbidden()` after the `auth.forbidden` audit row is
+ * written: the response is a real HTTP 403 carrying `app/forbidden.tsx`, not a 200 whose body
+ * happens to say no. A refusal a proxy, a log or a monitor can see is worth more than a pretty
+ * one, and Phase 7's route audit is what asked for it. `experimental.authInterrupts` in
+ * `next.config.ts` is what makes `forbidden()` legal.
+ *
+ * A route handler passes `{ as: 'api' }` and still gets a ForbiddenError to map to a 403 with a
+ * body of its own; server actions do not call this at all — they call `requireUser()` and let
+ * the service's `assertCan` decide, so a refused mutation comes back as a result object the
+ * screen can render rather than as a thrown navigation.
+ */
 export async function requireAction(action: Action, opts: { as?: 'page' | 'api' } = {}): Promise<AuthUser> {
   const user = await requireUser(opts)
-  await assertCan(user, action, await auditContext(user.id))
+  if (opts.as === 'api') {
+    await assertCan(user, action, await auditContext(user.id))
+    return user
+  }
+  try {
+    await assertCan(user, action, await auditContext(user.id))
+  } catch (error) {
+    if (isForbiddenError(error)) forbidden()
+    throw error
+  }
   return user
 }

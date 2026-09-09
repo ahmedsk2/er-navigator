@@ -12,7 +12,7 @@ import Link from 'next/link'
 import { bandOf, elapsedOf, idleHours, isStale, reasonText, resolvedText, stalenessText } from '@/src/lib/board/rows'
 import type { BoardRow } from '@/src/lib/board/types'
 import { fmtStamp } from '@/src/lib/cases/local-time'
-import { fmtHours, type Band } from '@/src/lib/domain/time'
+import { fmtHours, spokenHours, type Band } from '@/src/lib/domain/time'
 
 const BAND_BG: Record<Band, string> = {
   none: 'bg-band-none',
@@ -68,8 +68,11 @@ export function BoardRowItem({ row, now }: { row: BoardRow; now: Date }) {
           )}
         </span>
 
+        {/* The eye reads "6h 05m"; a screen reader would say "six h zero five m", so the row's
+            clock carries the whole sentence and the tabular text is hidden from it. */}
         <span className={`num self-center whitespace-nowrap text-rowclock ${BAND_TEXT[rowBand]}`}>
-          {fmtHours(hours)}
+          <span className="sr-only">In the Emergency Department {spokenHours(hours)}</span>
+          <span aria-hidden="true">{fmtHours(hours)}</span>
         </span>
       </Link>
     </li>

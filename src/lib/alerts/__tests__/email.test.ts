@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildAlertEmail, caseLink, parseRecipientMap } from '../email'
+import { buildAlertEmail, caseLink } from '../email'
 
 const INPUT = {
   mrn: '851557',
@@ -58,21 +58,15 @@ describe('caseLink', () => {
   })
 })
 
-describe('parseRecipientMap', () => {
-  it('is empty when the variable is unset', () => {
-    expect(parseRecipientMap(undefined).size).toBe(0)
-    expect(parseRecipientMap('').size).toBe(0)
-  })
-
-  it('reads username=address pairs separated by commas, semicolons or spaces', () => {
-    const map = parseRecipientMap('sami=sami@example.org, ahmed=ahmed@example.org;  nadia=n@x.io')
-    expect(map.get('sami')).toBe('sami@example.org')
-    expect(map.get('ahmed')).toBe('ahmed@example.org')
-    expect(map.get('nadia')).toBe('n@x.io')
-  })
-
-  it('drops entries that are not a username and an address', () => {
-    const map = parseRecipientMap('sami, =nothing@x.io, broken=notanaddress, ok=ok@x.io')
-    expect([...map.keys()]).toEqual(['ok'])
+/**
+ * Phase 7 deleted `parseRecipientMap` and the `ALERT_EMAIL_MAP` variable behind it: recipients
+ * are now the active SUPERVISOR and ADMIN users with an `email` (`store.recipients()`), so this
+ * module decides only what the message says. This guard keeps the environment directory from
+ * quietly coming back.
+ */
+describe('the recipient directory', () => {
+  it('is not this file’s job any more', async () => {
+    const exported: Record<string, unknown> = await import('../email')
+    expect(Object.keys(exported)).not.toContain('parseRecipientMap')
   })
 })

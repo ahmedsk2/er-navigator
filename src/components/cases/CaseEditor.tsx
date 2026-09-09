@@ -55,7 +55,7 @@ import {
   SHIFT_LABELS,
   TRANSFER_STEPS,
 } from '@/src/lib/domain/taxonomy'
-import { band, elapsedHours, fmtHours, type Band } from '@/src/lib/domain/time'
+import { band, elapsedHours, fmtHours, spokenHours, type Band } from '@/src/lib/domain/time'
 import { MRN_RE, phiWarnings, REGISTRATION_NUDGE_MINUTES, REGISTRATION_QUICK_HOURS } from '@/src/lib/domain/validation'
 import { timeWarnings } from '@/src/lib/domain/warnings'
 
@@ -372,7 +372,9 @@ export function CaseEditor(props: CaseEditorProps) {
   const disabled = readOnly || busy
 
   return (
-    <div className="mx-auto max-w-[720px] pb-16">
+    // A <main> landmark: /cases/* sits outside the (app) shell, which has its own, and a page
+    // with none is what Lighthouse flagged on the case editor (Phase 7).
+    <main className="mx-auto max-w-[720px] pb-16">
       <div className="flex items-baseline justify-between px-4 pt-3.5 pb-1.5">
         <Link
           href="/"
@@ -380,8 +382,17 @@ export function CaseEditor(props: CaseEditorProps) {
         >
           ‹ Back
         </Link>
-        <div className={`num text-clock ${BAND_TEXT[band(elapsed)]}`} aria-label="Time in the ED">
-          {fmtHours(elapsed)}
+        {/* The visible clock is tabular and terse; the label is the whole sentence, because a
+            screen reader reads "6h 05m" as "six h zero five m" and "–" as nothing at all. */}
+        <div
+          className={`num text-clock ${BAND_TEXT[band(elapsed)]}`}
+          /* role="img", not "status": the clock re-renders every 30 s, and a live region would
+             read the whole thing out again on every tick. This announces once, on focus or on
+             the reader's own pass. */
+          role="img"
+          aria-label={`Time in the Emergency Department: ${spokenHours(elapsed)}`}
+        >
+          <span aria-hidden="true">{fmtHours(elapsed)}</span>
         </div>
       </div>
 
@@ -867,7 +878,7 @@ export function CaseEditor(props: CaseEditorProps) {
           ) : null}
         </>
       )}
-    </div>
+    </main>
   )
 }
 

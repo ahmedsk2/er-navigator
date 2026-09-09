@@ -52,6 +52,7 @@ test('an admin creates a user, that user signs in, and deactivating them locks t
   const username = temporaryUsername()
   await page.getByLabel('Username', { exact: true }).fill(username)
   await page.getByLabel('Display name', { exact: true }).fill('Temporary Nurse')
+  await page.getByLabel('Email (optional)', { exact: true }).fill(`${username}@hospital.example`)
   await page.getByLabel('Role', { exact: true }).selectOption('NAVIGATOR')
   await page.getByRole('button', { name: 'Create user', exact: true }).click()
 
@@ -61,6 +62,22 @@ test('an admin creates a user, that user signs in, and deactivating them locks t
   const password = (await secret.innerText()).trim()
   expect(password).toHaveLength(16)
   await expect(page.locator(`[data-user="${username}"]`)).toBeVisible()
+
+  // The work email is the alerts directory (Phase 7): set on create, changed and cleared here.
+  const row = page.locator(`[data-user="${username}"]`)
+  await expect(row.locator('td[data-email]')).toHaveAttribute(
+    'data-email',
+    `${username}@hospital.example`,
+  )
+  await row.getByRole('textbox', { name: `Email for ${username}` }).fill(`${username}.new@hospital.example`)
+  await row.getByRole('button', { name: `Save the email for ${username}` }).click()
+  await expect(row.locator('td[data-email]')).toHaveAttribute(
+    'data-email',
+    `${username}.new@hospital.example`,
+  )
+  await row.getByRole('textbox', { name: `Email for ${username}` }).fill('')
+  await row.getByRole('button', { name: `Save the email for ${username}` }).click()
+  await expect(row.locator('td[data-email]')).toHaveAttribute('data-email', '')
 
   const theirs = await browser.newContext()
   const their = await theirs.newPage()

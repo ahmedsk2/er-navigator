@@ -4,7 +4,9 @@
  * Its own process, its own container, no inbound traffic: every `ALERT_INTERVAL_MINUTES` it scans
  * the OPEN cases, records an Alert for each threshold newly crossed, appends the system user's
  * "Reached {t}h threshold" update, writes the `alert.fire` audit row, and emails the active
- * supervisors and admins from 6 h up. Everything that decides anything lives in
+ * supervisors and admins that have an email on their user record from 6 h up — the list is read
+ * from the database every cycle, so Admin → Users is the only place it lives. Everything that
+ * decides anything lives in
  * `src/lib/alerts/*` behind ports, so the rule is unit tested with an injected clock and a fake
  * mailer; this file is the plumbing: environment, loop, overlap protection, heartbeat, signals.
  *
@@ -18,7 +20,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { runAlertCycle, type Logger } from '../src/lib/alerts/cycle'
-import { parseRecipientMap } from '../src/lib/alerts/email'
 import { readSmtpConfig, smtpMailer } from '../src/lib/alerts/smtp'
 import { prismaAlertStore, requireSystemUserId } from '../src/lib/alerts/store'
 import { SYSTEM_USERNAME } from '../src/lib/auth/system-user'
@@ -109,14 +110,15 @@ async function main(): Promise<void> {
   const config = readConfig(process.env)
   const smtp = readSmtpConfig(process.env)
   const mailer = smtp ? smtpMailer(smtp) : null
-  const directory = parseRecipientMap(process.env.ALERT_EMAIL_MAP)
   const systemUserId = await requireSystemUserId(SYSTEM_USERNAME)
   const store = prismaAlertStore(systemUserId)
 
   logger.info('[alerts] worker started', {
     intervalMinutes: config.intervalMs / 60_000,
     email: mailer ? `smtp ${smtp?.host}:${smtp?.port}` : 'log only (SMTP_HOST empty)',
-    directoryEntries: directory.size,
+    // Not counted here on purpose: the recipient list is read from the database on every cycle,
+    // so an Admin adding an address on Admin → Users takes effect without a restart.
+    recipients: 'active SUPERVISOR and ADMIN users with an email (Admin → Users)',
   })
 
   let running = false
@@ -129,7 +131,6 @@ async function main(): Promise<void> {
       const summary = await runAlertCycle({
         store,
         mailer,
-        addressOf: (username) => directory.get(username) ?? null,
         logger,
         now: new Date(),
         appUrl: config.appUrl,

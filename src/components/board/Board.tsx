@@ -21,6 +21,7 @@ import {
   sortByElapsed,
 } from '@/src/lib/board/rows'
 import { BOARD_FILTERS, type BoardFilter, type BoardPayload } from '@/src/lib/board/types'
+import { InstallPrompt } from '@/src/components/shell/InstallPrompt'
 import { BoardRowItem } from './BoardRowItem'
 import { HandoverSheet } from './HandoverSheet'
 
@@ -134,6 +135,14 @@ export function Board({ initial, initialQuery, printedBy }: { initial: BoardPayl
           ))}
         </ul>
       )}
+
+      {/* After the rows, not before them (Phase 7). The banner can only appear once the browser
+          has hydrated — the server cannot know whether this phone has already dismissed it — and
+          anything inserted above the list would push the patient rows down half a second after
+          the board paints. On a board a nurse taps at a glance, that is a wrong-patient tap
+          waiting to happen; measured, it also cost 0.12 of cumulative layout shift. Here it
+          displaces nothing. */}
+      <InstallPrompt />
     </div>
   )
 }

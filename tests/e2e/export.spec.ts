@@ -109,13 +109,17 @@ test('a navigator may not export, and is told so rather than shown an empty page
   // The tab is not offered.
   await expect(page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Export' })).toHaveCount(0)
 
-  await page.goto('/export')
+  // Phase 7: a real 403, not a 200 whose body says no. `requireAction` writes the audit row and
+  // then calls Next's `forbidden()`, which renders app/forbidden.tsx at that status.
+  const refused = await page.goto('/export')
+  expect(refused?.status()).toBe(403)
   await expect(page.getByRole('heading', { name: 'Not allowed' })).toBeVisible()
 
   expect((await page.request.get('/api/export.xlsx')).status()).toBe(403)
   expect((await page.request.get('/api/export/count')).status()).toBe(403)
 
-  await page.goto('/report')
+  const refusedReport = await page.goto('/report')
+  expect(refusedReport?.status()).toBe(403)
   await expect(page.getByRole('heading', { name: 'Not allowed' })).toBeVisible()
 })
 
