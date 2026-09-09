@@ -41,7 +41,9 @@ model Case {
   reviewedById         String?
   reviewedBy           User? @relation("CaseReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
 }
-model CaseUpdate { action UpdateAction? }   // C: set at creation only; the table stays append-only
+model CaseUpdate { action UpdateAction?; system Boolean @default(false) }   // C: set at creation only; the table stays append-only.
+                                            // `system` (review C2, migration 20260910130000_system_updates) marks the app's own
+                                            // resolve, reopen, void and alert-threshold notes, which the action figures leave out
 model User { reviewedCases Case[] @relation("CaseReviewedBy") }
 ```
 

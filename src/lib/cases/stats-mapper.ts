@@ -69,7 +69,7 @@ export const CASE_STATS_SELECT = {
   // instead. Two scalars per update row is the price; `toCaseForStats` still finds the newest by
   // scanning rather than by position, so the export's own ascending override agrees with it.
   _count: { select: { updates: true } },
-  updates: { orderBy: { createdAt: 'desc' }, select: { createdAt: true, action: true } },
+  updates: { orderBy: { createdAt: 'desc' }, select: { createdAt: true, action: true, system: true } },
   reasons: {
     select: {
       otherText: true,
@@ -111,7 +111,12 @@ export type CaseStatsRow = Prisma.CaseGetPayload<{ select: typeof CASE_STATS_SEL
  * deck's categories (Slice H) it adds `action: true` to its own override and nothing else changes.
  */
 type StatsRowInput = Omit<CaseStatsRow, 'updates'> & {
-  updates: ReadonlyArray<{ createdAt: Date; action?: CaseForStats['updateActions'][number] | null }>
+  updates: ReadonlyArray<{
+    createdAt: Date
+    action?: CaseForStats['updateActions'][number] | null
+    /** True on the app's own resolve, reopen, void and alert notes; optional for the same reason. */
+    system?: boolean
+  }>
 }
 
 export function toCaseForStats(row: StatsRowInput): CaseForStats {
@@ -135,6 +140,10 @@ export function toCaseForStats(row: StatsRowInput): CaseForStats {
   let untaggedUpdatesCount = 0
   for (const u of row.updates) {
     if (!lastUpdateAt || u.createdAt.getTime() > lastUpdateAt.getTime()) lastUpdateAt = u.createdAt
+    // Phase 8b review C2: the rows the app appended itself — the resolve, reopen and void notes,
+    // the alert threshold notes — are not a navigator documenting an action. They still count as
+    // updates and still date the newest one; they say nothing about the deck's categories.
+    if (u.system) continue
     // A caller whose select did not ask for `action` (the export's) has no opinion on tagging, so
     // it contributes neither a kind nor an untagged update. `'action' in u` is the distinction
     // between "not asked for" and "asked for and empty"; `u.action == null` cannot see it.

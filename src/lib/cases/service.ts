@@ -544,7 +544,7 @@ export async function resolveCase(
 
       await applyChildren(tx, caseId, d, reference, before)
       const row = await tx.caseUpdate.create({
-        data: { caseId, authorId: actor.id, text: `Resolved: ${DISPOSITION_LABELS[d.disposition]}` },
+        data: { caseId, authorId: actor.id, text: `Resolved: ${DISPOSITION_LABELS[d.disposition]}`, system: true },
         select: UPDATE_VIEW_SELECT,
       })
       const after = await tx.case.findUniqueOrThrow({ where: { id: caseId }, include: WITH_CHILDREN })
@@ -593,7 +593,7 @@ export async function reopenCase(
       if (touched.count === 0) return { kind: 'conflict' }
 
       const row = await tx.caseUpdate.create({
-        data: { caseId, authorId: actor.id, text: 'Reopened' },
+        data: { caseId, authorId: actor.id, text: 'Reopened', system: true },
         select: UPDATE_VIEW_SELECT,
       })
       const after = await tx.case.findUniqueOrThrow({ where: { id: caseId }, include: WITH_CHILDREN })
@@ -642,7 +642,9 @@ export async function voidCase(
     })
     if (touched.count === 0) return { kind: 'conflict' }
 
-    await tx.caseUpdate.create({ data: { caseId, authorId: actor.id, text: `Voided: ${voidReason}` } })
+    await tx.caseUpdate.create({
+      data: { caseId, authorId: actor.id, text: `Voided: ${voidReason}`, system: true },
+    })
     const after = await tx.case.findUniqueOrThrow({ where: { id: caseId }, include: WITH_CHILDREN })
     await audit(
       {

@@ -35,7 +35,7 @@ export const CASE_EXPORT_SELECT = {
   // having no opinion on tagging at all (see its `'action' in u` guard), and the Adaa and QCH
   // workbooks' `dashboard()` call would report every case as carrying no documented action.
   updates: {
-    select: { createdAt: true, action: true, text: true, author: { select: { displayName: true } } },
+    select: { createdAt: true, action: true, system: true, text: true, author: { select: { displayName: true } } },
     orderBy: { createdAt: 'asc' },
   },
 } as const satisfies Prisma.CaseSelect

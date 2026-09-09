@@ -423,7 +423,7 @@ test('the Phase 8b panels render, with the pain block and the discharge shares',
   await page.goto('/dashboard')
 
   // The Adaa panel's two new rows, named as the module names them.
-  for (const kpi of ['KPI 7 · Mortality (deceased among tracked cases)', 'KPI 8 · Door to painkiller, median']) {
+  for (const kpi of ['KPI 7 · Mortality', 'KPI 8 · Door to painkiller, median']) {
     await expect(page.getByRole('cell', { name: kpi, exact: true }), kpi).toBeVisible()
   }
   // The rows are in the spec's order: KPI 4 is last, after the two new ones.
@@ -437,7 +437,7 @@ test('the Phase 8b panels render, with the pain block and the discharge shares',
     'KPI 3 · Decision to disposition, median',
     'KPI 5 · Door to disposition within 4 h',
     'KPI 6 · Discharged DAMA',
-    'KPI 7 · Mortality (deceased among tracked cases)',
+    'KPI 7 · Mortality',
     'KPI 8 · Door to painkiller, median',
     'KPI 4 · CTAS 4 or 5',
   ])

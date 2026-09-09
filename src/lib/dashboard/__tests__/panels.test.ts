@@ -150,7 +150,7 @@ describe('adaaRows', () => {
       'KPI 3 · Decision to disposition, median',
       'KPI 5 · Door to disposition within 4 h',
       'KPI 6 · Discharged DAMA',
-      'KPI 7 · Mortality (deceased among tracked cases)',
+      'KPI 7 · Mortality',
       'KPI 8 · Door to painkiller, median',
       'KPI 4 · CTAS 4 or 5',
     ])

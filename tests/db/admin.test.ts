@@ -699,9 +699,10 @@ describe('the alerts worker', () => {
 
     const update = await prisma.caseUpdate.findFirstOrThrow({
       where: { caseId, authorId: systemId },
-      select: { text: true },
+      select: { text: true, system: true },
     })
     expect(update.text).toBe('Reached 6h threshold')
+    expect(update.system).toBe(true)
 
     const audits = await prisma.auditLog.findMany({ where: { entity: 'Alert', entityId: first.alertId } })
     expect(audits.map((a) => a.action)).toEqual(['alert.fire'])

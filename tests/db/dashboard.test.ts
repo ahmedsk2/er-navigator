@@ -333,6 +333,36 @@ describe('loadCasesForStats', () => {
     expect(rows.find((r) => r.id === done.id)).toMatchObject({ status: 'RESOLVED', disposition: 'ADMITTED' })
   })
 
+  /**
+   * Phase 8b review C2. The resolve appends its own "Resolved: …" note with no tag; before the
+   * `system` flag every resolved case therefore read as "Update without an action tag", and the
+   * deck's "No action documented" row could never hold a resolved case.
+   */
+  it('does not count the resolve’s own note as an update without an action tag', async () => {
+    const nurse = await makeUser('NAVIGATOR')
+    const done = await openCase(nurse, { registrationAt: new Date(Date.now() - 30 * HOUR).toISOString() })
+    expect(
+      await resolveCase(
+        nurse,
+        done.id,
+        { ...done.input, disposition: 'DISCHARGED_HOME', departedAt: new Date(Date.now() - 5 * HOUR).toISOString() },
+        ctxFor(nurse.id),
+      ),
+    ).toMatchObject({ ok: true })
+
+    const notes = await prisma.caseUpdate.findMany({ where: { caseId: done.id }, select: { text: true, system: true } })
+    expect(notes).toEqual([{ text: 'Resolved: Discharged home', system: true }])
+
+    const mapped = (await loadCasesForStats()).find((c) => c.id === done.id)!
+    expect(mapped.updatesCount).toBe(1)
+    expect(mapped.updateActions).toEqual([])
+    expect(mapped.untaggedUpdatesCount).toBe(0)
+
+    const data = dashboard(await loadCasesForStats(), 'all', new Date())
+    expect(resolveDrill(data, { section: 'action', name: 'No action documented' })!.ids).toContain(done.id)
+    expect(resolveDrill(data, { section: 'action', name: 'Update without an action tag' })!.ids).not.toContain(done.id)
+  })
+
   it('returns nothing for an empty id list rather than the whole board', async () => {
     expect(await loadBoardRowsByIds([])).toEqual([])
   })

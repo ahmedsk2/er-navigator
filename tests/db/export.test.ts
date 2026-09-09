@@ -442,8 +442,11 @@ describe('GET /api/export.xlsx as a SUPERVISOR', () => {
     const one = loaded.find((c) => c.mrn === seeded.open1)!
     expect(one.updateActions).toEqual(['BED_MANAGEMENT'])
     expect(one.untaggedUpdatesCount).toBe(1) // "Chased the lab", written with no category
-    // The resolved case's only update is the one the resolve appended, and it carries no tag.
-    expect(loaded.find((c) => c.mrn === seeded.resolved)!.updateActions).toEqual([])
+    // The resolved case's only update is the one the resolve appended: a system row, so neither
+    // a tag nor an untagged update (Phase 8b review C2).
+    const three = loaded.find((c) => c.mrn === seeded.resolved)!
+    expect(three.updateActions).toEqual([])
+    expect(three.untaggedUpdatesCount).toBe(0)
   })
 
   it('carries every Phase 8b collection field through the export read', async () => {

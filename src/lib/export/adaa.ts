@@ -94,15 +94,20 @@ export function pethidineDose(c: KpiCase): string {
   return mg != null && (PETHIDINE_DOSES_MG as ReadonlyArray<number>).includes(mg) ? String(mg) : ''
 }
 
-/** I sickle-cell, J painkiller prescribed, K its day offset, L pethidine, M the dose, N the time. */
+/**
+ * I sickle-cell, J painkiller prescribed, K its day offset, L pethidine, M the dose, N the time.
+ * K and N stay blank when the dose fell on the Riyadh day before the registration; the answers and
+ * the dose are written as they are (`painkillerBeforeRegistrationDay`).
+ */
 function painBlock(c: KpiCase): string[] {
+  const hideTime = painkillerBeforeRegistrationDay(c)
   return [
     answerYesNo(c.sickleCellTreatment),
     answerYesNo(c.painkillerPrescribed),
-    dayOffset(c.registrationAt, c.painkillerAt),
+    hideTime ? '' : dayOffset(c.registrationAt, c.painkillerAt),
     answerYesNo(c.pethidinePrescribed),
     pethidineDose(c),
-    fmtFormTime(c.painkillerAt),
+    hideTime ? '' : fmtFormTime(c.painkillerAt),
   ]
 }
 
@@ -144,6 +149,16 @@ export function dischargeType(disposition: string | null): string {
  */
 export function triageBeforeRegistrationDay(c: KpiCase): boolean {
   return c.triageAt != null && riyadhDateKey(c.triageAt) < riyadhDateKey(c.registrationAt)
+}
+
+/**
+ * The same guard for the painkiller (columns K and N): the ambulance patient dosed at 23:55 and
+ * clerked at 00:30 has no "days later" the form can hold either, and a blank offset beside the
+ * time would date the dose a day late. Such a row keeps its Yes/No answers and its dose and leaves
+ * the two time cells blank; the Read me counts it (Phase 8b review C1).
+ */
+export function painkillerBeforeRegistrationDay(c: KpiCase): boolean {
+  return c.painkillerAt != null && riyadhDateKey(c.painkillerAt) < riyadhDateKey(c.registrationAt)
 }
 
 export function adaaRow(c: KpiCase): string[] {
@@ -351,6 +366,7 @@ export function adaaReadMeRows(input: {
   const { cases, range } = input
   const noCtas = cases.filter((c) => c.ctas == null).length
   const triageHidden = cases.filter(triageBeforeRegistrationDay).length
+  const painkillerHidden = cases.filter(painkillerBeforeRegistrationDay).length
   const last = cases.length + 1
   return [
     HEADING('Adaa ED KPIs — read me'),
@@ -361,6 +377,12 @@ export function adaaReadMeRows(input: {
     { cells: ['Rows written', String(cases.length)] },
     { cells: ['Rows with no CTAS recorded', String(noCtas)] },
     { cells: ['Rows whose triage cells were left blank (triage on the day before registration; enter by hand)', String(triageHidden)] },
+    {
+      cells: [
+        'Rows whose painkiller time was left blank (painkiller given on the day before registration; enter by hand)',
+        String(painkillerHidden),
+      ],
+    },
     { cells: ['Generated at', `${fmtAt(input.generatedAt)} (Asia/Riyadh)`] },
     BLANK,
     HEADING('Dates and times'),

@@ -706,6 +706,8 @@ describe('resolve and reopen', () => {
 
     const updates = await prisma.caseUpdate.findMany({ where: { caseId: id } })
     expect(updates.map((u) => u.text)).toEqual(['Resolved: Admitted'])
+    // The app's own note, flagged so the action figures leave it out (Phase 8b review C2).
+    expect(updates.map((u) => u.system)).toEqual([true])
 
     const audits = await prisma.auditLog.findMany({ where: { entity: 'Case', entityId: id }, orderBy: { at: 'asc' } })
     expect(audits.map((a) => a.action)).toEqual(['case.create', 'case.resolve'])
@@ -749,6 +751,7 @@ describe('resolve and reopen', () => {
 
     const updates = await prisma.caseUpdate.findMany({ where: { caseId: id }, orderBy: { createdAt: 'asc' } })
     expect(updates.map((u) => u.text)).toEqual(['Resolved: Discharged home', 'Reopened'])
+    expect(updates.map((u) => u.system)).toEqual([true, true])
     expect(await prisma.auditLog.count({ where: { entity: 'Case', entityId: id, action: 'case.reopen' } })).toBe(1)
   })
 

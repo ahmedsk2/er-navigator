@@ -372,6 +372,11 @@ model CaseUpdate {
   // Phase 8b, decision C: the weekly deck's action category, chosen when the update is written.
   // Set at creation only — this table has no update path, which is what keeps it append-only.
   action    UpdateAction?
+  // Phase 8b review C2: true on the rows the app appends itself — the "Resolved: …", "Reopened"
+  // and "Voided: …" notes the case service writes, and the threshold notes the alerts worker
+  // writes as the system user — so a figure over what the navigators documented can leave them
+  // out. Set at creation only, like `action`.
+  system    Boolean       @default(false)
 
   case   Case @relation(fields: [caseId], references: [id], onDelete: Restrict)
   author User @relation(fields: [authorId], references: [id], onDelete: Restrict)

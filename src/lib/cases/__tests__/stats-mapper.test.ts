@@ -292,7 +292,7 @@ describe('toCaseForStats', () => {
         transferRequestedAt: at('2026-09-08T10:00:00Z'),
         medAdminInformedAt: at('2026-09-08T10:30:00Z'),
         _count: { updates: 4 },
-        updates: [{ createdAt: at('2026-09-08T11:30:00Z'), action: null }],
+        updates: [{ createdAt: at('2026-09-08T11:30:00Z'), action: null, system: false }],
       }),
     )
     expect(mapped.ctas).toBe(2)
@@ -315,9 +315,9 @@ describe('toCaseForStats', () => {
       row({
         _count: { updates: 3 },
         updates: [
-          { createdAt: at('2026-09-08T06:00:00Z'), action: null },
-          { createdAt: at('2026-09-08T09:00:00Z'), action: null },
-          { createdAt: at('2026-09-08T07:00:00Z'), action: null },
+          { createdAt: at('2026-09-08T06:00:00Z'), action: null, system: false },
+          { createdAt: at('2026-09-08T09:00:00Z'), action: null, system: false },
+          { createdAt: at('2026-09-08T07:00:00Z'), action: null, system: false },
         ],
       }),
     )
@@ -377,10 +377,10 @@ describe('toCaseForStats', () => {
       row({
         _count: { updates: 4 },
         updates: [
-          { createdAt: at('2026-09-08T06:00:00Z'), action: 'BED_MANAGEMENT' },
-          { createdAt: at('2026-09-08T07:00:00Z'), action: null },
-          { createdAt: at('2026-09-08T08:00:00Z'), action: 'BED_MANAGEMENT' },
-          { createdAt: at('2026-09-08T09:00:00Z'), action: 'LEADERSHIP_ESCALATION' },
+          { createdAt: at('2026-09-08T06:00:00Z'), action: 'BED_MANAGEMENT', system: false },
+          { createdAt: at('2026-09-08T07:00:00Z'), action: null, system: false },
+          { createdAt: at('2026-09-08T08:00:00Z'), action: 'BED_MANAGEMENT', system: false },
+          { createdAt: at('2026-09-08T09:00:00Z'), action: 'LEADERSHIP_ESCALATION', system: false },
         ],
       }),
     )
@@ -410,5 +410,34 @@ describe('toCaseForStats', () => {
     expect(mapped.untaggedUpdatesCount).toBe(0)
     expect(mapped.updatesCount).toBe(1)
     expect(mapped.lastUpdateAt).toEqual(at('2026-09-08T06:00:00Z'))
+  })
+
+  /**
+   * Phase 8b review C2: the service appends "Resolved: …", "Reopened" and "Voided: …" itself, and
+   * the alerts worker appends the threshold notes; none carries a tag, and none is a navigator
+   * documenting an action. Before the `system` flag every resolved case therefore read as "Update
+   * without an action tag". A system row still counts as an update and still dates the newest
+   * one, but it is neither a kind nor an untagged update.
+   */
+  it('leaves the app’s own system rows out of the kinds and the untagged count', () => {
+    const mapped = toCaseForStats(
+      row({
+        _count: { updates: 2 },
+        updates: [
+          { createdAt: at('2026-09-08T09:00:00Z'), action: null, system: true },
+          { createdAt: at('2026-09-08T06:00:00Z'), action: 'BED_MANAGEMENT', system: false },
+        ],
+      }),
+    )
+    expect(mapped.updateActions).toEqual(['BED_MANAGEMENT'])
+    expect(mapped.untaggedUpdatesCount).toBe(0)
+    expect(mapped.updatesCount).toBe(2)
+    expect(mapped.lastUpdateAt).toEqual(at('2026-09-08T09:00:00Z'))
+    // A resolved case whose only row is the resolve note: no action documented at all.
+    const resolvedOnly = toCaseForStats(
+      row({ _count: { updates: 1 }, updates: [{ createdAt: at('2026-09-08T09:00:00Z'), action: null, system: true }] }),
+    )
+    expect(resolvedOnly.updateActions).toEqual([])
+    expect(resolvedOnly.untaggedUpdatesCount).toBe(0)
   })
 })

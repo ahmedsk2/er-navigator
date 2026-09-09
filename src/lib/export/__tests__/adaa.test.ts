@@ -11,6 +11,7 @@ import {
   admissionType,
   answerYesNo,
   dischargeType,
+  painkillerBeforeRegistrationDay,
   pethidineDose,
 } from '../adaa'
 import { dayOffset, fmtFormDate, fmtFormTime } from '../format'
@@ -202,6 +203,30 @@ describe('adaaRow', () => {
       painkillerAt: new Date('2026-09-01T05:45:00Z'), // 08:45 Riyadh
     })
     expect(adaaRow(sameDay).slice(8, 14)).toEqual(['', 'Yes', '', '', '', '08:45'])
+  })
+
+  it('blanks the painkiller offset and time when the dose fell on the Riyadh day before registration (Phase 8b review C1)', () => {
+    const ambulance = caseWith({
+      registrationAt: new Date('2026-09-01T21:30:00Z'), // 00:30 Riyadh, 02-Sep
+      triageAt: new Date('2026-09-01T20:50:00Z'), // 23:50 Riyadh, 01-Sep
+      painkillerPrescribed: 'YES',
+      painkillerAt: new Date('2026-09-01T20:55:00Z'), // 23:55 Riyadh, 01-Sep
+    })
+    expect(painkillerBeforeRegistrationDay(ambulance)).toBe(true)
+    // J keeps its Yes; K and N, which would date the dose a day late, are left for the collector.
+    expect(adaaRow(ambulance).slice(8, 14)).toEqual(['', 'Yes', '', '', '', ''])
+    // A dose the next Riyadh day is unaffected: offset 1 and its own time.
+    const nextDay = caseWith({
+      registrationAt: new Date('2026-09-01T19:30:00Z'), // 22:30 Riyadh, 01-Sep
+      painkillerPrescribed: 'YES',
+      painkillerAt: new Date('2026-09-01T22:20:00Z'), // 01:20 Riyadh, 02-Sep
+    })
+    expect(painkillerBeforeRegistrationDay(nextDay)).toBe(false)
+    expect(adaaRow(nextDay).slice(8, 14)).toEqual(['', 'Yes', '1', '', '', '01:20'])
+    // The Read me counts the blanked row, beside the triage line.
+    const rows = adaaReadMeRows({ cases: [ambulance, nextDay], range: RANGE, generatedAt: new Date('2026-09-09T12:00:00Z') })
+    const line = rows.find((r) => r.cells[0]?.startsWith('Rows whose painkiller time was left blank'))
+    expect(line?.cells[1]).toBe('1')
   })
 
   it('writes only a dose the form’s dropdown has, and only when pethidine was prescribed', () => {

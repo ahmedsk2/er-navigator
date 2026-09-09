@@ -97,6 +97,7 @@ export function prismaAlertStore(systemUserId: string, client: PrismaLike = pris
               authorId: systemUserId,
               createdAt: input.now,
               text: thresholdUpdateText(input.thresholdHours),
+              system: true,
             },
           })
           await audit(

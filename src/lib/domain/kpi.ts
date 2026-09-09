@@ -102,7 +102,10 @@ export type KpiCase = CaseClock & {
   reviewedByName: string | null
   /** The distinct action kinds recorded on the case's updates. */
   updateActions: ReadonlyArray<UpdateActionKind>
-  /** Updates written with no action tag (the loader counts them; distinct kinds cannot). */
+  /**
+   * Updates a navigator wrote with no action tag (the loader counts them; distinct kinds cannot).
+   * The app's own resolve, reopen, void and alert notes are not counted (Phase 8b review C2).
+   */
   untaggedUpdatesCount: number
 }
 
