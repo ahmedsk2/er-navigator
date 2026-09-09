@@ -134,8 +134,9 @@ The export page gets a format choice; the date range and status filter stay as t
   stage. Columns the app does not record (physician, treatment plan shared, instructions,
   family engagement, case management) are present and blank until Section 5 is decided.
 
-Every export is audited (`export.xlsx` with the format), counted by the same live count, and
-built by the same streaming writer.
+Every export is logged with its format (a read is logged, not audited, the Phase 5 decision;
+a refused export writes the `auth.forbidden` audit row with the format), counted by the same
+live count, and built by the same streaming writer.
 
 ## 5. Data collection: fields the sheets have and the app does not
 
