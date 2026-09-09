@@ -67,6 +67,10 @@ jobs:
           ADMIN_USERNAME: admin
           ADMIN_PASSWORD: ci-only-password
           ADMIN_DISPLAY_NAME: CI
+      - name: database-backed tests (owner role; vitest includes tests/db only when DATABASE_URL is set)
+        run: pnpm test
+        env:
+          DATABASE_URL: ${{ env.OWNER_URL }}
       - name: privilege guard (app role cannot delete audit rows)
         run: |
           set -e
