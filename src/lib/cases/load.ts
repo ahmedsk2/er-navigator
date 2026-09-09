@@ -9,6 +9,7 @@ import type { CaseStatus } from '@prisma/client'
 import { prisma } from '@/src/lib/db'
 import { REGISTRATION_DEFAULT_HOURS_AGO } from '@/src/lib/domain/validation'
 import { stageOfReason } from './reference'
+import { timelineOf, type TimelineStepView } from './timeline'
 import type { CaseDraft, CaseUpdateView, ReferenceData } from './types'
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null)
@@ -21,6 +22,13 @@ export type LoadedCase = {
   openedAt: string
   draft: CaseDraft
   updates: CaseUpdateView[]
+  /**
+   * Every recorded instant on the case in order, for the read-only Timeline section (Phase 8).
+   * Built from the row this function already loaded rather than by a second query, and the
+   * consulted team's name comes from the reference the caller passed in — the same list the
+   * editor's chips are drawn from, so a retired department still reads by name.
+   */
+  timeline: TimelineStepView[]
 }
 
 /** A new case: registration defaults to six hours ago, shift to the navigator's last shift. */
@@ -177,6 +185,8 @@ export async function loadCaseForEditor(id: string, reference: ReferenceData): P
   })
   if (!row) return null
 
+  const departmentName = new Map(reference.departments.map((d) => [d.id, d.name]))
+
   return {
     id: row.id,
     status: row.status,
@@ -190,5 +200,30 @@ export async function loadCaseForEditor(id: string, reference: ReferenceData): P
       text: u.text,
       author: u.author.displayName,
     })),
+    timeline: timelineOf({
+      status: row.status,
+      registrationAt: row.registrationAt,
+      departedAt: row.departedAt,
+      resolvedAt: row.resolvedAt,
+      triageAt: row.triageAt,
+      roomAt: row.roomAt,
+      physicianAt: row.physicianAt,
+      decisionAt: row.decisionAt,
+      admOrderAt: row.admOrderAt,
+      bedRequestedAt: row.bedRequestedAt,
+      bedAssignedAt: row.bedAssignedAt,
+      handoverAt: row.handoverAt,
+      transferRequestedAt: row.transferRequestedAt,
+      transferAcceptedAt: row.transferAcceptedAt,
+      transportArrivedAt: row.transportArrivedAt,
+      medAdminInformedAt: row.medAdminInformedAt,
+      consults: row.consults.map((consult) => ({
+        departmentName: departmentName.get(consult.departmentId) ?? consult.departmentId,
+        consultedAt: consult.consultedAt,
+        seenAt: consult.seenAt,
+        repliedAt: consult.repliedAt,
+      })),
+      investigations: row.investigations,
+    }),
   }
 }

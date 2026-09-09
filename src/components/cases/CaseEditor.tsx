@@ -11,7 +11,7 @@
  * no Resolve, no Void.
  */
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   acknowledgeAlert as acknowledgeAlertAction,
   addCaseUpdate as addCaseUpdateAction,
@@ -104,6 +104,13 @@ export type CaseEditorProps = {
    * so its presence is also the permission to act on it.
    */
   alert?: { id: string; thresholdHours: number; firedAt: string } | null
+  /**
+   * Phase 8: the read-only Timeline section, rendered on the server by `app/cases/[id]/page.tsx`
+   * and slotted in after the updates. A slot rather than a prop of data, because this component
+   * holds the form and the timeline holds none of it: nothing here reads it, changes it or
+   * re-renders it, and `/cases/new` passes nothing at all.
+   */
+  timeline?: ReactNode
   /** Taken on the server so the first client render is byte-identical. */
   nowIso: string
 }
@@ -796,6 +803,9 @@ export function CaseEditor(props: CaseEditorProps) {
           )}
         </Section>
       ) : null}
+
+      {/* 9b. Timeline (Phase 8): server-rendered, read-only, after the updates. */}
+      {props.timeline}
 
       {/* 10. Resolve */}
       {!isNew ? (

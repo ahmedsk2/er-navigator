@@ -6,6 +6,7 @@
  * `src/lib/cases/types.ts` does it, because this crosses both the RSC boundary and `fetch`.
  */
 import type { Disposition } from '@prisma/client'
+import type { TimelineStepView } from '@/src/lib/cases/timeline'
 
 export const BOARD_FILTERS = ['open', 'resolved', 'all'] as const
 export type BoardFilter = (typeof BOARD_FILTERS)[number]
@@ -38,6 +39,15 @@ export type BoardRow = {
   createdAt: string
   /** The newest `CaseUpdate.createdAt`, or null when the case has never been updated. */
   lastUpdateAt: string | null
+  /**
+   * The case's recorded milestones in time order (Phase 8), for the compact timeline on the
+   * handover sheet. It rides on the row rather than being fetched for the sheet alone because
+   * the sheet prints whatever the board is currently showing — filtered and sorted in the
+   * browser — so a timeline loaded once for the first paint would be missing for any case the
+   * 30 s poll brought in since. A case with nothing recorded but its registration carries a
+   * single step, and the sheet then prints no timeline line for it.
+   */
+  timeline: TimelineStepView[]
 }
 
 export type BoardCounts = { open: number; past6: number; past12: number }

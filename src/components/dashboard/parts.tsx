@@ -8,6 +8,8 @@
  */
 import Link from 'next/link'
 import type { ReactNode } from 'react'
+import { CHART_RAMP } from '@/src/components/dashboard/charts/theme'
+import { sharePercent } from '@/src/lib/dashboard/panels'
 import { MIN_N, band, fmtHours, type Band } from '@/src/lib/domain/time'
 
 /** A full-bleed section with a hairline top and bottom — the prototype's `.section`. */
@@ -30,16 +32,76 @@ export function Footnote({ children }: { children: ReactNode }) {
   return <p className="mt-2 mb-0 text-caption text-muted">{children}</p>
 }
 
-export function Tile({ label, value, tone = 'ink' }: { label: string; value: string; tone?: 'ink' | 'danger' }) {
+/**
+ * One headline figure.
+ *
+ * Phase 8 added two optional parts: `note`, the "+3 vs previous 30 days" line under the label,
+ * and `href`, which the longest-stay tile uses to reach the case. The value keeps its
+ * `data-tile` hook whether or not it is wrapped in a link, so a test reads the number the same
+ * way on every tile.
+ */
+export function Tile({
+  label,
+  value,
+  tone = 'ink',
+  note,
+  href,
+}: {
+  label: string
+  value: string
+  tone?: 'ink' | 'danger'
+  note?: string | null
+  href?: string
+}) {
+  const number = (
+    <span
+      className={`num text-[24px] leading-tight font-bold ${tone === 'danger' ? 'text-danger' : 'text-ink'}`}
+      data-tile={label}
+    >
+      {value}
+    </span>
+  )
   return (
     <div className="min-w-0 flex-1 rounded-card border border-line bg-panel px-3 py-2.5 shadow-panel">
-      <div
-        className={`num text-[24px] leading-tight font-bold ${tone === 'danger' ? 'text-danger' : 'text-ink'}`}
-        data-tile={label}
-      >
-        {value}
+      <div>
+        {href ? (
+          <Link
+            href={href}
+            className="inline-flex min-h-11 items-center focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
+          >
+            {number}
+          </Link>
+        ) : (
+          number
+        )}
       </div>
       <div className="mt-0.5 text-caption text-muted">{label}</div>
+      {note ? (
+        <div className="num mt-0.5 text-caption text-muted" data-tile-note={label}>
+          {note}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * A compliance share as a hairline bar — the working-targets section's only chart.
+ *
+ * Server-rendered, because it is one div: the drill-down beside it is the interactive part, and a
+ * client chart for a single proportion would be chart junk. `share` is null below MIN_N, and then
+ * the track is drawn empty rather than at zero, because "we do not know" is not "none".
+ */
+export function ShareBar({ share, label }: { share: number | null; label: string }) {
+  const percent = sharePercent(share)
+  return (
+    <div
+      className="h-1.5 w-full min-w-[48px] overflow-hidden rounded-chip bg-line-soft"
+      role="img"
+      aria-label={share == null ? `${label}: not enough cases` : `${label}: ${percent} percent`}
+      data-share={label}
+    >
+      <div className="h-full rounded-chip bg-accent" style={{ width: `${percent}%` }} />
     </div>
   )
 }
@@ -62,6 +124,31 @@ const BAND_TEXT: Record<Band, string> = {
 /** "Over 6h" in the colour of the band it opens — the prototype's `bandColor(t)` on the label. */
 export function ThresholdLabel({ hours }: { hours: number }) {
   return <span className={BAND_TEXT[band(hours)]}>Over {hours}h</span>
+}
+
+/**
+ * The turnaround chart's key: one swatch per band, in the bands' own order, fast to slow.
+ *
+ * Server-rendered rather than drawn by Recharts, for two reasons: the chart library orders its
+ * legend by the order it registered the series, which scrambles an ordered scale; and a key that
+ * is real HTML prints, and is readable with JavaScript off, exactly like every other row on this
+ * page.
+ */
+export function BandLegend({ bands }: { bands: ReadonlyArray<string> }) {
+  return (
+    <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1" data-band-legend>
+      {bands.map((band, i) => (
+        <li key={band} className="flex items-center gap-1 text-caption text-muted">
+          <span
+            aria-hidden
+            className="inline-block h-2 w-2 shrink-0 rounded-[2px]"
+            style={{ background: CHART_RAMP[i % CHART_RAMP.length] }}
+          />
+          {band}
+        </li>
+      ))}
+    </ul>
+  )
 }
 
 export type TableRow = {

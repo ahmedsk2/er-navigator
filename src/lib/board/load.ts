@@ -8,6 +8,7 @@
  * remembering to filter it in the UI.
  */
 import type { CaseStatus } from '@prisma/client'
+import { timelineOf } from '@/src/lib/cases/timeline'
 import { prisma } from '@/src/lib/db'
 import type { BoardFilter, BoardPayload, BoardRow, BoardStatus } from './types'
 
@@ -19,7 +20,15 @@ const STATUSES: Record<BoardFilter, ReadonlyArray<CaseStatus>> = {
 
 const iso = (value: Date | null): string | null => (value ? value.toISOString() : null)
 
-/** Exactly what a row draws. Shared by the board and by the dashboard's drill-down lists. */
+/**
+ * Exactly what a row draws. Shared by the board and by the dashboard's drill-down lists.
+ *
+ * Phase 8 widened it by the journey milestones, the admission and transfer chains and the two
+ * child tables' own timestamps, because the handover sheet now prints each case's time sequence
+ * and that sequence has to match the rows the board is showing at that moment (see
+ * `BoardRow.timeline`). It is the same one query either way: twelve more scalar columns and one
+ * more join.
+ */
 const BOARD_ROW_SELECT = {
   id: true,
   mrn: true,
@@ -30,17 +39,60 @@ const BOARD_ROW_SELECT = {
   disposition: true,
   createdAt: true,
   ctas: true,
+  triageAt: true,
+  roomAt: true,
+  physicianAt: true,
+  decisionAt: true,
+  admOrderAt: true,
+  bedRequestedAt: true,
+  bedAssignedAt: true,
+  handoverAt: true,
+  transferRequestedAt: true,
+  transferAcceptedAt: true,
+  transportArrivedAt: true,
+  medAdminInformedAt: true,
   primaryReason: { select: { name: true } },
   ward: { select: { code: true } },
   area: { select: { code: true } },
   consults: {
     orderBy: { department: { sortOrder: 'asc' } },
-    select: { department: { select: { name: true } } },
+    select: {
+      department: { select: { name: true } },
+      consultedAt: true,
+      seenAt: true,
+      repliedAt: true,
+    },
+  },
+  investigations: {
+    select: {
+      type: true,
+      orderedAt: true,
+      collectedAt: true,
+      receivedAt: true,
+      doneAt: true,
+      preliminaryAt: true,
+      resultedAt: true,
+    },
   },
   updates: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true } },
 } as const
 
-type SelectedRow = {
+type Milestones = {
+  triageAt: Date | null
+  roomAt: Date | null
+  physicianAt: Date | null
+  decisionAt: Date | null
+  admOrderAt: Date | null
+  bedRequestedAt: Date | null
+  bedAssignedAt: Date | null
+  handoverAt: Date | null
+  transferRequestedAt: Date | null
+  transferAcceptedAt: Date | null
+  transportArrivedAt: Date | null
+  medAdminInformedAt: Date | null
+}
+
+type SelectedRow = Milestones & {
   id: string
   mrn: string
   status: CaseStatus
@@ -53,7 +105,21 @@ type SelectedRow = {
   primaryReason: { name: string } | null
   ward: { code: string } | null
   area: { code: string } | null
-  consults: ReadonlyArray<{ department: { name: string } }>
+  consults: ReadonlyArray<{
+    department: { name: string }
+    consultedAt: Date | null
+    seenAt: Date | null
+    repliedAt: Date | null
+  }>
+  investigations: ReadonlyArray<{
+    type: 'LAB' | 'CT' | 'US' | 'XR'
+    orderedAt: Date | null
+    collectedAt: Date | null
+    receivedAt: Date | null
+    doneAt: Date | null
+    preliminaryAt: Date | null
+    resultedAt: Date | null
+  }>
   updates: ReadonlyArray<{ createdAt: Date }>
 }
 
@@ -73,6 +139,31 @@ function toBoardRow(row: SelectedRow): BoardRow {
     ward: row.ward?.code ?? null,
     createdAt: row.createdAt.toISOString(),
     lastUpdateAt: iso(row.updates[0]?.createdAt ?? null),
+    timeline: timelineOf({
+      status: row.status,
+      registrationAt: row.registrationAt,
+      departedAt: row.departedAt,
+      resolvedAt: row.resolvedAt,
+      triageAt: row.triageAt,
+      roomAt: row.roomAt,
+      physicianAt: row.physicianAt,
+      decisionAt: row.decisionAt,
+      admOrderAt: row.admOrderAt,
+      bedRequestedAt: row.bedRequestedAt,
+      bedAssignedAt: row.bedAssignedAt,
+      handoverAt: row.handoverAt,
+      transferRequestedAt: row.transferRequestedAt,
+      transferAcceptedAt: row.transferAcceptedAt,
+      transportArrivedAt: row.transportArrivedAt,
+      medAdminInformedAt: row.medAdminInformedAt,
+      consults: row.consults.map((consult) => ({
+        departmentName: consult.department.name,
+        consultedAt: consult.consultedAt,
+        seenAt: consult.seenAt,
+        repliedAt: consult.repliedAt,
+      })),
+      investigations: row.investigations,
+    }),
   }
 }
 

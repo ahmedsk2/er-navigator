@@ -181,3 +181,145 @@ describe('all-time dashboard adds C9', () => {
     expect(byPrimaryReason(inRange(FIXTURE, 'all', NOW))).toHaveLength(10)
   })
 })
+
+/**
+ * Phase 8: `dashboard().kpi`. Every figure is `kpi.ts`'s, already tested there against its own
+ * fixture; what is checked here is that this layer hands it the right case list — the 30-day
+ * window for the panels, the unfiltered list for `previousRange` — and that the two shares and
+ * the two derived lists (the six completeness rows, the "missed this target" ids) are right.
+ *
+ * The ten cases in the 30-day window have stays 3, 7, 13, 25, 8, 10, 6, 7, 2, 4 hours
+ * (C1, C2, C3, C4, C5, C6, C7, C8, C11, C12), all hand-computed in the sections above.
+ */
+describe('Phase 8 panels', () => {
+  const k = dashboard(FIXTURE, '30', NOW).kpi
+
+  it('the headline is the ten in-range cases: median 7 h, mean 8.5 h, 2 to 25 h', () => {
+    expect(k.headline).toMatchObject({ cases: 10, measured: 10, episodes: 10, med: 7, mean: 8.5, min: 2, max: 25 })
+    // 13, 25 and 10 are at or past 10 h; 13 and 25 are at or past 12 h.
+    expect(k.headline.atLeast10).toBe(3)
+    expect(k.headline.atLeast12).toBe(2)
+    expect(k.headline.longest).toEqual({ id: 'C4', mrn: '100004', hours: 25 })
+    expect(k.headline.atLeast10Share).toBe(0.3)
+    expect(k.headline.atLeast12Share).toBe(0.2)
+  })
+
+  it('the previous 30 days is C9 alone, measured to the end of its own period and not to now', () => {
+    // C9 registered 960 h ago (40 days): outside this window, inside the one before it. It left
+    // 9 h later, so its stay is 9 h whichever instant the period is measured to.
+    expect(k.previous?.headline.cases).toBe(1)
+    expect(k.previous?.headline.longest).toEqual({ id: 'C9', mrn: '100009', hours: 9 })
+    expect(k.previous?.asOf).toEqual(new Date(NOW.getTime() - 30 * 864e5))
+    // 'all' has no period before it, so no delta is offered.
+    expect(dashboard(FIXTURE, 'all', NOW).kpi.previous).toBeNull()
+  })
+
+  it('stay bands cover every in-range case exactly once', () => {
+    expect(k.stayBands.map((r) => [r.name, r.value])).toEqual([
+      ['<6 h', 3], // 3, 4, 2
+      ['6–<8 h', 3], // 7, 6, 7
+      ['8–<10 h', 1], // 8
+      ['10–<12 h', 1], // 10
+      ['12–<24 h', 1], // 13
+      ['24+ h', 1], // 25
+    ])
+    expect(k.stayBands.reduce((n, r) => n + r.value, 0)).toBe(10)
+  })
+
+  it('longest stays are ranked, and a tie on hours breaks by MRN', () => {
+    expect(k.longest.map((r) => [r.id, r.hours])).toEqual([
+      ['C4', 25],
+      ['C3', 13],
+      ['C6', 10],
+      ['C5', 8],
+      ['C2', 7],
+      ['C8', 7],
+      ['C7', 6],
+      ['C11', 4],
+      ['C1', 3],
+      ['C12', 2],
+    ])
+  })
+
+  it('actions, outcomes and repeat visits', () => {
+    // Only C5 has a documented action in this fixture: the fax that requested its bed.
+    expect(k.actions.any.ids).toEqual(['C5'])
+    expect(k.actions.none.ids).toHaveLength(9)
+    expect(k.actions.byKind.map((r) => [r.name, r.value])).toEqual([
+      ['Update written', 0],
+      ['Medical admin informed', 0],
+      ['Bed requested (fax)', 1],
+      ['Transfer requested', 0],
+    ])
+    expect(k.outcomes.map((r) => [r.name, r.value])).toEqual([
+      ['Discharged home', 2],
+      ['Admitted', 1],
+      ['Discharged DAMA', 1],
+      ['Left without being seen', 1],
+      ['Still open', 5],
+    ])
+    expect(k.repeats).toEqual([]) // every fixture MRN is distinct
+  })
+
+  it('completeness is the six rows in one drillable list', () => {
+    expect(k.completeness.map((r) => [r.name, r.ids])).toEqual([
+      ['No delay reason recorded', []],
+      ['Open, no update for 12 h', ['C3', 'C4']],
+      ['Open 24 h with no disposition decided', ['C4']],
+      ['Resolved without a disposition', []],
+      ['Times out of order', ['C12']], // its consult was "seen" before it was requested
+      ['Registration in the future', []],
+    ])
+  })
+
+  it('targets carry the cases that missed them, which is ids minus withinIds', () => {
+    const byKey = Object.fromEntries(k.targets.map((t) => [t.key, t]))
+    expect(k.targets.map((t) => t.key)).toEqual(['lab60', 'imaging90', 'consult60', 'decision150', 'toWard30'])
+    expect(byKey.lab60).toMatchObject({ n: 1, within: 0, ids: ['C3'], missedIds: ['C3'], share: null })
+    expect(byKey.imaging90).toMatchObject({ n: 1, within: 0, missedIds: ['C6'] })
+    // C1 met its one consult, C2 missed its one, C5 met one of two: two of four units within.
+    expect(byKey.consult60).toMatchObject({ n: 4, within: 2, ids: ['C1', 'C2', 'C5'], withinIds: ['C1'], share: 0.5 })
+    expect(byKey.consult60!.missedIds).toEqual(['C2', 'C5'])
+    expect(byKey.decision150).toMatchObject({ n: 0, share: null }) // no physician or decision times
+    expect(byKey.toWard30).toMatchObject({ n: 1, within: 0, missedIds: ['C5'] })
+  })
+
+  it('the Adaa overall row counts the five resolved cases into the treated-within bands', () => {
+    // Door to disposition: C12 2 h, C7 6 h, C8 7 h, C5 8 h, C6 10 h.
+    expect(k.treated.map((r) => r.value)).toEqual([1, 1, 3, 0, 0, 0, 0])
+    expect(k.adaaOverall.ctas).toBe('overall')
+    expect(k.adaaOverall.total).toBe(10)
+    expect(k.adaaOverall.treatedN).toBe(5)
+    expect(k.adaaOverall.withinFourShare).toBe(0.2)
+    expect(k.adaaOverall.damaShare).toBe(0.2) // C8 among five resolved
+    expect(k.adaaOverall.nonUrgentShare).toBeCloseTo(1 / 3, 10) // C6 among the three with a CTAS
+    // No physician or decision time anywhere in this fixture, so KPI 1-3 have nothing to measure.
+    expect([k.adaaOverall.kpi1N, k.adaaOverall.kpi2N, k.adaaOverall.kpi3N]).toEqual([0, 0, 0])
+    expect(k.adaa.map((r) => r.ctas)).toEqual([1, 2, 3, 4, 5, 'unknown', 'overall'])
+  })
+
+  it('turnaround bands, by CTAS and by area', () => {
+    const lab = k.turnaround.find((r) => r.type === 'LAB')!
+    expect(lab.orderToResult.map((r) => r.value)).toEqual([0, 0, 0, 0, 1, 0]) // C3: 4 h
+    expect(lab.doneToReport.map((r) => r.value)).toEqual([0, 0, 0, 1, 0, 0]) // C3: received to resulted, 2 h
+    const ct = k.turnaround.find((r) => r.type === 'CT')!
+    expect(ct.orderToResult.map((r) => r.value)).toEqual([0, 0, 0, 0, 1, 0]) // C6: order to preliminary, 3 h
+    expect(k.byCtas.map((r) => [r.name, r.n])).toEqual([
+      ['1', 0],
+      ['2', 1],
+      ['3', 1],
+      ['4', 1],
+      ['5', 0],
+      ['Not recorded', 7],
+    ])
+    expect(k.byArea.map((r) => [r.name, r.n])).toEqual([
+      ['Acute area', 1],
+      ['Rapid assessment zone', 1],
+      ['Resuscitation area', 1],
+      ['Not recorded', 7],
+    ])
+    // No ward code and no physician time in this fixture: both sections have nothing to show.
+    expect(k.admissionToUnit.every((g) => g.bands.every((b) => b.value === 0))).toBe(true)
+    expect(k.examToConsult).toEqual([])
+  })
+})

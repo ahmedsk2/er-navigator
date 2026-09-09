@@ -19,8 +19,16 @@ export const CHART = {
   plum: '#6b2058',
   muted: '#5b6673',
   ok: '#2e7d5b',
+  /**
+   * The 4 h band, the only series colour that is a band rather than a palette entry. The
+   * turnaround chart (Phase 8) is the one chart with an ordered scale — six time bands from fast
+   * to slow — and it wears the app's own severity ramp (ok, accent, h4, danger, plum, ink) so a
+   * slow band reads the same colour there as an overdue case does everywhere else.
+   */
+  h4: '#b8790f',
   /** Chrome: hairline axes, and the surface a marker's ring is cut from. */
   line: '#d9dfdb',
+  lineSoft: '#e8ede9',
   panel: '#ffffff',
 } as const
 
@@ -33,9 +41,17 @@ export const CHART_TOKEN_NAMES = {
   plum: 'color-band-h12',
   muted: 'color-muted',
   ok: 'color-band-ok',
+  h4: 'color-band-h4',
   line: 'color-line',
+  lineSoft: 'color-line-soft',
   panel: 'color-panel',
 } as const satisfies Record<keyof typeof CHART, string>
+
+/**
+ * The turnaround chart's six segments, fast to slow: the app's own band ramp. One ordered scale,
+ * so the legend reads in the same order the bands do and a reader never has to learn a mapping.
+ */
+export const CHART_RAMP = [CHART.ok, CHART.accent, CHART.h4, CHART.danger, CHART.plum, CHART.ink] as const
 
 /** Axis and label type: 11 px, the caption size, from the Phase 0.3 ramp. */
 export const CHART_TICK = { fontSize: 11, fill: CHART.muted } as const
