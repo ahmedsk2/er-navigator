@@ -29,11 +29,13 @@ export const CASE_EXPORT_SELECT = {
   transferFacility: true,
   isolation: true,
   resolutionNote: true,
-  // Widens the dashboard's `take: 1` newest-first read to the whole list, oldest first, which is
-  // the order the Updates sheet prints. `toCaseForStats` finds the newest by scanning, so both
-  // shapes agree on `lastUpdateAt`.
+  // The whole list, oldest first, which is the order the Updates sheet prints. `toCaseForStats`
+  // finds the newest by scanning, so this override and the dashboard's own select agree on
+  // `lastUpdateAt`. Phase 8b added `action`: without it `toCaseForStats` reads an export row as
+  // having no opinion on tagging at all (see its `'action' in u` guard), and the Adaa and QCH
+  // workbooks' `dashboard()` call would report every case as carrying no documented action.
   updates: {
-    select: { createdAt: true, text: true, author: { select: { displayName: true } } },
+    select: { createdAt: true, action: true, text: true, author: { select: { displayName: true } } },
     orderBy: { createdAt: 'asc' },
   },
 } as const satisfies Prisma.CaseSelect
