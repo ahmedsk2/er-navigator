@@ -406,6 +406,179 @@ test('the timeline lists the recorded steps in order with the interval between t
   await page.emulateMedia({ media: 'screen' })
 })
 
+/**
+ * Phase 8b, decisions F and E (docs/specs/phase8b-decisions.md). The pain-management block is
+ * Adaa KPI 8, so it is on every case; the pethidine row is one control over two columns, which is
+ * what makes the pair zod refuses unreachable; and MRI is the imaging type the app could not
+ * record before. Everything is read back from a fresh load, because a chip that looks pressed and
+ * was never stored is exactly the failure this slice exists to prevent.
+ */
+test('the pain-management block, an MRI row and a Deceased disposition round-trip', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.55')
+  const taps = await signIn(page, E2E_USERS.navigator)
+  const mrn = uniqueMrn()
+  // Opened on the Investigations stage, so the imaging block is there on the first paint and is
+  // still there after a reload: the editor derives its stage chips from the reasons it stored.
+  const url = await openCase(page, mrn, 'Investigations', 'Imaging: report delay', taps)
+
+  const painkiller = page.getByRole('group', { name: 'Painkiller prescribed' })
+  await expect(page.getByRole('heading', { name: 'Pain management (Adaa KPI 8)' })).toBeVisible()
+
+  // Nothing under "Yes" is offered until the answer is Yes.
+  await expect(page.getByRole('group', { name: 'Pethidine' })).toHaveCount(0)
+  await painkiller.getByRole('button', { name: 'Yes', exact: true }).click()
+  await page.getByRole('group', { name: 'Pethidine' }).getByRole('button', { name: '100 mg' }).click()
+  await page.getByLabel('Painkiller given at', { exact: true }).fill('2026-09-09T14:20')
+  await page
+    .getByRole('group', { name: 'Sickle-cell treatment identified' })
+    .getByRole('button', { name: 'No', exact: true })
+    .click()
+
+  // An MRI row, with the CT steps.
+  const types = page.getByRole('group', { name: 'Investigation types' })
+  await types.getByRole('button', { name: 'MRI' }).click()
+  await expect(page.getByLabel('Preliminary report', { exact: true })).toBeVisible()
+  await page.getByLabel('Ordered', { exact: true }).fill('2026-09-09T13:00')
+
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
+
+  // Everything comes back pressed and filled, so it really was stored.
+  await page.goto(url)
+  await expect(
+    page.getByRole('group', { name: 'Painkiller prescribed' }).getByRole('button', { name: 'Yes', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true')
+  await expect(
+    page.getByRole('group', { name: 'Pethidine' }).getByRole('button', { name: '100 mg' }),
+  ).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByLabel('Painkiller given at', { exact: true })).toHaveValue('2026-09-09T14:20')
+  await expect(
+    page.getByRole('group', { name: 'Sickle-cell treatment identified' }).getByRole('button', { name: 'No', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true')
+  await expect(types.getByRole('button', { name: 'MRI' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByLabel('Ordered', { exact: true })).toHaveValue('2026-09-09T13:00')
+
+  // Decision E: the disposition list carries Deceased, and no ward is asked for.
+  await page.getByLabel('Final disposition').selectOption('DECEASED')
+  await page.getByRole('button', { name: 'Mark resolved' }).click()
+  await expect(page.getByText('Resolved: Deceased')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Resolved' })).toBeVisible()
+})
+
+/** Phase 8b, decision B: the case-management block, and its two times. */
+test('the case-management block records the referral, the outcome and the two times', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.56')
+  const taps = await signIn(page, E2E_USERS.navigator)
+  const url = await openCase(page, uniqueMrn(), STAGE, REASON, taps)
+
+  await expect(page.getByRole('heading', { name: 'Case management' })).toBeVisible()
+  // The four fields that only mean something under a referral are hidden until there is one.
+  await expect(page.getByRole('group', { name: 'Criteria' })).toHaveCount(0)
+
+  await page
+    .getByRole('group', { name: 'Referred to' })
+    .getByRole('button', { name: 'Complex-care coordinator' })
+    .click()
+  await page.getByRole('group', { name: 'Criteria' }).getByRole('button', { name: 'Meets criteria' }).click()
+  await page.getByRole('group', { name: 'Action', exact: true }).getByRole('button', { name: 'For enrollment' }).click()
+  await page.getByLabel('Called at', { exact: true }).fill('2026-09-09T10:00')
+  await page.getByLabel('Replied at', { exact: true }).fill('2026-09-09T11:30')
+
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
+
+  await page.goto(url)
+  await expect(
+    page.getByRole('group', { name: 'Referred to' }).getByRole('button', { name: 'Complex-care coordinator' }),
+  ).toHaveAttribute('aria-pressed', 'true')
+  await expect(
+    page.getByRole('group', { name: 'Criteria' }).getByRole('button', { name: 'Meets criteria' }),
+  ).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByLabel('Called at', { exact: true })).toHaveValue('2026-09-09T10:00')
+  await expect(page.getByLabel('Replied at', { exact: true })).toHaveValue('2026-09-09T11:30')
+
+  // A reply before the call warns and never blocks (warnings.ts).
+  await page.getByLabel('Replied at', { exact: true }).fill('2026-09-09T09:00')
+  await expect(page.getByText('case management replied is before case management called')).toBeVisible()
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
+})
+
+/** Phase 8b, decision C: the weekly deck's action category on an update. */
+test('an update can carry one of the deck action categories, and shows it as a chip', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.57')
+  const taps = await signIn(page, E2E_USERS.navigator)
+  const url = await openCase(page, uniqueMrn(), STAGE, REASON, taps)
+
+  await page
+    .getByRole('group', { name: 'Action taken (optional)' })
+    .getByRole('button', { name: 'Leadership escalation' })
+    .click()
+  await page.getByLabel('What changed?').fill('Escalated to the on-call director')
+  await page.getByLabel('What changed?').press('Enter')
+
+  const tagged = page.locator('[data-update-action="LEADERSHIP_ESCALATION"]')
+  await expect(tagged).toBeVisible()
+  await expect(tagged).toHaveText('Leadership escalation')
+  // The chip row resets with the box, so the next update is untagged unless it is tagged again.
+  await expect(
+    page.getByRole('group', { name: 'Action taken (optional)' }).getByRole('button', { name: 'Leadership escalation' }),
+  ).toHaveAttribute('aria-pressed', 'false')
+  await page.getByLabel('What changed?').fill('Ward says one hour')
+  await page.getByLabel('What changed?').press('Enter')
+  await expect(page.locator('[data-update-action]')).toHaveCount(1)
+
+  await page.goto(url)
+  await expect(page.locator('[data-update-action="LEADERSHIP_ESCALATION"]')).toHaveText('Leadership escalation')
+})
+
+/**
+ * Phase 8b, decision H. The control belongs to a SUPERVISOR or an ADMIN; a navigator sees the
+ * line their entry was checked on and no way to check it themselves.
+ */
+test('a supervisor marks a case reviewed; the navigator sees the line but not the control', async ({ browser }) => {
+  const reading = await browser.newContext()
+  const editing = await browser.newContext()
+  const supervisor = await reading.newPage()
+  const nurse = await editing.newPage()
+  await fromClientIp(supervisor, '198.51.100.58')
+  await fromClientIp(nurse, '198.51.100.59')
+
+  const taps = await signIn(nurse, E2E_USERS.navigator)
+  const mrn = uniqueMrn()
+  const url = await openCase(nurse, mrn, STAGE, REASON, taps)
+
+  // Nothing to see yet, and nothing to press.
+  await expect(nurse.locator('[data-review]')).toHaveCount(0)
+
+  // Resolve it first: the board chip is for finished records, and a save would clear a review.
+  await nurse.getByLabel('Final disposition').selectOption('DISCHARGED_HOME')
+  await nurse.getByRole('button', { name: 'Mark resolved' }).click()
+  await expect(nurse.getByText('Resolved: Discharged home')).toBeVisible()
+
+  await signIn(supervisor, E2E_USERS.supervisor)
+  await supervisor.goto(url)
+  await supervisor.getByRole('button', { name: 'Mark reviewed' }).click()
+  await expect(supervisor.getByText(`Reviewed by ${E2E_USERS.supervisor.displayName}`, { exact: false })).toBeVisible()
+  // A second reading is offered, and is what a "Mark again" does.
+  await expect(supervisor.getByRole('button', { name: 'Mark again' })).toBeVisible()
+
+  // The navigator reloads: the line, and no control at all.
+  await nurse.goto(url)
+  await expect(nurse.getByText(`Reviewed by ${E2E_USERS.supervisor.displayName}`, { exact: false })).toBeVisible()
+  await expect(nurse.getByRole('button', { name: 'Mark reviewed' })).toHaveCount(0)
+  await expect(nurse.getByRole('button', { name: 'Mark again' })).toHaveCount(0)
+
+  // And the board row carries the chip.
+  await nurse.goto('/?f=resolved')
+  const boardRow = nurse.locator(`a[data-mrn="${mrn}"]`)
+  await expect(boardRow).toBeVisible()
+  await expect(boardRow.locator('[data-chip="Reviewed"]')).toBeVisible()
+
+  await reading.close()
+  await editing.close()
+})
+
 test('out-of-order times warn but never block the save', async ({ page }) => {
   await fromClientIp(page, '198.51.100.49')
   const taps = await signIn(page, E2E_USERS.navigator)

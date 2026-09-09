@@ -99,6 +99,46 @@ describe('timeWarnings (prototype port)', () => {
     ).toEqual(['Lab resulted is before Lab received by lab'])
   })
 
+  /**
+   * Phase 8b. The painkiller time is where Adaa KPI 8 stops and the registration is where it
+   * starts, so one before the other would make the KPI negative; the case-management pair is a
+   * call and its answer. Both warn, like every other pair here — the save is never refused.
+   */
+  it('flags a painkiller given before the registration', () => {
+    expect(timeWarnings({ registrationAt: t(3), painkillerAt: t(1) })).toEqual([
+      'Painkiller given is before registration',
+    ])
+    expect(timeWarnings({ registrationAt: t(1), painkillerAt: t(3) })).toEqual([])
+    // Both ends must be recorded; one alone says nothing.
+    expect(timeWarnings({ registrationAt: t(1), painkillerAt: null })).toEqual([])
+  })
+
+  it('flags a case-management reply before the call, and says nothing about the pair in order', () => {
+    expect(timeWarnings({ registrationAt: t(0), caseMgmtCalledAt: t(4), caseMgmtRepliedAt: t(2) })).toEqual([
+      'case management replied is before case management called',
+    ])
+    expect(timeWarnings({ registrationAt: t(0), caseMgmtCalledAt: t(2), caseMgmtRepliedAt: t(4) })).toEqual([])
+    expect(timeWarnings({ registrationAt: t(0), caseMgmtRepliedAt: t(4) })).toEqual([])
+  })
+
+  it('reports the painkiller and the case-management pair together, in that order', () => {
+    expect(
+      timeWarnings({ registrationAt: t(2), painkillerAt: t(1), caseMgmtCalledAt: t(5), caseMgmtRepliedAt: t(3) }),
+    ).toEqual([
+      'Painkiller given is before registration',
+      'case management replied is before case management called',
+    ])
+  })
+
+  it('flags an MRI step out of order with the MRI label (Phase 8b)', () => {
+    expect(
+      timeWarnings({
+        registrationAt: t(0),
+        investigations: [{ type: 'MRI', orderedAt: t(1), doneAt: t(4), preliminaryAt: t(3) }],
+      }),
+    ).toEqual(['MRI preliminary report is before MRI scan done'])
+  })
+
   it('flags the admission and transfer chains', () => {
     const w = timeWarnings({ registrationAt: t(0), admOrderAt: t(5), bedRequestedAt: t(4), transferRequestedAt: t(6), transferAcceptedAt: t(5.5) })
     expect(w).toEqual(['bed requested (fax sent) is before admission order written', 'accepted by facility is before transfer requested'])

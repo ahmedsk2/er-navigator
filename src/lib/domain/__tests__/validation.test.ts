@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { buildCaseSchemas, mrnSchema, phiWarnings, updateTextSchema, voidSchema } from '../validation'
+import {
+  buildCaseSchemas,
+  mrnSchema,
+  phiWarnings,
+  updateActionSchema,
+  updateTextSchema,
+  voidSchema,
+} from '../validation'
 
 const NOW = new Date('2026-09-08T12:00:00Z')
 const meta = new Map([
@@ -133,6 +140,115 @@ describe('case draft rules (locked plan section 4)', () => {
     expect(draft.safeParse({ ...base(), investigations: [{ type: 'LAB' }] }).success).toBe(true)
   })
 
+  it('takes an MRI investigation row, like the other three imaging types (Phase 8b)', () => {
+    const r = draft.safeParse({
+      ...base(),
+      investigations: [
+        { type: 'MRI', orderedAt: '2026-09-08T07:00:00Z', doneAt: '2026-09-08T08:00:00Z', preliminaryAt: '2026-09-08T08:30:00Z' },
+      ],
+    })
+    expect(r.success).toBe(true)
+    if (r.success) expect(r.data.investigations[0]!.type).toBe('MRI')
+    expect(draft.safeParse({ ...base(), investigations: [{ type: 'PET' }] }).success).toBe(false)
+  })
+
+  // --- Phase 8b: Ahmed's collection decisions -------------------------------------------------
+
+  describe('pain management (decision F, Adaa KPI 8)', () => {
+    it('takes Yes or No and refuses "Not sure", which the national form has no column for', () => {
+      for (const answer of ['YES', 'NO']) {
+        expect(draft.safeParse({ ...base(), painkillerPrescribed: answer }).success, answer).toBe(true)
+        expect(draft.safeParse({ ...base(), sickleCellTreatment: answer }).success, answer).toBe(true)
+      }
+      expect(draft.safeParse({ ...base(), painkillerPrescribed: 'NOT_SURE' }).success).toBe(false)
+      expect(draft.safeParse({ ...base(), pethidinePrescribed: 'NOT_SURE' }).success).toBe(false)
+      expect(draft.safeParse({ ...base(), sickleCellTreatment: 'NOT_SURE' }).success).toBe(false)
+      // Absent and null are both "not recorded".
+      expect(draft.safeParse({ ...base(), painkillerPrescribed: null }).success).toBe(true)
+      expect(draft.safeParse(base()).success).toBe(true)
+    })
+
+    it('takes a pethidine dose of 50, 100 or 150 and nothing else', () => {
+      for (const dose of [50, 100, 150]) {
+        expect(
+          draft.safeParse({ ...base(), pethidinePrescribed: 'YES', pethidineDoseMg: dose }).success,
+          `${dose} mg`,
+        ).toBe(true)
+      }
+      for (const dose of [0, 25, 75, 200, 100.5]) {
+        expect(
+          issues(draft.safeParse({ ...base(), pethidinePrescribed: 'YES', pethidineDoseMg: dose })),
+          `${dose} mg`,
+        ).toContain('pethidineDoseMg: The pethidine dose is 50, 100 or 150 mg.')
+      }
+    })
+
+    it('refuses a dose without a pethidine YES, and a painkiller time without a painkiller YES', () => {
+      for (const prescribed of [undefined, null, 'NO']) {
+        expect(
+          issues(draft.safeParse({ ...base(), pethidinePrescribed: prescribed, pethidineDoseMg: 100 })),
+          String(prescribed),
+        ).toContain('pethidineDoseMg: Record the pethidine dose only when pethidine was prescribed.')
+        expect(
+          issues(draft.safeParse({ ...base(), painkillerPrescribed: prescribed, painkillerAt: '2026-09-08T07:00:00Z' })),
+          String(prescribed),
+        ).toContain('painkillerAt: Record when the painkiller was given only when one was prescribed.')
+      }
+      const ok = draft.safeParse({
+        ...base(),
+        painkillerPrescribed: 'YES',
+        painkillerAt: '2026-09-08T07:00:00Z',
+        pethidinePrescribed: 'YES',
+        pethidineDoseMg: 50,
+      })
+      expect(ok.success).toBe(true)
+    })
+  })
+
+  it('takes the three-answer discharge questions, "Not sure" included (decision D)', () => {
+    for (const answer of ['YES', 'NO', 'NOT_SURE']) {
+      expect(draft.safeParse({ ...base(), instructionsGiven: answer, familyEngagement: answer }).success, answer).toBe(
+        true,
+      )
+    }
+    expect(draft.safeParse({ ...base(), instructionsGiven: 'MAYBE' }).success).toBe(false)
+  })
+
+  it('takes the case-management vocabularies and refuses anything else (decision B)', () => {
+    const ok = draft.safeParse({
+      ...base(),
+      caseMgmtReferral: 'COMPLEX_CARE',
+      caseMgmtCriteria: 'NOT_MEETING',
+      caseMgmtAction: 'FOR_ENROLLMENT',
+      caseMgmtCalledAt: '2026-09-08T07:00:00Z',
+      caseMgmtRepliedAt: '2026-09-08T09:00:00Z',
+    })
+    expect(ok.success).toBe(true)
+    if (ok.success) expect(ok.data.caseMgmtRepliedAt).toBeInstanceOf(Date)
+    expect(draft.safeParse({ ...base(), caseMgmtReferral: 'SOCIAL_WORK' }).success).toBe(false)
+    expect(draft.safeParse({ ...base(), caseMgmtCriteria: 'PARTIAL' }).success).toBe(false)
+    expect(draft.safeParse({ ...base(), caseMgmtAction: 'DISCHARGED' }).success).toBe(false)
+    // A reply before the call is a WARNING, not an error (warnings.test.ts).
+    expect(
+      draft.safeParse({
+        ...base(),
+        caseMgmtCalledAt: '2026-09-08T09:00:00Z',
+        caseMgmtRepliedAt: '2026-09-08T07:00:00Z',
+      }).success,
+    ).toBe(true)
+  })
+
+  it('takes the two new dispositions on a draft and on a resolve (decision E)', () => {
+    for (const disposition of ['DECEASED', 'REFERRED_UCC']) {
+      expect(draft.safeParse({ ...base(), disposition }).success, disposition).toBe(true)
+      const r = resolve.safeParse({ ...base(), departedAt: new Date('2026-09-08T11:00:00Z'), disposition })
+      expect(r.success, disposition).toBe(true)
+    }
+    // Neither is an admission, so neither asks for a ward.
+    expect(issues(resolve.safeParse({ ...base(), departedAt: new Date('2026-09-08T11:00:00Z'), disposition: 'DECEASED' }))).toEqual([])
+    expect(draft.safeParse({ ...base(), disposition: 'LAMA' }).success).toBe(false)
+  })
+
   it('accepts ISO strings for times and coerces them', () => {
     const r = draft.safeParse({ ...base(), registrationAt: '2026-09-08T06:00:00+03:00', triageAt: '2026-09-08T06:30:00Z' })
     expect(r.success).toBe(true)
@@ -194,6 +310,50 @@ describe('resolve rules', () => {
       disposition: 'DISCHARGED_HOME',
     })
     expect(issues(r)).toContain('registrationAt: Registration time cannot be in the future.')
+  })
+
+  /** Phase 8b, decision D: the two discharge answers are recorded at the resolve. */
+  it('carries the discharge-communication answers, and refuses a bad pain pair as the draft does', () => {
+    const ok = resolve.safeParse({
+      ...resolved(),
+      disposition: 'DISCHARGED_HOME',
+      instructionsGiven: 'YES',
+      familyEngagement: 'NOT_SURE',
+    })
+    expect(ok.success).toBe(true)
+    if (ok.success) {
+      expect(ok.data.instructionsGiven).toBe('YES')
+      expect(ok.data.familyEngagement).toBe('NOT_SURE')
+    }
+    const bad = resolve.safeParse({ ...resolved(), disposition: 'DISCHARGED_HOME', pethidineDoseMg: 150 })
+    expect(issues(bad)).toContain('pethidineDoseMg: Record the pethidine dose only when pethidine was prescribed.')
+  })
+})
+
+/** Phase 8b, decision C: the weekly deck's action category on an update. */
+describe('updateActionSchema', () => {
+  it('takes the six deck categories', () => {
+    for (const action of [
+      'LEADERSHIP_ESCALATION',
+      'BED_MANAGEMENT',
+      'FAX_RCC',
+      'PRO_SOCIAL_WORK',
+      'FORCED_SAFETY_ADMISSION',
+      'DAMA_MANAGEMENT',
+    ]) {
+      expect(updateActionSchema.safeParse(action).success, action).toBe(true)
+    }
+  })
+
+  it('treats an untagged update as ordinary: null, undefined and a missing value all pass', () => {
+    expect(updateActionSchema.safeParse(null).data).toBeNull()
+    expect(updateActionSchema.safeParse(undefined).success).toBe(true)
+  })
+
+  it('refuses anything that is not one of the six', () => {
+    expect(updateActionSchema.safeParse('ESCALATION').success).toBe(false)
+    expect(updateActionSchema.safeParse('').success).toBe(false)
+    expect(updateActionSchema.safeParse(3).success).toBe(false)
   })
 })
 

@@ -9,6 +9,7 @@ import {
   createCase,
   reopenCase,
   resolveCase,
+  reviewCase,
   saveCase,
   voidCase,
 } from '@/src/lib/cases/service'
@@ -787,6 +788,321 @@ describe('resolve and reopen', () => {
     )
     if (!resolved.ok) throw new Error('unreachable')
     expect(await reopenCase(nurse, id, 1, ctxFor(nurse.id))).toMatchObject({ ok: false, error: 'conflict' })
+  })
+})
+
+/**
+ * Phase 8b: Ahmed's collection decisions (docs/specs/phase8b-decisions.md). Sixteen more optional
+ * columns and one new mutation, against a real Postgres — the enums must round-trip, the audit
+ * trail must carry them, and the review must appear and disappear exactly when the spec says.
+ */
+describe('the collection decisions on a real case', () => {
+  const PAIN = {
+    painkillerPrescribed: 'YES',
+    pethidinePrescribed: 'YES',
+    pethidineDoseMg: 100,
+    sickleCellTreatment: 'NO',
+  } as const
+
+  it('creates a case carrying every new field, and the audit row has them all', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const painkillerAt = new Date(Date.now() - 5 * HOUR).toISOString()
+    const caseMgmtCalledAt = new Date(Date.now() - 4 * HOUR).toISOString()
+    const caseMgmtRepliedAt = new Date(Date.now() - 3 * HOUR).toISOString()
+
+    const id = await openCase(nurse, {
+      ...PAIN,
+      painkillerAt,
+      instructionsGiven: 'NOT_SURE',
+      familyEngagement: 'YES',
+      caseMgmtReferral: 'COMPLEX_CARE',
+      caseMgmtCriteria: 'MEETS',
+      caseMgmtAction: 'FOR_ENROLLMENT',
+      caseMgmtCalledAt,
+      caseMgmtRepliedAt,
+      reasons: [{ reasonId: reasonNamed('inv', 'Imaging: report delay'), otherText: null }],
+      // Decision E's other half: an MRI row, which the app could not record before.
+      investigations: [
+        {
+          type: 'MRI',
+          orderedAt: null,
+          collectedAt: null,
+          receivedAt: null,
+          doneAt: null,
+          preliminaryAt: new Date(Date.now() - 2 * HOUR).toISOString(),
+          resultedAt: null,
+        },
+      ],
+    })
+
+    const row = await prisma.case.findUniqueOrThrow({ where: { id }, include: { investigations: true } })
+    expect(row.painkillerPrescribed).toBe('YES')
+    expect(row.pethidinePrescribed).toBe('YES')
+    expect(row.pethidineDoseMg).toBe(100)
+    expect(row.painkillerAt?.toISOString()).toBe(painkillerAt)
+    expect(row.sickleCellTreatment).toBe('NO')
+    expect(row.instructionsGiven).toBe('NOT_SURE')
+    expect(row.familyEngagement).toBe('YES')
+    expect(row.caseMgmtReferral).toBe('COMPLEX_CARE')
+    expect(row.caseMgmtCriteria).toBe('MEETS')
+    expect(row.caseMgmtAction).toBe('FOR_ENROLLMENT')
+    expect(row.caseMgmtCalledAt?.toISOString()).toBe(caseMgmtCalledAt)
+    expect(row.caseMgmtRepliedAt?.toISOString()).toBe(caseMgmtRepliedAt)
+    expect(row.investigations[0]!.type).toBe('MRI')
+
+    const created = await prisma.auditLog.findFirstOrThrow({ where: { entity: 'Case', entityId: id } })
+    expect(created.after).toMatchObject({
+      painkillerPrescribed: 'YES',
+      pethidineDoseMg: 100,
+      painkillerAt,
+      sickleCellTreatment: 'NO',
+      instructionsGiven: 'NOT_SURE',
+      familyEngagement: 'YES',
+      caseMgmtReferral: 'COMPLEX_CARE',
+      caseMgmtCriteria: 'MEETS',
+      caseMgmtAction: 'FOR_ENROLLMENT',
+      caseMgmtCalledAt,
+      caseMgmtRepliedAt,
+      reviewedAt: null,
+      reviewedById: null,
+    })
+  })
+
+  it('changes and clears them on a save, with both values in the audit row', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const id = await openCase(nurse, { ...PAIN, instructionsGiven: 'NO', caseMgmtReferral: 'CASE_MANAGER' })
+
+    const changed = await saveCase(
+      nurse,
+      id,
+      draft({ painkillerPrescribed: 'NO', instructionsGiven: 'YES', caseMgmtReferral: 'COMPLEX_CARE', version: 1 }),
+      ctxFor(nurse.id),
+    )
+    expect(changed).toMatchObject({ ok: true, version: 2 })
+
+    const cleared = await saveCase(nurse, id, draft({ version: 2 }), ctxFor(nurse.id))
+    expect(cleared).toMatchObject({ ok: true, version: 3 })
+    const row = await prisma.case.findUniqueOrThrow({ where: { id } })
+    expect(row.painkillerPrescribed).toBeNull()
+    expect(row.pethidineDoseMg).toBeNull()
+    expect(row.instructionsGiven).toBeNull()
+    expect(row.caseMgmtReferral).toBeNull()
+
+    const audits = await prisma.auditLog.findMany({ where: { entity: 'Case', entityId: id }, orderBy: { at: 'asc' } })
+    expect(audits[1]!.before).toMatchObject({ painkillerPrescribed: 'YES', pethidineDoseMg: 100, instructionsGiven: 'NO' })
+    expect(audits[1]!.after).toMatchObject({ painkillerPrescribed: 'NO', instructionsGiven: 'YES', caseMgmtReferral: 'COMPLEX_CARE' })
+    expect(audits[2]!.after).toMatchObject({ painkillerPrescribed: null, caseMgmtReferral: null })
+  })
+
+  it('keeps them through a resolve, and resolves as Deceased with no ward', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const id = await openCase(nurse)
+    const departedAt = new Date().toISOString()
+
+    const resolved = await resolveCase(
+      nurse,
+      id,
+      draft({
+        ...PAIN,
+        instructionsGiven: 'NO',
+        familyEngagement: 'NOT_SURE',
+        disposition: 'DECEASED',
+        departedAt,
+        version: 1,
+      }),
+      ctxFor(nurse.id),
+    )
+    expect(resolved).toMatchObject({ ok: true, version: 2 })
+
+    const row = await prisma.case.findUniqueOrThrow({ where: { id } })
+    expect(row.status).toBe('RESOLVED')
+    expect(row.disposition).toBe('DECEASED')
+    expect(row.wardId).toBeNull()
+    expect(row.pethidineDoseMg).toBe(100)
+    expect(row.familyEngagement).toBe('NOT_SURE')
+
+    const updates = await prisma.caseUpdate.findMany({ where: { caseId: id } })
+    expect(updates.map((u) => u.text)).toEqual(['Resolved: Deceased'])
+
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: { entity: 'Case', entityId: id, action: 'case.resolve' },
+    })
+    expect(audit.after).toMatchObject({ disposition: 'DECEASED', instructionsGiven: 'NO', familyEngagement: 'NOT_SURE' })
+  })
+
+  it('resolves as Referred to UCC, the other disposition decision E added', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const id = await openCase(nurse)
+    const resolved = await resolveCase(
+      nurse,
+      id,
+      draft({ disposition: 'REFERRED_UCC', departedAt: new Date().toISOString(), version: 1 }),
+      ctxFor(nurse.id),
+    )
+    expect(resolved).toMatchObject({ ok: true, version: 2 })
+    expect((await prisma.case.findUniqueOrThrow({ where: { id } })).disposition).toBe('REFERRED_UCC')
+    const updates = await prisma.caseUpdate.findMany({ where: { caseId: id } })
+    expect(updates.map((u) => u.text)).toEqual(['Resolved: Referred to UCC'])
+  })
+
+  it('refuses a pethidine dose recorded against no prescription, and writes nothing', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const id = await openCase(nurse)
+    const refused = await saveCase(nurse, id, draft({ pethidineDoseMg: 100, version: 1 }), ctxFor(nurse.id))
+    expect(refused).toMatchObject({ ok: false, error: 'validation' })
+    if (refused.ok || refused.error !== 'validation') throw new Error('unreachable')
+    expect(refused.issues.some((i) => i.path === 'pethidineDoseMg')).toBe(true)
+    expect((await prisma.case.findUniqueOrThrow({ where: { id } })).version).toBe(1)
+  })
+
+  it('refuses a pethidine dose that is not 50, 100 or 150', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const result = await createCase(
+      nurse,
+      draft({ pethidinePrescribed: 'YES', pethidineDoseMg: 75 }),
+      ctxFor(nurse.id),
+    )
+    expect(result).toMatchObject({ ok: false, error: 'validation' })
+    if (result.ok || result.error !== 'validation') throw new Error('unreachable')
+    expect(result.issues.some((i) => i.message === 'The pethidine dose is 50, 100 or 150 mg.')).toBe(true)
+  })
+})
+
+/** Phase 8b, decision C: the weekly deck's action category, written with the update. */
+describe('addCaseUpdate with an action', () => {
+  it('stores the category, audits it and leaves an untagged update untagged', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const id = await openCase(nurse)
+
+    const tagged = await addCaseUpdate(nurse, id, 'Escalated to the on-call director', ctxFor(nurse.id), 'LEADERSHIP_ESCALATION')
+    const plain = await addCaseUpdate(nurse, id, 'Ward says one hour', ctxFor(nurse.id))
+    expect(tagged).toMatchObject({ ok: true })
+    expect(plain).toMatchObject({ ok: true })
+    if (!tagged.ok || !plain.ok) throw new Error('unreachable')
+    expect(tagged.update.action).toBe('LEADERSHIP_ESCALATION')
+    expect(plain.update.action).toBeNull()
+
+    const rows = await prisma.caseUpdate.findMany({ where: { caseId: id }, orderBy: { createdAt: 'asc' } })
+    expect(rows.map((r) => r.action)).toEqual(['LEADERSHIP_ESCALATION', null])
+
+    const entry = await prisma.auditLog.findFirstOrThrow({ where: { entity: 'CaseUpdate', entityId: tagged.update.id } })
+    expect(entry.after).toMatchObject({ text: 'Escalated to the on-call director', action: 'LEADERSHIP_ESCALATION' })
+  })
+
+  it('refuses a category that is not one of the six, and writes no row', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const id = await openCase(nurse)
+    const refused = await addCaseUpdate(nurse, id, 'Called the ward', ctxFor(nurse.id), 'ESCALATION')
+    expect(refused).toMatchObject({ ok: false, error: 'validation' })
+    expect(await prisma.caseUpdate.count({ where: { caseId: id } })).toBe(0)
+  })
+})
+
+/** Phase 8b, decision H: the supervisor review. */
+describe('reviewCase', () => {
+  it('marks the case reviewed, audits it, and neither checks nor bumps the version', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const supervisor = actorOf(await makeUser('SUPERVISOR'))
+    const id = await openCase(nurse)
+
+    const marked = await reviewCase(supervisor, id, ctxFor(supervisor.id))
+    expect(marked).toMatchObject({ ok: true, reviewedByName: supervisor.displayName })
+    if (!marked.ok) throw new Error('unreachable')
+
+    const row = await prisma.case.findUniqueOrThrow({ where: { id } })
+    expect(row.reviewedById).toBe(supervisor.id)
+    expect(row.reviewedAt?.toISOString()).toBe(marked.reviewedAt)
+    // No case content changed, so the version an open editor holds is still good.
+    expect(row.version).toBe(1)
+
+    const entry = await prisma.auditLog.findFirstOrThrow({
+      where: { entity: 'Case', entityId: id, action: 'case.review' },
+    })
+    expect(entry.before).toMatchObject({ reviewedAt: null, reviewedById: null })
+    expect(entry.after).toMatchObject({ reviewedAt: marked.reviewedAt, reviewedById: supervisor.id })
+  })
+
+  it('is idempotent: a second mark moves the time and the name to whoever read it last', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const supervisor = actorOf(await makeUser('SUPERVISOR'))
+    const admin = actorOf(await makeUser('ADMIN'))
+    const id = await openCase(nurse)
+
+    const first = await reviewCase(supervisor, id, ctxFor(supervisor.id))
+    const second = await reviewCase(admin, id, ctxFor(admin.id))
+    expect(first).toMatchObject({ ok: true })
+    expect(second).toMatchObject({ ok: true, reviewedByName: admin.displayName })
+    if (!first.ok || !second.ok) throw new Error('unreachable')
+
+    const row = await prisma.case.findUniqueOrThrow({ where: { id } })
+    expect(row.reviewedById).toBe(admin.id)
+    expect(new Date(second.reviewedAt).getTime()).toBeGreaterThanOrEqual(new Date(first.reviewedAt).getTime())
+    expect(await prisma.auditLog.count({ where: { entity: 'Case', entityId: id, action: 'case.review' } })).toBe(2)
+  })
+
+  it('is refused for a NAVIGATOR, with an audit row and no change', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const id = await openCase(nurse)
+
+    await expect(reviewCase(nurse, id, ctxFor(nurse.id))).rejects.toBeInstanceOf(ForbiddenError)
+    expect((await prisma.case.findUniqueOrThrow({ where: { id } })).reviewedAt).toBeNull()
+    const refusals = await prisma.auditLog.findMany({ where: { actorId: nurse.id, action: 'auth.forbidden' } })
+    expect(refusals).toHaveLength(1)
+    expect(refusals[0]!.entityId).toBe('case.review')
+  })
+
+  it('is cleared by a later save and by a resolve, and left alone by an update', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const supervisor = actorOf(await makeUser('SUPERVISOR'))
+    const id = await openCase(nurse)
+
+    expect(await reviewCase(supervisor, id, ctxFor(supervisor.id))).toMatchObject({ ok: true })
+
+    // An update adds to the record; it does not change what was read.
+    expect(await addCaseUpdate(nurse, id, 'Bed coordinator called', ctxFor(nurse.id))).toMatchObject({ ok: true })
+    expect((await prisma.case.findUniqueOrThrow({ where: { id } })).reviewedById).toBe(supervisor.id)
+
+    // A save does: the entry the supervisor signed off no longer exists.
+    expect(await saveCase(nurse, id, draft({ mrn: '900123', version: 1 }), ctxFor(nurse.id))).toMatchObject({ ok: true })
+    const afterSave = await prisma.case.findUniqueOrThrow({ where: { id } })
+    expect(afterSave.reviewedAt).toBeNull()
+    expect(afterSave.reviewedById).toBeNull()
+
+    // And so does a resolve.
+    expect(await reviewCase(supervisor, id, ctxFor(supervisor.id))).toMatchObject({ ok: true })
+    expect(
+      await resolveCase(
+        nurse,
+        id,
+        draft({ mrn: '900123', disposition: 'DISCHARGED_HOME', departedAt: new Date().toISOString(), version: 2 }),
+        ctxFor(nurse.id),
+      ),
+    ).toMatchObject({ ok: true })
+    expect((await prisma.case.findUniqueOrThrow({ where: { id } })).reviewedAt).toBeNull()
+  })
+
+  it('survives a reopen and a void, which change the case standing and not its content', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const supervisor = actorOf(await makeUser('SUPERVISOR'))
+    const id = await openCase(nurse)
+    const resolved = await resolveCase(
+      nurse,
+      id,
+      draft({ disposition: 'DISCHARGED_HOME', departedAt: new Date().toISOString(), version: 1 }),
+      ctxFor(nurse.id),
+    )
+    if (!resolved.ok) throw new Error('unreachable')
+
+    expect(await reviewCase(supervisor, id, ctxFor(supervisor.id))).toMatchObject({ ok: true })
+    expect(await reopenCase(nurse, id, resolved.version, ctxFor(nurse.id))).toMatchObject({ ok: true })
+    expect((await prisma.case.findUniqueOrThrow({ where: { id } })).reviewedById).toBe(supervisor.id)
+
+    const reopened = await prisma.case.findUniqueOrThrow({ where: { id } })
+    expect(await voidCase(supervisor, id, { version: reopened.version, voidReason: 'opened twice' }, ctxFor(supervisor.id))).toMatchObject({ ok: true })
+    expect((await prisma.case.findUniqueOrThrow({ where: { id } })).reviewedById).toBe(supervisor.id)
+
+    // But a voided case can no longer be marked at all.
+    expect(await reviewCase(supervisor, id, ctxFor(supervisor.id))).toMatchObject({ ok: false, error: 'validation' })
   })
 })
 
