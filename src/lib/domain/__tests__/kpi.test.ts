@@ -8,6 +8,7 @@ import {
   benchmark,
   byArea,
   byCtas,
+  communication,
   completeness,
   doorAt,
   doorToDispositionHours,
@@ -18,10 +19,13 @@ import {
   kpi1Minutes,
   kpi2Minutes,
   kpi3Minutes,
+  kpi8Minutes,
   leftAt,
   longestStays,
   minutesBetween,
   outcomes,
+  painkillerBands,
+  pethidineDoses,
   previousRange,
   repeatVisits,
   STAY_BANDS,
@@ -70,6 +74,21 @@ function base(id: string, over: Partial<KpiCase> = {}): KpiCase {
     lastUpdateAt: null,
     consults: [],
     investigations: [],
+    painkillerPrescribed: null,
+    pethidinePrescribed: null,
+    pethidineDoseMg: null,
+    painkillerAt: null,
+    sickleCellTreatment: null,
+    instructionsGiven: null,
+    familyEngagement: null,
+    caseMgmtReferral: null,
+    caseMgmtCriteria: null,
+    caseMgmtAction: null,
+    caseMgmtCalledAt: null,
+    caseMgmtRepliedAt: null,
+    reviewedAt: null,
+    reviewedByName: null,
+    updateActions: [],
     ...over,
   }
 }
@@ -255,16 +274,29 @@ describe('the weekly deck', () => {
     expect(rows[1]).toMatchObject({ status: 'RESOLVED', disposition: 'ADMITTED' })
   })
 
-  it('actions documented: b (update, escalation, fax) and c (updates, fax); a, d, e none', () => {
+  it('actions documented: the deck\'s categories, with the recorded signals folded in', () => {
+    // b: escalation timestamp + fax + one untagged update; c: fax + two untagged updates
     const acts = actionsDocumented(ALL)
     expect(acts.any).toEqual({ name: 'Action documented', value: 2, ids: ['b', 'c'] })
     expect(acts.none.ids).toEqual(['a', 'd', 'e'])
     expect(acts.byKind.map((r) => [r.name, r.value])).toEqual([
-      ['Update written', 2],
-      ['Medical admin informed', 1],
-      ['Bed requested (fax)', 2],
-      ['Transfer requested', 0],
+      ['Leadership escalation', 1],
+      ['Case / bed management', 2],
+      ['External transfer / fax / RCC', 0],
+      ['PRO / social work', 0],
+      ['Forced / safety admission', 0],
+      ['DAMA management', 0],
+      ['Update without an action tag', 2],
     ])
+    // A tagged update counts under its category and not as untagged; a mixed case counts both.
+    const tagged = base('t1', { updatesCount: 1, updateActions: ['PRO_SOCIAL_WORK'] })
+    const mixed = base('t2', { updatesCount: 3, updateActions: ['DAMA_MANAGEMENT', 'FAX_RCC'] })
+    const rows = actionsDocumented([tagged, mixed]).byKind
+    const by = Object.fromEntries(rows.map((r) => [r.name, r.ids]))
+    expect(by['PRO / social work']).toEqual(['t1'])
+    expect(by['DAMA management']).toEqual(['t2'])
+    expect(by['External transfer / fax / RCC']).toEqual(['t2'])
+    expect(by['Update without an action tag']).toEqual(['t2'])
   })
 
   it('outcomes: resolved by disposition label, largest first, then the open ones', () => {
@@ -290,7 +322,10 @@ describe('the weekly deck', () => {
     expect(rows.resolvedNoDisposition.ids).toEqual(['n'])
     expect(rows.outOfOrder.ids).toEqual(['s'])
     expect(rows.noStay.ids).toEqual(['f'])
+    expect(rows.resolvedNotReviewed.ids).toEqual(['c', 'd', 'e', 'n'])
     expect(isOutOfOrder(c)).toBe(false)
+    const reviewed = completeness([{ ...c, reviewedAt: T(1), reviewedByName: 'Sami Supervisor' }], NOW)
+    expect(reviewed.resolvedNotReviewed.ids).toEqual([])
   })
 
   it('out-of-order checks every sequence: milestones, admission, transfer, consults, investigations', () => {
@@ -301,6 +336,9 @@ describe('the weekly deck', () => {
     expect(isOutOfOrder(base('co', { consults: [{ departmentName: 'ICU', consultedAt: T(2), seenAt: T(3), repliedAt: null }] }))).toBe(true)
     expect(isOutOfOrder(base('lab', { investigations: [{ type: 'LAB', orderedAt: T(2), collectedAt: T(3), receivedAt: null, doneAt: null, preliminaryAt: null, resultedAt: null }] }))).toBe(true)
     expect(isOutOfOrder(base('ct', { investigations: [{ type: 'CT', orderedAt: T(3), collectedAt: null, receivedAt: null, doneAt: T(2), preliminaryAt: T(1), resultedAt: T(1.5) }] }))).toBe(true)
+    expect(isOutOfOrder(base('cm', { caseMgmtCalledAt: T(2), caseMgmtRepliedAt: T(3) }))).toBe(true)
+    expect(isOutOfOrder(base('pk', { registrationAt: T(8), painkillerAt: T(9) }))).toBe(true)
+    expect(isOutOfOrder(base('mri', { investigations: [{ type: 'MRI', orderedAt: T(3), collectedAt: null, receivedAt: null, doneAt: T(4), preliminaryAt: null, resultedAt: null }] }))).toBe(true)
     expect(isOutOfOrder(base('ok', { triageAt: T(7.5), roomAt: T(7), physicianAt: T(7), decisionAt: T(2) }))).toBe(false)
   })
 
@@ -393,6 +431,25 @@ describe('the per-case timeline', () => {
     ])
   })
 
+  it('places the painkiller, the case-management calls and an MRI in the sequence', () => {
+    const p = base('p', {
+      registrationAt: T(10),
+      painkillerAt: T(9.5),
+      caseMgmtCalledAt: T(6),
+      caseMgmtRepliedAt: T(5),
+      investigations: [{ type: 'MRI', orderedAt: T(8), collectedAt: null, receivedAt: null, doneAt: T(7), preliminaryAt: null, resultedAt: T(6.5) }],
+    })
+    expect(timeline(p).map((s) => s.label)).toEqual([
+      'Registration',
+      'Painkiller given',
+      'MRI: ordered',
+      'MRI: scan done',
+      'MRI: reported',
+      'Case management called',
+      'Case management replied',
+    ])
+  })
+
   it('is just the registration for an empty case, and adds a Resolved step when no departure was recorded', () => {
     expect(timeline(a).map((s) => s.label)).toEqual(['Registration'])
     const r = base('r', { status: 'RESOLVED', registrationAt: T(5), resolvedAt: T(1) })
@@ -428,6 +485,61 @@ describe('Adaa', () => {
     const triageFirst = base('t', { status: 'RESOLVED', registrationAt: T(10), triageAt: T(10.5), departedAt: T(6), resolvedAt: T(6) })
     expect(doorToDispositionHours(triageFirst)).toBe(4.5)
     expect(treatedBands([triageFirst]).map((r) => r.value)).toEqual([0, 1, 0, 0, 0, 0, 0])
+  })
+
+  it('KPI 8 is door to painkiller, only when one was prescribed, with its own benchmark', () => {
+    const given = base('pk', { registrationAt: T(10), triageAt: T(10.5), painkillerPrescribed: 'YES', painkillerAt: T(9) })
+    expect(kpi8Minutes(given)).toBe(90) // door is triage at 10.5 h
+    expect(kpi8Minutes(base('no', { painkillerPrescribed: 'NO', painkillerAt: T(9) }))).toBeNull()
+    expect(kpi8Minutes(base('un', { painkillerPrescribed: 'YES', painkillerAt: null }))).toBeNull()
+    expect(benchmark('kpi8', 59)).toBe('world')
+    expect(benchmark('kpi8', 60)).toBe('acceptable')
+    expect(benchmark('kpi8', 180)).toBe('acceptable')
+    expect(benchmark('kpi8', 181)).toBe('improve')
+    expect(benchmark('kpi8', 300)).toBe('improve')
+    expect(benchmark('kpi8', 301)).toBe('unacceptable')
+    expect(benchmark('kpi7', 0.1)).toBeNull()
+  })
+
+  it('painkiller bands and pethidine doses read the form\'s statistics block', () => {
+    const pk = (id: string, minutes: number, dose: number | null = null) =>
+      base(id, {
+        registrationAt: T(10),
+        painkillerPrescribed: 'YES',
+        painkillerAt: T(10 - minutes / 60),
+        pethidinePrescribed: dose == null ? 'NO' : 'YES',
+        pethidineDoseMg: dose,
+      })
+    const rows = painkillerBands([pk('a1', 30), pk('a2', 30.5, 50), pk('a3', 60, 100), pk('a4', 61, 100), pk('a5', 180), pk('a6', 181, 150), base('none')])
+    expect(rows.map((r) => [r.name, r.value])).toEqual([
+      ['≤30 min', 1],
+      ['31–60 min', 2],
+      ['1–3 h', 2],
+      ['>3 h', 1],
+    ])
+    expect(pethidineDoses([pk('a2', 30.5, 50), pk('a3', 60, 100), pk('a4', 61, 100), pk('a6', 181, 150), base('none')]).map((r) => [r.name, r.value])).toEqual([
+      ['50 mg', 1],
+      ['100 mg', 2],
+      ['150 mg', 1],
+    ])
+  })
+
+  it('the summary carries KPI 7, KPI 8, UCC referrals and the sickle-cell count', () => {
+    const dead = base('x', { status: 'RESOLVED', registrationAt: T(6), departedAt: T(1), resolvedAt: T(1), disposition: 'DECEASED', ctas: 1 })
+    const ucc = base('y', { status: 'RESOLVED', registrationAt: T(6), departedAt: T(2), resolvedAt: T(2), disposition: 'REFERRED_UCC', ctas: 5, sickleCellTreatment: 'YES' })
+    const given = base('z', { registrationAt: T(4), painkillerPrescribed: 'YES', painkillerAt: T(3), pethidinePrescribed: 'YES', pethidineDoseMg: 100, ctas: 3 })
+    const overall = adaaSummary([...ALL, dead, ucc, given]).at(-1)!
+    expect(overall.resolvedN).toBe(5)
+    expect(overall.deceasedN).toBe(1)
+    expect(overall.deceasedShare).toBeCloseTo(1 / 5, 10)
+    expect(overall.uccN).toBe(1)
+    expect(overall.kpi8N).toBe(1)
+    expect(overall.kpi8TotalMin).toBe(60)
+    expect(overall.kpi8Med).toBeNull()
+    expect(overall.painkiller).toEqual([0, 1, 0, 0])
+    expect(overall.pethidine).toEqual([0, 1, 0])
+    expect(overall.sickleCellYesN).toBe(1)
+    expect(outcomes([dead, ucc]).map((r) => r.name).sort()).toEqual(['Deceased', 'Referred to UCC'])
   })
 
   it('benchmarks read the definitions sheet, at every threshold', () => {
@@ -568,6 +680,7 @@ describe('the working targets', () => {
     expect(ct.doneToReport.map((r) => r.value)).toEqual([1, 0, 0, 0, 0, 0])
     const xr = rows.find((r) => r.type === 'XR')!
     expect(xr.orderToResult.map((r) => r.value)).toEqual([0, 0, 1, 0, 0, 0])
+    expect(rows.map((r) => r.type)).toEqual(['LAB', 'CT', 'US', 'XR', 'MRI'])
     const twoLabs = base('ll', {
       investigations: [
         { type: 'LAB', orderedAt: T(5), collectedAt: null, receivedAt: null, doneAt: null, preliminaryAt: null, resultedAt: T(4.75) },
@@ -583,6 +696,21 @@ describe('the working targets', () => {
       base(id, { investigations: [{ type: 'LAB', orderedAt: T(minutes / 60), collectedAt: null, receivedAt: null, doneAt: null, preliminaryAt: null, resultedAt: T(0) }] })
     const rows = turnaroundBands([lab('a1', 30), lab('a2', 30.5), lab('a3', 60), lab('a4', 90), lab('a5', 120), lab('a6', 240), lab('a7', 241)])
     expect(rows[0]!.orderToResult.map((r) => r.value)).toEqual([1, 2, 1, 1, 1, 1])
+  })
+})
+
+describe('discharge communication', () => {
+  it('shares of the answered cases, YES counting as within, guarded below MIN_N', () => {
+    const cases = [
+      base('c1', { instructionsGiven: 'YES', familyEngagement: 'NO' }),
+      base('c2', { instructionsGiven: 'YES', familyEngagement: 'NOT_SURE' }),
+      base('c3', { instructionsGiven: 'NO' }),
+      base('c4'),
+    ]
+    const [instructions, family] = communication(cases)
+    expect(instructions).toMatchObject({ name: 'Instructions given by doctor', n: 3, within: 2, ids: ['c1', 'c2', 'c3'], withinIds: ['c1', 'c2'] })
+    expect(instructions!.share).toBeCloseTo(2 / 3, 10)
+    expect(family).toMatchObject({ name: 'Family engaged', n: 2, within: 0, share: null })
   })
 })
 

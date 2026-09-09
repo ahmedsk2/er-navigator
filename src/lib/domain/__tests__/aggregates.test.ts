@@ -246,10 +246,13 @@ describe('Phase 8 panels', () => {
     expect(k.actions.any.ids).toEqual(['C5'])
     expect(k.actions.none.ids).toHaveLength(9)
     expect(k.actions.byKind.map((r) => [r.name, r.value])).toEqual([
-      ['Update written', 0],
-      ['Medical admin informed', 0],
-      ['Bed requested (fax)', 1],
-      ['Transfer requested', 0],
+      ['Leadership escalation', 0],
+      ['Case / bed management', 1],
+      ['External transfer / fax / RCC', 0],
+      ['PRO / social work', 0],
+      ['Forced / safety admission', 0],
+      ['DAMA management', 0],
+      ['Update without an action tag', 0],
     ])
     expect(k.outcomes.map((r) => [r.name, r.value])).toEqual([
       ['Discharged home', 2],
@@ -261,7 +264,7 @@ describe('Phase 8 panels', () => {
     expect(k.repeats).toEqual([]) // every fixture MRN is distinct
   })
 
-  it('completeness is the six rows in one drillable list', () => {
+  it('completeness is the seven rows in one drillable list', () => {
     expect(k.completeness.map((r) => [r.name, r.ids])).toEqual([
       ['No delay reason recorded', []],
       ['Open, no update for 12 h', ['C3', 'C4']],
@@ -269,6 +272,7 @@ describe('Phase 8 panels', () => {
       ['Resolved without a disposition', []],
       ['Times out of order', ['C12']], // its consult was "seen" before it was requested
       ['Stay cannot be computed (leaving before registration)', []],
+      ['Resolved, not yet reviewed', ['C5', 'C6', 'C7', 'C8', 'C12']],
     ])
   })
 

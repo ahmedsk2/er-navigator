@@ -360,6 +360,7 @@ export function kpiPanels(all: ReadonlyArray<CaseForStats>, cases: ReadonlyArray
       rows.resolvedNoDisposition,
       rows.outOfOrder,
       rows.noStay,
+      rows.resolvedNotReviewed,
     ],
     repeats: repeatVisits(cases),
     adaa,

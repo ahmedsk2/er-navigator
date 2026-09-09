@@ -185,11 +185,11 @@ describe('resolveDrill, the Phase 8 sections', () => {
       ids: [],
     })
     expect(resolveDrill(data, { section: 'unitband', name: 'ICU' })).toBeNull()
-    expect(resolveDrill(data, { section: 'turnaround', name: gridKey('MRI', '2–4 h') })).toBeNull()
+    expect(resolveDrill(data, { section: 'turnaround', name: gridKey('PET', '2–4 h') })).toBeNull()
   })
 
   it('resolves an action kind, a CTAS level, an area and a completeness row', () => {
-    expect(resolveDrill(data, { section: 'action', name: 'Bed requested (fax)' })?.ids).toEqual(['C5'])
+    expect(resolveDrill(data, { section: 'action', name: 'Case / bed management' })?.ids).toEqual(['C5'])
     expect(resolveDrill(data, { section: 'action', name: 'No action documented' })?.ids).toHaveLength(9)
     expect(resolveDrill(data, { section: 'ctas', name: '3' })).toMatchObject({ label: 'CTAS 3', ids: ['C1'] })
     expect(resolveDrill(data, { section: 'ctas', name: 'Not recorded' })?.label).toBe('CTAS not recorded')

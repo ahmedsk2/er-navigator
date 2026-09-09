@@ -377,7 +377,7 @@ test('each new drill-down lists exactly the seeded cases behind its row', async 
   // The deck's "no operational action documented": 3200012 has no update, no escalation, no fax
   // and no transfer; 3200001 has all but the transfer.
   await listsOnly('action:No action documented', ['3200012'], ['3200001'])
-  await listsOnly('action:Transfer requested', ['3200010'], ['3200001'])
+  await listsOnly('action:External transfer / fax / RCC', ['3200010'], ['3200001'])
 
   // Adaa's treated-within bands, and an outcome.
   await listsOnly('treated:Within 4 h', ['3200006'], ['3200001'])

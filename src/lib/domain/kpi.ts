@@ -38,7 +38,18 @@ export type KpiConsult = {
   repliedAt: Date | null
 }
 
-export type KpiInvestigationType = 'LAB' | 'CT' | 'US' | 'XR'
+export type KpiInvestigationType = 'LAB' | 'CT' | 'US' | 'XR' | 'MRI'
+
+export type Answer = 'YES' | 'NO' | 'NOT_SURE'
+
+/** The weekly deck's operational-response categories, as recorded on an update (decision C). */
+export type UpdateActionKind =
+  | 'LEADERSHIP_ESCALATION'
+  | 'BED_MANAGEMENT'
+  | 'FAX_RCC'
+  | 'PRO_SOCIAL_WORK'
+  | 'FORCED_SAFETY_ADMISSION'
+  | 'DAMA_MANAGEMENT'
 
 export type KpiInvestigation = {
   type: KpiInvestigationType
@@ -74,6 +85,23 @@ export type KpiCase = CaseClock & {
   lastUpdateAt: Date | null
   consults: ReadonlyArray<KpiConsult>
   investigations: ReadonlyArray<KpiInvestigation>
+  // Phase 8b (decisions B, C, D, F, H)
+  painkillerPrescribed: Answer | null
+  pethidinePrescribed: Answer | null
+  pethidineDoseMg: number | null
+  painkillerAt: Date | null
+  sickleCellTreatment: Answer | null
+  instructionsGiven: Answer | null
+  familyEngagement: Answer | null
+  caseMgmtReferral: 'CASE_MANAGER' | 'COMPLEX_CARE' | null
+  caseMgmtCriteria: 'MEETS' | 'NOT_MEETING' | null
+  caseMgmtAction: 'ENROLLED' | 'FOR_ENROLLMENT' | null
+  caseMgmtCalledAt: Date | null
+  caseMgmtRepliedAt: Date | null
+  reviewedAt: Date | null
+  reviewedByName: string | null
+  /** The distinct action kinds recorded on the case's updates. */
+  updateActions: ReadonlyArray<UpdateActionKind>
 }
 
 /** A count with a drill-down. `ids` are case ids, deduplicated; `value` may exceed `ids.length` where the unit is a row, and the function says so. */
@@ -245,22 +273,35 @@ export function longestStays(cases: ReadonlyArray<KpiCase>, now: Date, n = 10): 
     }))
 }
 
+/**
+ * The weekly deck's six operational-response categories, plus a row for updates written without
+ * a tag. An action is documented either as a tagged update (decision C) or by the timestamp the
+ * app already records for it: an escalation to medical admin is a leadership escalation, a bed
+ * request (fax) is bed management, a transfer request is the transfer / fax / RCC pathway.
+ */
 export const ACTION_KINDS = [
-  ['update', 'Update written'],
-  ['escalation', 'Medical admin informed'],
-  ['bed', 'Bed requested (fax)'],
-  ['transfer', 'Transfer requested'],
+  ['LEADERSHIP_ESCALATION', 'Leadership escalation'],
+  ['BED_MANAGEMENT', 'Case / bed management'],
+  ['FAX_RCC', 'External transfer / fax / RCC'],
+  ['PRO_SOCIAL_WORK', 'PRO / social work'],
+  ['FORCED_SAFETY_ADMISSION', 'Forced / safety admission'],
+  ['DAMA_MANAGEMENT', 'DAMA management'],
+  ['UNTAGGED', 'Update without an action tag'],
 ] as const
+
+export type ActionKind = (typeof ACTION_KINDS)[number][0]
 
 export type Actions = { any: IdRow; none: IdRow; byKind: IdRow[] }
 
-function actionKindsOf(c: KpiCase): string[] {
-  const kinds: string[] = []
-  if (c.updatesCount > 0) kinds.push('update')
-  if (c.medAdminInformedAt) kinds.push('escalation')
-  if (c.bedRequestedAt) kinds.push('bed')
-  if (c.transferRequestedAt) kinds.push('transfer')
-  return kinds
+function actionKindsOf(c: KpiCase): ActionKind[] {
+  const tagged = c.updateActions ?? []
+  const kinds = new Set<ActionKind>(tagged)
+  if (c.medAdminInformedAt) kinds.add('LEADERSHIP_ESCALATION')
+  if (c.bedRequestedAt) kinds.add('BED_MANAGEMENT')
+  if (c.transferRequestedAt) kinds.add('FAX_RCC')
+  // Updates beyond the tagged ones: text written with no category chosen.
+  if (c.updatesCount > tagged.length) kinds.add('UNTAGGED')
+  return [...kinds]
 }
 
 /** The deck's "operational responses": which cases carry a documented action, and of what kind. */
@@ -280,13 +321,23 @@ export function actionsDocumented(cases: ReadonlyArray<KpiCase>): Actions {
 
 export const STILL_OPEN = 'Still open'
 
+/**
+ * Decision E's two dispositions, named here as well as in the taxonomy so this module reads the
+ * same whether or not the taxonomy of the checkout has caught up (Slice G adds them there).
+ */
+const DISPOSITION_FALLBACK_LABELS: Record<string, string> = { DECEASED: 'Deceased', REFERRED_UCC: 'Referred to UCC' }
+
+export function dispositionLabel(disposition: string): string {
+  return (DISPOSITION_LABELS as Record<string, string>)[disposition] ?? DISPOSITION_FALLBACK_LABELS[disposition] ?? disposition
+}
+
 /** Resolved cases by disposition (largest first), then the open ones as one row. */
 export function outcomes(cases: ReadonlyArray<KpiCase>): IdRow[] {
   const alive = live(cases)
   const m = new Map<string, string[]>()
   for (const c of alive) {
     if (c.status !== 'RESOLVED') continue
-    const label = c.disposition ? ((DISPOSITION_LABELS as Record<string, string>)[c.disposition] ?? c.disposition) : 'Not recorded'
+    const label = c.disposition ? dispositionLabel(c.disposition) : 'Not recorded'
     ;(m.get(label) ?? m.set(label, []).get(label)!).push(c.id)
   }
   const rows = [...m.entries()]
@@ -306,6 +357,8 @@ export type Completeness = {
   outOfOrder: IdRow
   /** No computable stay: a leaving time before the registration (validation refuses a future registration, so this is the case that reaches the database); the case is in no stay-based figure. */
   noStay: IdRow
+  /** Resolved and not yet marked reviewed by a supervisor (decision H). */
+  resolvedNotReviewed: IdRow
 }
 
 /** True when every recorded instant in the sequence is at or after the one before it. */
@@ -323,6 +376,8 @@ export function isOutOfOrder(c: KpiCase): boolean {
   if (!inOrder([c.registrationAt, c.triageAt, c.roomAt, c.physicianAt, c.decisionAt, leftAt(c)])) return true
   if (!inOrder([c.admOrderAt, c.bedRequestedAt, c.bedAssignedAt, c.handoverAt])) return true
   if (!inOrder([c.transferRequestedAt, c.transferAcceptedAt, c.transportArrivedAt])) return true
+  if (!inOrder([c.caseMgmtCalledAt, c.caseMgmtRepliedAt])) return true
+  if (!inOrder([c.registrationAt, c.painkillerAt])) return true
   for (const k of c.consults) if (!inOrder([k.consultedAt, k.seenAt, k.repliedAt])) return true
   for (const i of c.investigations) {
     const seq =
@@ -352,7 +407,29 @@ export function completeness(cases: ReadonlyArray<KpiCase>, now: Date): Complete
     resolvedNoDisposition: row('Resolved without a disposition', (c) => c.status === 'RESOLVED' && !c.disposition),
     outOfOrder: row('Times out of order', isOutOfOrder),
     noStay: row('Stay cannot be computed (leaving before registration)', (c) => elapsedHours(c, now) == null),
+    resolvedNotReviewed: row('Resolved, not yet reviewed', (c) => c.status === 'RESOLVED' && !c.reviewedAt),
   }
+}
+
+/**
+ * Decision D: the two discharge-communication answers as shares of the cases that answered
+ * (YES, NO or NOT_SURE); `within` counts YES. A case with no answer is not in `n`.
+ */
+export function communication(cases: ReadonlyArray<KpiCase>): ShareRow[] {
+  const alive = live(cases)
+  const one = (name: string, pick: (c: KpiCase) => Answer | null): ShareRow => {
+    const answered = alive.filter((c) => pick(c) != null)
+    const yes = answered.filter((c) => pick(c) === 'YES')
+    return {
+      name,
+      n: answered.length,
+      within: yes.length,
+      ids: answered.map((c) => c.id),
+      withinIds: yes.map((c) => c.id),
+      share: share(yes.length, answered.length),
+    }
+  }
+  return [one('Instructions given by doctor', (c) => c.instructionsGiven), one('Family engaged', (c) => c.familyEngagement)]
 }
 
 export function repeatVisits(cases: ReadonlyArray<KpiCase>): Array<{ mrn: string; ids: string[] }> {
@@ -374,7 +451,25 @@ const CONSULT_STEP_LABELS: Record<(typeof CONSULT_STEPS)[number][0], string> = {
   repliedAt: 'replied / plan given',
 }
 
-const INVESTIGATION_ORDER: Record<KpiInvestigationType, number> = { LAB: 0, CT: 1, US: 2, XR: 3 }
+const INVESTIGATION_ORDER: Record<KpiInvestigationType, number> = { LAB: 0, CT: 1, US: 2, XR: 3, MRI: 4 }
+
+type StepTable = ReadonlyArray<readonly [string, string]>
+
+/** MRI (decision G) follows the CT steps; named here too so the module stands before the taxonomy has it. */
+const MRI_STEPS: StepTable = [
+  ['orderedAt', 'Ordered'],
+  ['doneAt', 'Scan done'],
+  ['preliminaryAt', 'Preliminary report'],
+  ['resultedAt', 'Reported'],
+]
+
+function investigationLabel(type: KpiInvestigationType): string {
+  return (INVESTIGATION_LABELS as Record<string, string>)[type] ?? 'MRI'
+}
+
+function investigationSteps(type: KpiInvestigationType): StepTable {
+  return (INVESTIGATION_STEPS as Record<string, StepTable>)[type] ?? MRI_STEPS
+}
 
 /**
  * Every recorded instant on the case in time order, with the hours since the previous one: the
@@ -401,16 +496,16 @@ export function timeline(c: KpiCase): TimelineStep[] {
   for (const [field, label] of MILESTONES) push(field, label, milestone[field])
   const investigations = [...c.investigations].sort((a, b) => INVESTIGATION_ORDER[a.type] - INVESTIGATION_ORDER[b.type])
   investigations.forEach((i, index) => {
-    const prefix = INVESTIGATION_LABELS[i.type]
+    const prefix = investigationLabel(i.type)
     const values: Record<string, Date | null> = {
       orderedAt: i.orderedAt,
       collectedAt: i.collectedAt,
       receivedAt: i.receivedAt,
       doneAt: i.doneAt,
+      preliminaryAt: i.preliminaryAt,
       resultedAt: i.resultedAt,
     }
-    for (const [field, label] of INVESTIGATION_STEPS[i.type]) {
-      if (i.type !== 'LAB' && field === 'resultedAt') push(`investigation.${index}.preliminaryAt`, `${prefix}: preliminary report`, i.preliminaryAt)
+    for (const [field, label] of investigationSteps(i.type)) {
       push(`investigation.${index}.${field}`, `${prefix}: ${label.toLowerCase()}`, values[field])
     }
   })
@@ -437,6 +532,9 @@ export function timeline(c: KpiCase): TimelineStep[] {
   }
   for (const [field, label] of TRANSFER_STEPS) push(field, label, transfer[field])
   push('medAdminInformedAt', 'Medical admin on-call informed', c.medAdminInformedAt)
+  push('painkillerAt', 'Painkiller given', c.painkillerAt)
+  push('caseMgmtCalledAt', 'Case management called', c.caseMgmtCalledAt)
+  push('caseMgmtRepliedAt', 'Case management replied', c.caseMgmtRepliedAt)
   if (c.status === 'RESOLVED' && !c.departedAt) push('resolvedAt', 'Resolved (no departure time recorded)', c.resolvedAt)
 
   const ordered = steps
@@ -452,14 +550,16 @@ export function timeline(c: KpiCase): TimelineStep[] {
 
 // --- Adaa ------------------------------------------------------------------------------------
 
-export type AdaaKpi = 'kpi1' | 'kpi2' | 'kpi3' | 'kpi4' | 'kpi5' | 'kpi6'
+export type AdaaKpi = 'kpi1' | 'kpi2' | 'kpi3' | 'kpi4' | 'kpi5' | 'kpi6' | 'kpi7' | 'kpi8'
 export type Benchmark = 'world' | 'acceptable' | 'improve' | 'unacceptable'
 
 /**
- * The form's "ED KPIs Definitions" sheet. KPI 1–3 are minutes and lower is better; KPI 4 is a
- * share and lower is better; KPI 5 is a share and higher is better; KPI 6 has no benchmark and
- * is `null` here, as `benchmark()` returns for it. Boundaries are read as the sheet writes
- * them: "10-20 mins" is acceptable, so 20.0 is still acceptable and 20.1 needs improvement.
+ * The form's "ED KPIs Definitions" sheet. KPI 1–3 and 8 are minutes and lower is better; KPI 4
+ * is a share and lower is better; KPI 5 is a share and higher is better; KPI 6 and 7 have no
+ * benchmark and are `null` here, as `benchmark()` returns for them. Boundaries are read as the
+ * sheet writes them: "10-20 mins" is acceptable, so 20.0 is still acceptable and 20.1 needs
+ * improvement; KPI 8 "less than 1 hour" is world class, "1 hour to 3 hours" acceptable, "3 to
+ * 5 hours" needs improvement, "more than 5 hours" unacceptable.
  */
 export const ADAA_BENCHMARKS: Record<AdaaKpi, { unit: 'minutes' | 'share'; world: number; acceptable: number; improve: number; higherIsBetter: boolean } | null> = {
   kpi1: { unit: 'minutes', world: 10, acceptable: 20, improve: 40, higherIsBetter: false },
@@ -468,6 +568,8 @@ export const ADAA_BENCHMARKS: Record<AdaaKpi, { unit: 'minutes' | 'share'; world
   kpi4: { unit: 'share', world: 0.33, acceptable: 0.5, improve: 0.75, higherIsBetter: false },
   kpi5: { unit: 'share', world: 0.95, acceptable: 0.75, improve: 0.6, higherIsBetter: true },
   kpi6: null,
+  kpi7: null,
+  kpi8: { unit: 'minutes', world: 60, acceptable: 180, improve: 300, higherIsBetter: false },
 }
 
 export function benchmark(kpi: AdaaKpi, value: number): Benchmark | null {
@@ -503,6 +605,40 @@ export function kpi3Minutes(c: KpiCase): number | null {
 /** KPI 5's input: door to leaving the ED in hours; resolved cases only. */
 export function doorToDispositionHours(c: KpiCase): number | null {
   return hoursBetween(doorAt(c), leftAt(c))
+}
+
+/** KPI 8: door to the painkiller being given, minutes; only when one was prescribed (decision F). */
+export function kpi8Minutes(c: KpiCase): number | null {
+  if (c.painkillerPrescribed !== 'YES') return null
+  return minutesBetween(doorAt(c), c.painkillerAt)
+}
+
+/** The form's "Pain Killer Statistics" block: (min, max] minutes, the first closed at 30. */
+export const PAINKILLER_BANDS: ReadonlyArray<BandDef> = [
+  { name: '≤30 min', min: 0, max: 30 + 1e-9 },
+  { name: '31–60 min', min: 30 + 1e-9, max: 60 + 1e-9 },
+  { name: '1–3 h', min: 60 + 1e-9, max: 180 + 1e-9 },
+  { name: '>3 h', min: 180 + 1e-9, max: null },
+]
+
+export function painkillerBands(cases: ReadonlyArray<KpiCase>): IdRow[] {
+  const values: Array<{ id: string; v: number }> = []
+  for (const c of live(cases)) {
+    const m = kpi8Minutes(c)
+    if (m != null) values.push({ id: c.id, v: m })
+  }
+  return bandRows(PAINKILLER_BANDS, values)
+}
+
+export const PETHIDINE_DOSES_MG = [50, 100, 150] as const
+
+/** Pethidine prescriptions by dose, among the cases where it was prescribed. */
+export function pethidineDoses(cases: ReadonlyArray<KpiCase>): IdRow[] {
+  const alive = live(cases).filter((c) => c.pethidinePrescribed === 'YES')
+  return PETHIDINE_DOSES_MG.map((mg) => {
+    const ids = alive.filter((c) => c.pethidineDoseMg === mg).map((c) => c.id)
+    return { name: `${mg} mg`, value: ids.length, ids }
+  })
 }
 
 /** The form's "treated within" columns AH–AN, as (min, max] hours with the first closed at 4. */
@@ -566,6 +702,20 @@ export type AdaaSummaryRow = {
   /** Only on the 'overall' row: CTAS 4–5 among cases with a CTAS. */
   nonUrgentShare: number | null
   withCtasN: number
+  /** KPI 7: Deceased among resolved cases (decision E made Deceased a disposition). */
+  deceasedShare: number | null
+  deceasedN: number
+  /** Referred to UCC among resolved cases (the form's "Total Number referred to UCC"). */
+  uccN: number
+  /** KPI 8: door to painkiller, minutes, among cases where one was prescribed and given. */
+  kpi8TotalMin: number | null
+  kpi8N: number
+  kpi8Med: number | null
+  /** One count per PAINKILLER_BANDS entry. */
+  painkiller: number[]
+  /** One count per PETHIDINE_DOSES_MG entry. */
+  pethidine: number[]
+  sickleCellYesN: number
 }
 
 function summaryRow(ctas: AdaaCtasKey, cases: ReadonlyArray<KpiCase>, all: ReadonlyArray<KpiCase>): AdaaSummaryRow {
@@ -576,10 +726,13 @@ function summaryRow(ctas: AdaaCtasKey, cases: ReadonlyArray<KpiCase>, all: Reado
   const k1 = stat(kpi1Minutes)
   const k2 = stat(kpi2Minutes)
   const k3 = stat(kpi3Minutes)
+  const k8 = stat(kpi8Minutes)
   const treatedRows = treatedBands(cases)
   const treatedN = treatedRows.reduce((n, r) => n + r.value, 0)
   const resolved = cases.filter((c) => c.status === 'RESOLVED')
   const dama = resolved.filter((c) => c.disposition === 'DISCHARGED_DAMA').length
+  const deceased = resolved.filter((c) => c.disposition === 'DECEASED').length
+  const ucc = resolved.filter((c) => c.disposition === 'REFERRED_UCC').length
   const withCtas = all.filter((c) => c.ctas != null)
   const nonUrgent = withCtas.filter((c) => c.ctas === 4 || c.ctas === 5).length
   return {
@@ -602,6 +755,15 @@ function summaryRow(ctas: AdaaCtasKey, cases: ReadonlyArray<KpiCase>, all: Reado
     resolvedN: resolved.length,
     nonUrgentShare: ctas === 'overall' ? share(nonUrgent, withCtas.length) : null,
     withCtasN: ctas === 'overall' ? withCtas.length : 0,
+    deceasedShare: share(deceased, resolved.length),
+    deceasedN: deceased,
+    uccN: ucc,
+    kpi8TotalMin: k8.total,
+    kpi8N: k8.n,
+    kpi8Med: k8.med,
+    painkiller: painkillerBands(cases).map((r) => r.value),
+    pethidine: pethidineDoses(cases).map((r) => r.value),
+    sickleCellYesN: cases.filter((c) => c.sickleCellTreatment === 'YES').length,
   }
 }
 
@@ -757,7 +919,7 @@ export type TurnaroundRow = { type: KpiInvestigationType; orderToResult: IdRow[]
  * investigation row: `value` counts rows, `ids` the cases behind them.
  */
 export function turnaroundBands(cases: ReadonlyArray<KpiCase>): TurnaroundRow[] {
-  const types: KpiInvestigationType[] = ['LAB', 'CT', 'US', 'XR']
+  const types: KpiInvestigationType[] = ['LAB', 'CT', 'US', 'XR', 'MRI']
   const alive = live(cases)
   return types.map((type) => {
     const first: Array<{ id: string; v: number }> = []
