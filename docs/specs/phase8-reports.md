@@ -73,7 +73,6 @@ export function admissionToUnitBands(cases): Array<{ unit: 'ICU' | 'Ward'; bands
 // QCH working targets (August sheet thresholds)
 export const TARGETS: ReadonlyArray<{ key: 'lab60' | 'imaging90' | 'consult60' | 'decision150' | 'toWard30'; name: string; minutes: number }>
 export function targets(cases): ShareRow[]           // one per target; unit of analysis: case for decision150/toWard30, investigation row for lab60/imaging90 (imaging90 = the OFFICIAL report), consult row for consult60 (ids are case ids)
-export function examToConsult(cases): StatRow[]       // physician contact to consult request, by department
 export const TURNAROUND_BANDS  // '≤30 min', '31–60 min', '61–90 min', '91–120 min', '2–4 h', '>4 h' (unit: investigation row; value counts rows, ids are cases)
 export function turnaroundBands(cases): Array<{ type: 'LAB'|'CT'|'US'|'XR'; orderToResult: IdRow[]; doneToReport: IdRow[] }>  // imaging: earlier of preliminary/official for orderToResult
 export function byCtas(cases, now): StatRow[]        // '1'..'5' always (zero rows for empty levels), then 'Not recorded' when any case lacks a CTAS
