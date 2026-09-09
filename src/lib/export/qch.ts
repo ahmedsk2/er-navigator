@@ -15,8 +15,8 @@
  * the receiving spreadsheet is positional. The `Read me` sheet lists every one of them.
  */
 import { fmtClock } from '@/src/lib/cases/local-time'
-import { doorToDispositionHours, leftAt, type KpiConsult, type KpiInvestigation } from '@/src/lib/domain/kpi'
-import { DISPOSITION_LABELS, INVESTIGATION_LABELS, STAGES } from '@/src/lib/domain/taxonomy'
+import { doorToDispositionHours, leftAt, type Answer, type KpiConsult, type KpiInvestigation } from '@/src/lib/domain/kpi'
+import { ANSWER_LABELS, DISPOSITION_LABELS, INVESTIGATION_LABELS, STAGES } from '@/src/lib/domain/taxonomy'
 import { duration } from '@/src/lib/domain/time'
 import { fmtAt, fmtFormDate, fmtFormTime, fmtHm } from './format'
 import { EXPORT_STATUS_LABELS, type ExportRange } from './range'
@@ -121,7 +121,13 @@ export const QCH_HEADER: string[] = QCH_COLUMNS.map((c) => (c.group ? c.name : '
 
 // --- values -------------------------------------------------------------------------------------
 
-/** The ER-MD Decision dropdown, over the dispositions this app has. */
+/**
+ * The ER-MD Decision dropdown, over the dispositions this app has.
+ *
+ * Decision E's two are written verbatim rather than folded into the August dropdown: that sheet
+ * was written before either outcome was recorded anywhere, and "Deceased" reported as "Other"
+ * loses the only fact on the row that matters. The Read me says so.
+ */
 const ER_MD_DECISIONS: Record<string, string> = {
   ADMITTED: 'Admission',
   DISCHARGED_HOME: 'Discharge',
@@ -129,7 +135,24 @@ const ER_MD_DECISIONS: Record<string, string> = {
   TRANSFERRED: 'Transfer',
   LEFT_WITHOUT_BEING_SEEN: 'Other',
   OTHER: 'Other',
+  DECEASED: 'Deceased',
+  REFERRED_UCC: 'Referred to UCC',
 }
+
+/**
+ * The sheet's own case-management vocabulary (decision B). Its words, not the app's: the August
+ * log abbreviates the complex-care coordinator, says "Meeting criteria" where the editor's chip
+ * says "Meets criteria", and writes the two actions in lower case. The receiving side reads these
+ * columns as a dropdown, so what the chip says is not what the cell may say.
+ */
+const CASE_MGMT_REFERRALS: Record<string, string> = { CASE_MANAGER: 'Case manager', COMPLEX_CARE: 'Complex care co.' }
+const CASE_MGMT_CRITERIA: Record<string, string> = { MEETS: 'Meeting criteria', NOT_MEETING: 'Not meeting criteria' }
+const CASE_MGMT_ACTIONS: Record<string, string> = { ENROLLED: 'enrolled', FOR_ENROLLMENT: 'for enrollment' }
+
+/** Yes / No / Not sure — the two discharge-communication answers (decision D). Blank if unasked. */
+const answer = (value: Answer | null): string => (value ? ANSWER_LABELS[value] : '')
+
+const named = (table: Record<string, string>, key: string | null): string => (key ? (table[key] ?? '') : '')
 
 function erMdDecision(c: CaseForExport): string {
   if (c.disposition) return ER_MD_DECISIONS[c.disposition] ?? 'Other'
@@ -196,8 +219,12 @@ function consultBlock(k: KpiConsult | undefined, reasons: string): string[] {
   ]
 }
 
-/** CT, then ultrasound, then X-ray: the order the sheet's two image blocks are filled in. */
-const IMAGING_ORDER = ['CT', 'US', 'XR'] as const
+/**
+ * CT, then ultrasound, then X-ray, then MRI: the order the sheet's two image blocks are filled in.
+ * MRI is last (decision G added it after the sheet was written), so a case that had both a CT and
+ * an MRI shows the CT first, exactly as it did before the type existed.
+ */
+const IMAGING_ORDER = ['CT', 'US', 'XR', 'MRI'] as const
 
 export function qchRow(c: CaseForExport): string[] {
   const imaging = IMAGING_ORDER.flatMap((type) => c.investigations.filter((i) => i.type === type))
@@ -244,17 +271,17 @@ export function qchRow(c: CaseForExport): string[] {
     c.disposition ? (DISPOSITION_LABELS[c.disposition as keyof typeof DISPOSITION_LABELS] ?? c.disposition) : '',
     fmtFormTime(left),
     fmtHm(doorToDispositionHours(c)),
-    '', // intructions given by doctor
-    '', // Family Engagement
+    answer(c.instructionsGiven),
+    answer(c.familyEngagement),
     fmtFormTime(c.admOrderAt),
     '', // ADMISSION ORDER IN ISTRUCTION
     [c.wardCode, c.isolation ? 'ISOLATION' : null].filter(Boolean).join(' / '),
-    '', // Referral to Case Management
-    '', // Complex care Cordinator comment
-    '', // Complex care Coordinator Action
-    '', // Case Manager Name
-    '', // Time of call case manger
-    '', // Time of case manger replay
+    named(CASE_MGMT_REFERRALS, c.caseMgmtReferral),
+    named(CASE_MGMT_CRITERIA, c.caseMgmtCriteria),
+    named(CASE_MGMT_ACTIONS, c.caseMgmtAction),
+    '', // Case Manager Name: a member of staff, which this app does not hold (decision A)
+    fmtFormTime(c.caseMgmtCalledAt),
+    fmtFormTime(c.caseMgmtRepliedAt),
     fmtFormTime(toWard),
     fmtHm(duration(c.admOrderAt, toWard)),
     admitted ? fmtHm(doorToDispositionHours(c)) : '',
@@ -263,7 +290,7 @@ export function qchRow(c: CaseForExport): string[] {
     c.navigatorName,
     c.navigatorUsername,
     '', // ED NAVIGATOR NAME 2
-    '', // Reviewed By
+    c.reviewedByName ?? '',
   ]
 }
 
@@ -287,14 +314,12 @@ const BLANK_COLUMNS: ReadonlyArray<[string, string]> = [
   ['ER MD name', `The treating physician names staff on a delay record. ${NOT_RECORDED}`],
   ['Treatment Plan Shared', NOT_RECORDED],
   ['Adissional investigation, Result of investigation, Decision', `The per-consultation follow-up columns. ${NOT_RECORDED}`],
-  ['intructions given by doctor, Family Engagement', `Both discharge-quality items. ${NOT_RECORDED}`],
   ['ADMISSION ORDER IN ISTRUCTION', NOT_RECORDED],
   [
-    'Referral to Case Management, Complex care Cordinator comment, Complex care Coordinator Action, Case Manager Name, Time of call case manger, Time of case manger replay',
-    `The whole case-management block. ${NOT_RECORDED}`,
+    'Case Manager Name',
+    'The rest of the case-management block is filled. This one names a member of staff, and ER Navigator holds no staff names beyond the app’s own users (decision A).',
   ],
   ['ED NAVIGATOR NAME 2', 'Only the navigator who opened the case is recorded; a second name is not.'],
-  ['Reviewed By', `A supervisor review mark per case. ${NOT_RECORDED}`],
 ]
 
 export function qchReadMeRows(input: {
@@ -331,7 +356,7 @@ export function qchReadMeRows(input: {
     { cells: ['Durations (FROM SEEN TO DECIDE, DOOR TO DISOPSITION, order to disposition /H …) are h:mm, like the original’s MOD() cells.'] },
     {
       cells: [
-        'The two image blocks are the case’s imaging rows in CT, ultrasound, X-ray order.' +
+        'The two image blocks are the case’s imaging rows in CT, ultrasound, X-ray, MRI order.' +
           (droppedImages > 0
             ? ` ${droppedImages} case(s) in this range have a third imaging row, which the sheet has no column for and does not show.`
             : ' A case with a third imaging row would have it dropped: the sheet has only two blocks.'),
@@ -356,6 +381,23 @@ export function qchReadMeRows(input: {
       ],
     },
     { cells: ['ER-MD Decision is the disposition (Admission / Discharge / DAMA / Transfer / Other), or "Referral" while the case is open with a consult outstanding.'] },
+    {
+      cells: [
+        'The August dropdown has no Deceased and no referral to the UCC: both were recorded in the WhatsApp group and nowhere else until decision E made them dispositions. ER-MD Decision and Final Decision write "Deceased" and "Referred to UCC" verbatim rather than reporting either as "Other", which would lose the only fact on the row that matters.',
+      ],
+    },
+    { cells: ['An MRI is written as the image type "MRI" (decision G), in a block of its own like a CT or an ultrasound.'] },
+    {
+      cells: [
+        'intructions given by doctor and Family Engagement are the two questions asked when a case is resolved, written as Yes, No or Not sure, and blank where neither was answered.',
+      ],
+    },
+    {
+      cells: [
+        'The case-management block is decision B: Referral to Case Management is "Case manager" or "Complex care co.", Complex care Cordinator comment is "Meeting criteria" or "Not meeting criteria", Complex care Coordinator Action is "enrolled" or "for enrollment", and the two times are the Riyadh clock times of the call and of the reply. These are the sheet’s own words, which are not always the words the app’s own chips use.',
+      ],
+    },
+    { cells: ['Reviewed By is the display name of the supervisor who marked the case reviewed, and is blank until one has.'] },
     { cells: ['ADMISSION WARD is the ward code, with "/ ISOLATION" appended when the case is flagged as isolation.'] },
     { cells: ['Time of Disposition TO WARD is the nursing handover, or the departure from the ED when no handover was recorded, and is blank for a patient who was never admitted.'] },
     { cells: ['Comments/Notes is every update on the case, oldest first, as "HH:mm text" joined with " | ".'] },

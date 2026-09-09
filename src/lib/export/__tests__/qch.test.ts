@@ -108,6 +108,29 @@ const FULL = caseWith({
   updatesCount: 2,
 })
 
+/**
+ * A case carrying everything Phase 8b added that this sheet has a column for: both discharge
+ * answers, the whole case-management block, and a supervisor's review mark. Nothing else, so a
+ * cell that should not have moved can be told apart from one that should.
+ */
+const COLLECTED = caseWith({
+  mrn: '3200002',
+  status: 'RESOLVED',
+  registrationAt: new Date('2026-09-01T05:00:00Z'), // 08:00
+  departedAt: new Date('2026-09-01T12:00:00Z'),
+  resolvedAt: new Date('2026-09-01T12:00:00Z'),
+  disposition: 'DISCHARGED_HOME',
+  instructionsGiven: 'YES',
+  familyEngagement: 'NOT_SURE',
+  caseMgmtReferral: 'COMPLEX_CARE',
+  caseMgmtCriteria: 'MEETS',
+  caseMgmtAction: 'ENROLLED',
+  caseMgmtCalledAt: new Date('2026-09-01T07:00:00Z'), // 10:00
+  caseMgmtRepliedAt: new Date('2026-09-01T08:30:00Z'), // 11:30
+  reviewedAt: new Date('2026-09-01T13:00:00Z'),
+  reviewedByName: 'Sami Supervisor',
+})
+
 describe('the Navigator sheet header', () => {
   it('is the August sheet’s seventy columns, one short of its seventy-one', () => {
     expect(QCH_COLUMNS).toHaveLength(70)
@@ -203,15 +226,15 @@ describe('qchRow', () => {
       'Admitted',
       '15:15',
       '7:15',
-      '', // intructions given by doctor
-      '', // Family Engagement
+      '', // intructions given by doctor: not answered on this case
+      '', // Family Engagement: not answered either
       '12:30',
       '', // ADMISSION ORDER IN ISTRUCTION
       'ICU / ISOLATION',
-      '', // Referral to Case Management
+      '', // Referral to Case Management: no referral on this case
       '', // Complex care Cordinator comment
       '', // Complex care Coordinator Action
-      '', // Case Manager Name
+      '', // Case Manager Name: a staff name, which this app does not hold
       '', // Time of call case manger
       '', // Time of case manger replay
       '14:45',
@@ -222,8 +245,98 @@ describe('qchRow', () => {
       'Nadia Navigator',
       'nadia',
       '', // ED NAVIGATOR NAME 2
-      '', // Reviewed By
+      '', // Reviewed By: not marked reviewed
     ])
+  })
+
+  /**
+   * Phase 8b, decisions B, D, E, G and H. Every one of these columns was present and blank until
+   * Slice H; each is asserted by name rather than by position, so the block below reads as the
+   * list of what changed.
+   */
+  it('fills the discharge answers, the case-management block and the review mark', () => {
+    const row = qchRow(COLLECTED)
+    const cell = (name: string) => row[QCH_GROUP_HEADER.indexOf(name)]
+    expect(cell('intructions given by doctor')).toBe('Yes')
+    expect(cell('Family Engagement')).toBe('Not sure')
+    expect(cell('Referral to Case Management')).toBe('Complex care co.')
+    expect(cell('Complex care Cordinator comment')).toBe('Meeting criteria')
+    expect(cell('Complex care Coordinator Action')).toBe('enrolled')
+    expect(cell('Time of call case manger')).toBe('10:00')
+    expect(cell('Time of case manger replay')).toBe('11:30')
+    expect(cell('Reviewed By')).toBe('Sami Supervisor')
+    // The one column in the block that stays blank, and why: it names a member of staff.
+    expect(cell('Case Manager Name')).toBe('')
+  })
+
+  it('writes the sheet’s own case-management words, not the editor’s chips', () => {
+    const other = qchRow(
+      caseWith({ caseMgmtReferral: 'CASE_MANAGER', caseMgmtCriteria: 'NOT_MEETING', caseMgmtAction: 'FOR_ENROLLMENT' }),
+    )
+    expect(other[QCH_GROUP_HEADER.indexOf('Referral to Case Management')]).toBe('Case manager')
+    expect(other[QCH_GROUP_HEADER.indexOf('Complex care Cordinator comment')]).toBe('Not meeting criteria')
+    expect(other[QCH_GROUP_HEADER.indexOf('Complex care Coordinator Action')]).toBe('for enrollment')
+  })
+
+  it('leaves every Phase 8b column blank on a case that recorded none of it', () => {
+    const empty = qchRow(caseWith({}))
+    for (const name of [
+      'intructions given by doctor',
+      'Family Engagement',
+      'Referral to Case Management',
+      'Complex care Cordinator comment',
+      'Complex care Coordinator Action',
+      'Case Manager Name',
+      'Time of call case manger',
+      'Time of case manger replay',
+      'Reviewed By',
+    ]) {
+      expect(empty[QCH_GROUP_HEADER.indexOf(name)], `${name} is blank`).toBe('')
+    }
+  })
+
+  it('writes the two answers as No where they were answered No', () => {
+    const no = qchRow(caseWith({ instructionsGiven: 'NO', familyEngagement: 'NO' }))
+    expect(no[QCH_GROUP_HEADER.indexOf('intructions given by doctor')]).toBe('No')
+    expect(no[QCH_GROUP_HEADER.indexOf('Family Engagement')]).toBe('No')
+  })
+
+  it('gives an MRI an image block of its own, after the CT (decision G)', () => {
+    const scanned = qchRow(
+      caseWith({
+        investigations: [
+          investigation({ type: 'MRI', orderedAt: new Date('2026-09-01T08:00:00Z'), doneAt: new Date('2026-09-01T09:00:00Z') }),
+          investigation({ type: 'CT', orderedAt: new Date('2026-09-01T06:00:00Z') }),
+        ],
+      }),
+    )
+    const image1 = QCH_GROUP_HEADER.indexOf('Image 1')
+    const image2 = QCH_GROUP_HEADER.indexOf('Image 2')
+    expect(scanned[image1]).toBe('CT')
+    expect(scanned[image2]).toBe('MRI')
+    expect(scanned[image2 + 1]).toBe('11:00') // its order time
+    expect(scanned[image2 + 2]).toBe('12:00') // scan done
+    expect(scanned[QCH_GROUP_HEADER.indexOf('Images Requested')]).toBe('Yes')
+  })
+
+  it('writes Deceased and Referred to UCC verbatim into both decision columns (decision E)', () => {
+    const resolved = (disposition: string) =>
+      qchRow(
+        caseWith({
+          status: 'RESOLVED',
+          disposition,
+          departedAt: new Date('2026-09-01T09:00:00Z'),
+          resolvedAt: new Date('2026-09-01T09:00:00Z'),
+        }),
+      )
+    const dead = resolved('DECEASED')
+    expect(dead[QCH_GROUP_HEADER.indexOf('ER-MD Decision')]).toBe('Deceased')
+    expect(dead[QCH_GROUP_HEADER.indexOf('Final Decision')]).toBe('Deceased')
+    const ucc = resolved('REFERRED_UCC')
+    expect(ucc[QCH_GROUP_HEADER.indexOf('ER-MD Decision')]).toBe('Referred to UCC')
+    expect(ucc[QCH_GROUP_HEADER.indexOf('Final Decision')]).toBe('Referred to UCC')
+    // Neither went to a ward, so the two ward columns stay blank.
+    expect(dead[QCH_GROUP_HEADER.indexOf('Time of Disposition TO WARD')]).toBe('')
   })
 
   it('is one cell per column', () => {
@@ -365,14 +478,32 @@ describe('the Read me', () => {
       'ER MD name',
       'Treatment Plan Shared',
       'Adissional investigation',
-      'intructions given by doctor',
       'ADMISSION ORDER IN ISTRUCTION',
       'Case Manager Name',
       'ED NAVIGATOR NAME 2',
-      'Reviewed By',
     ]) {
       expect(text, `${column} is explained`).toContain(column)
     }
+  })
+
+  it('says how the columns Slice H filled are filled, and no longer calls them unrecorded', () => {
+    expect(text).toContain('written as Yes, No or Not sure')
+    expect(text).toContain('"Case manager" or "Complex care co."')
+    expect(text).toContain('"Meeting criteria" or "Not meeting criteria"')
+    expect(text).toContain('"enrolled" or "for enrollment"')
+    expect(text).toContain('Reviewed By is the display name of the supervisor who marked the case reviewed')
+    expect(text).toContain('An MRI is written as the image type "MRI"')
+    expect(text).toContain('CT, ultrasound, X-ray, MRI order')
+    // The one column of the block that is still blank is still explained as such.
+    expect(text).toContain('ER Navigator holds no staff names beyond the app’s own users')
+    expect(text).not.toContain('The whole case-management block')
+    expect(text).not.toContain('Both discharge-quality items')
+    expect(text).not.toContain('A supervisor review mark per case.')
+  })
+
+  it('says the two new dispositions are written verbatim rather than folded into "Other"', () => {
+    expect(text).toContain('The August dropdown has no Deceased and no referral to the UCC')
+    expect(text).toContain('write "Deceased" and "Referred to UCC" verbatim')
   })
 
   it('counts the imaging and consult rows the two blocks could not hold', () => {
