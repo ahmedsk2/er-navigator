@@ -34,7 +34,7 @@ Read order for any session: `CLAUDE.md` (short), then the section of this plan f
 | DNS | Cloudflare zone `towardpcc.com`. Every subdomain on this host is PROXIED and must stay so: the OCI security list accepts 80/443 only from Cloudflare ranges. Zone SSL mode: Full (strict). Origin certs: Let's Encrypt via Traefik HTTP-01 through Cloudflare |
 | Backups | OCI Object Storage bucket `coolify-backups` (14-day WORM rule), mirrored daily to Ahmed's laptop by the `OracleBackupSync` task. Boot-volume backup policy attached |
 | Monitoring | Uptime Kuma at `uptime.towardpcc.com`; OCI down/CPU alarms to email |
-| SMTP | Working relay credentials exist in `ORACLE MCP/infra/secrets.env` (Infomaniak `mail.dmc-im.com:587`). No app on the host currently sends from `towardpcc.com` (its SPF is `-all`) |
+| SMTP | A relay exists on the host for other apps; this app does NOT use it (Ahmed, 9 September): it sends through the `navigator@towardpcc.com` mailbox's own SMTP settings. `towardpcc.com`'s SPF `-all` and DMARC `p=reject` stay as they are; the provider's DKIM is what makes DMARC pass (Section 1, Email) |
 | Tooling from the dev machine | SSH to the host with passwordless sudo, Coolify API via `http://localhost:8000` on the host (token at `~/.coolify-token` there), Cloudflare DNS API (token in `secrets.env`), GitHub CLI as `ahmedsk2` |
 
 **Delivered this session (Phase 0, most of it)**
@@ -42,6 +42,12 @@ Read order for any session: `CLAUDE.md` (short), then the section of this plan f
 - This repository: Next.js 16 + TypeScript strict + Tailwind 4 + Prisma 7 + Postgres 16, with the authoritative Prisma schema, the Appendix A seed, the duration formulas ported from the prototype with unit tests, the PHI-guard test, security headers, health and readiness probes, a Dockerfile and production compose that follow the host's clinical pattern, CI, Dependabot.
 - GitHub repository, Cloudflare record `nav.towardpcc.com`, Coolify application in project `clinical`, push-to-deploy webhook, first deploy verified by commit fingerprint and a live `SELECT 1`. The live facts are in `docs/RUNBOOK.md`.
 - An adversarial review of this plan, the scaffold and the deployment config (five lenses, two independent refuters per finding, 55 agents). Nineteen findings survived; every one is either fixed in the scaffold or recorded in Section 1, Section 9 or the runbook. The refuted ones are not carried.
+
+**Delivered by the end of Phase 7 (9 September, all gates 0 to 7 reported)**
+
+- Phases 1 to 7 built, verified and live at `https://nav.towardpcc.com`: sessions and login, the case editor, the board, the dashboard, export and print report, admin and the alerts worker, hardening (nonce CSP, `__Host-` cookies, real 403s, PWA, accessibility, backups with an off-host copy and a drilled restore into production). `docs/CHANGELOG.md` has one line per slice; `docs/RUNBOOK.md` is the operator's document.
+- A final adversarial review of the whole repository (eight lenses, one skeptic per finding, 44 agents; `docs/specs/phase7-review-findings.md`): 36 findings examined, 19 confirmed, all 19 fixed (`docs/specs/phase7-review-fixes.md`), plus the cheap true halves of the refuted ones.
+- Still with Ahmed (Section 9 and the runbook): the `navigator@towardpcc.com` mailbox's SMTP settings and DKIM record; the two Uptime Kuma monitors; the Cloudflare TLS settings; the first admin login and password change; staff email addresses in Admin → Users; making the repository private.
 
 ---
 
