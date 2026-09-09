@@ -8,6 +8,7 @@ import {
   DASHBOARD_CASES,
   DASHBOARD_MRNS,
   DASHBOARD_OTHER_TEXT,
+  PHASE8B_MRN,
   REPEAT_MRN,
   WITHIN_7_DAYS,
   fixtureMrnsInBand,
@@ -408,6 +409,133 @@ test('each new drill-down lists exactly the seeded cases behind its row', async 
   await drill(`repeat:${REPEAT_MRN}`)
   await expect(page.locator('[data-drill-label]')).toHaveText(`MRN ${REPEAT_MRN}, 2 visits`)
   await expect(rowFor(page, REPEAT_MRN)).toHaveCount(2)
+})
+
+/**
+ * Phase 8b, Slice H. One seeded case (`PHASE8B_MRN`) carries every collection decision, so each
+ * new row on the page can be named rather than counted: the two Adaa KPI rows, the pain block
+ * beside the pethidine doses, the seven action rows, the nine documentation rows, and the
+ * discharge-communication section after Outcomes.
+ */
+test('the Phase 8b panels render, with the pain block and the discharge shares', async ({ page }, testInfo) => {
+  await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.109' : '198.51.100.110')
+  await signIn(page, E2E_USERS.navigator)
+  await page.goto('/dashboard')
+
+  // The Adaa panel's two new rows, named as the module names them.
+  for (const kpi of ['KPI 7 · Mortality (deceased among tracked cases)', 'KPI 8 · Door to painkiller, median']) {
+    await expect(page.getByRole('cell', { name: kpi, exact: true }), kpi).toBeVisible()
+  }
+  // The rows are in the spec's order: KPI 4 is last, after the two new ones.
+  const adaa = page.getByRole('heading', { name: 'Adaa KPIs, tracked cases only', exact: true }).locator('xpath=../table[1]')
+  const names = await adaa.getByRole('row').evaluateAll((rows) =>
+    rows.map((r) => (r.querySelector('td')?.textContent ?? '').trim()).filter(Boolean),
+  )
+  expect(names).toEqual([
+    'KPI 1 · Door to doctor, median',
+    'KPI 2 · Doctor to decision, median',
+    'KPI 3 · Decision to disposition, median',
+    'KPI 5 · Door to disposition within 4 h',
+    'KPI 6 · Discharged DAMA',
+    'KPI 7 · Mortality (deceased among tracked cases)',
+    'KPI 8 · Door to painkiller, median',
+    'KPI 4 · CTAS 4 or 5',
+  ])
+
+  // The pain block: the four bands beside the three doses, with their denominators stated.
+  const pain = page.locator('[data-pain-block]')
+  await expect(pain).toBeVisible()
+  await expect(pain).toContainText('Door to painkiller')
+  await expect(pain).toContainText('prescribed')
+  for (const band of ['≤30 min', '>30 min–1 h', '>1–3 h', '>3 h']) {
+    await expect(pain.getByRole('link', { name: band, exact: true }), band).toBeVisible()
+  }
+  for (const dose of ['50 mg', '100 mg', '150 mg']) {
+    await expect(pain.getByRole('link', { name: dose, exact: true }), dose).toBeVisible()
+  }
+
+  // "Actions documented" carries the module's seven kinds, the untagged row included.
+  const actions = page.getByRole('heading', { name: 'Actions documented', exact: true }).locator('xpath=../table')
+  for (const kind of [
+    'Leadership escalation',
+    'Case / bed management',
+    'External transfer / fax / RCC',
+    'PRO / social work',
+    'Forced / safety admission',
+    'DAMA management',
+    'Update without an action tag',
+  ]) {
+    await expect(actions.getByRole('link', { name: kind, exact: true }), kind).toBeVisible()
+  }
+
+  // "Documentation" carries all nine checks, the three Phase 8b ones included.
+  const documentation = page.getByRole('heading', { name: 'Documentation', exact: true }).locator('xpath=../table')
+  for (const check of [
+    'No delay reason recorded',
+    'Open, no update for 12 h',
+    'Open 24 h with no disposition decided',
+    'Resolved without a disposition',
+    'Times out of order',
+    'Stay cannot be computed (leaving before registration)',
+    'Resolved, not yet reviewed',
+    'Painkiller prescribed, no time given recorded',
+    'Pethidine prescribed, dose missing or not 50 / 100 / 150 mg',
+  ]) {
+    await expect(documentation.getByRole('link', { name: check, exact: true }), check).toBeVisible()
+  }
+
+  // The new section, and its place on the page: after Outcomes, before By CTAS.
+  await expect(page.getByRole('heading', { name: 'Discharge communication', exact: true })).toBeVisible()
+  const headings = await page.locator('.dash h3').evaluateAll((els) => els.map((e) => (e.textContent ?? '').trim()))
+  expect(headings.indexOf('Discharge communication')).toBe(headings.indexOf('Outcomes') + 1)
+  expect(headings.indexOf('By CTAS')).toBeGreaterThan(headings.indexOf('Discharge communication'))
+  const communication = page.getByRole('heading', { name: 'Discharge communication', exact: true }).locator('xpath=../table')
+  await expect(communication.getByRole('link', { name: 'Instructions given by doctor', exact: true })).toBeVisible()
+  await expect(communication.getByRole('link', { name: 'Family engaged', exact: true })).toBeVisible()
+  // Each row draws a share bar, which is the section's only chart.
+  await expect(page.locator('[data-share="Instructions given by doctor"]')).toBeVisible()
+
+  // Deceased is an outcome now, so it has a bar of its own.
+  await expect(page.getByRole('link', { name: /^Deceased/ })).toHaveCount(1)
+})
+
+test('the Phase 8b drill-downs list the case that carries each row', async ({ page }, testInfo) => {
+  await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.111' : '198.51.100.112')
+  await signIn(page, E2E_USERS.navigator)
+
+  const listsOnly = async (key: string, present: string[], absent: string[]) => {
+    await page.goto(`/dashboard?drill=${encodeURIComponent(key)}`)
+    await expect(page.locator('[data-drill-label]'), key).toHaveCount(1)
+    for (const mrn of present) await expect(rowFor(page, mrn), `${key} lists ${mrn}`).not.toHaveCount(0)
+    for (const mrn of absent) await expect(rowFor(page, mrn), `${key} omits ${mrn}`).toHaveCount(0)
+  }
+
+  // The painkiller was given 45 minutes after registration, so it is in the second band and in
+  // neither the first nor the last. 3200001 recorded no pain block at all.
+  await listsOnly('painkiller:band|>30 min–1 h', [PHASE8B_MRN], ['3200001'])
+  await expect(page.locator('[data-drill-label]')).toHaveText('Door to painkiller >30 min–1 h')
+  await listsOnly('painkiller:band|≤30 min', [], [PHASE8B_MRN])
+  await listsOnly('painkiller:dose|100 mg', [PHASE8B_MRN], ['3200001'])
+  await expect(page.locator('[data-drill-label]')).toHaveText('Pethidine 100 mg')
+  await listsOnly('painkiller:dose|50 mg', [], [PHASE8B_MRN])
+
+  // One case answered each question; nobody else answered either.
+  await listsOnly('communication:Instructions given by doctor', [PHASE8B_MRN], ['3200001'])
+  await expect(page.locator('[data-drill-label]')).toHaveText('Instructions given by doctor: recorded')
+  await listsOnly('communication:Family engaged', [PHASE8B_MRN], ['3200001'])
+
+  // The two tagged updates, and the sixth action row, which no other fixture case earns.
+  await listsOnly('action:PRO / social work', [PHASE8B_MRN], ['3200001'])
+  // 3200001's escalation is a recorded time rather than a tag, so both cases are on this row.
+  await listsOnly('action:Leadership escalation', [PHASE8B_MRN, '3200001'], ['3200012'])
+  // An update with no category at all: 3200001 wrote two, this case wrote none.
+  await listsOnly('action:Update without an action tag', ['3200001'], [PHASE8B_MRN])
+
+  // The review mark: every other resolved fixture case is on the "not yet reviewed" row.
+  await listsOnly('quality:Resolved, not yet reviewed', ['3200001'], [PHASE8B_MRN])
+
+  // Decision E's disposition as an outcome.
+  await listsOnly('outcome:Deceased', [PHASE8B_MRN], ['3200001'])
 })
 
 test('the longest stays table ranks the seeded 30-hour case and links to it', async ({ page }, testInfo) => {

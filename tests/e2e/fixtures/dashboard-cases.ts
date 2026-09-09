@@ -3,9 +3,11 @@ import { PrismaClient } from '@prisma/client'
 import { E2E_USERS } from './seed-users'
 
 /**
- * A dashboard worth reading: twelve cases spread over the last twenty-nine days, so the range
+ * A dashboard worth reading: thirteen cases spread over the last twenty-nine days, so the range
  * chips actually change the answer, the weekly chart has more than one week, and enough consults,
  * investigations and resolutions exist for a median to clear `MIN_N` instead of rendering "n<3".
+ * The last of them carries Ahmed's Phase 8b collection decisions, so the Adaa pain block, the
+ * discharge-communication shares and the review mark all have something real to draw.
  *
  * Written straight to the database (owner role) for the same reason the board fixture is: a case
  * that registered twenty-nine days ago and left the department twenty-six hours later is not
@@ -35,7 +37,7 @@ type Seed = {
   /** Departments consulted, with hours after registration for consulted / seen / replied. */
   consults?: ReadonlyArray<{ name: string; consulted: number; seen?: number; replied?: number }>
   investigation?: {
-    type: 'LAB' | 'CT' | 'US' | 'XR'
+    type: 'LAB' | 'CT' | 'US' | 'XR' | 'MRI'
     ordered: number
     mid: number
     done: number
@@ -44,7 +46,13 @@ type Seed = {
   }
   /** Admission chain, in hours after registration. */
   admission?: { order: number; requested: number; assigned: number }
-  disposition?: 'ADMITTED' | 'DISCHARGED_HOME' | 'DISCHARGED_DAMA' | 'LEFT_WITHOUT_BEING_SEEN'
+  disposition?:
+    | 'ADMITTED'
+    | 'DISCHARGED_HOME'
+    | 'DISCHARGED_DAMA'
+    | 'LEFT_WITHOUT_BEING_SEEN'
+    | 'DECEASED'
+    | 'REFERRED_UCC'
   ward?: string
   // --- Phase 8 -------------------------------------------------------------------------------
   /** Triage acuity, so the Adaa panel, "By CTAS" and KPI 4 have something to report. */
@@ -58,15 +66,50 @@ type Seed = {
   /** Medical admin informed / transfer requested, hours after registration: two action kinds. */
   escalated?: number
   transferRequested?: number
-  /** Update texts, hours after registration, newest last. Drives "Actions documented". */
-  updates?: ReadonlyArray<{ at: number; text: string }>
+  /**
+   * Update texts, hours after registration, newest last. Drives "Actions documented"; an update
+   * with an `action` is one of the weekly deck's six categories (Phase 8b, decision C).
+   */
+  updates?: ReadonlyArray<{ at: number; text: string; action?: UpdateAction }>
+  // --- Phase 8b: Ahmed's collection decisions --------------------------------------------------
+  /** The Adaa pain block (decision F): the painkiller's hours after registration, and the dose. */
+  pain?: { given?: number; pethidine?: 50 | 100 | 150; sickleCell?: boolean }
+  /** Case management (decision B), with the call and reply hours after registration. */
+  caseMgmt?: {
+    referral: 'CASE_MANAGER' | 'COMPLEX_CARE'
+    criteria: 'MEETS' | 'NOT_MEETING'
+    action: 'ENROLLED' | 'FOR_ENROLLMENT'
+    called: number
+    replied: number
+  }
+  /** The two discharge-communication answers (decision D). */
+  instructionsGiven?: Answer
+  familyEngagement?: Answer
+  /** Marked reviewed by the e2e supervisor (decision H), hours after registration. */
+  reviewed?: number
 }
+
+type Answer = 'YES' | 'NO' | 'NOT_SURE'
+type UpdateAction =
+  | 'LEADERSHIP_ESCALATION'
+  | 'BED_MANAGEMENT'
+  | 'FAX_RCC'
+  | 'PRO_SOCIAL_WORK'
+  | 'FORCED_SAFETY_ADMISSION'
+  | 'DAMA_MANAGEMENT'
 
 /** The Other text the queue must show. Distinctive enough that no other fixture can produce it. */
 export const DASHBOARD_OTHER_TEXT = 'Family travelling from Dammam to collect the patient'
 
 /** The MRN this fixture gives two cases, so "Repeat visits" has exactly one row of its own. */
 export const REPEAT_MRN = '3200011'
+
+/**
+ * The one case carrying Ahmed's Phase 8b collection decisions: the pain block, a case-management
+ * referral, two tagged updates, both discharge answers, a Deceased disposition and a supervisor's
+ * review mark. Every Slice H assertion that names a case names this one.
+ */
+export const PHASE8B_MRN = '3200013'
 
 export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
   {
@@ -234,6 +277,36 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
     shift: 'NIGHT',
     reason: { stage: 'triage', name: 'Re-triage required' },
   },
+  /**
+   * Phase 8b's case: everything Ahmed's collection decisions added, on one patient, so every new
+   * panel has a row of its own. Registered four hours ago and resolved after two, which keeps it
+   * out of every band and threshold the assertions above name — the six-hour drill-down, the
+   * 24-hour band and the seven-day window are all unchanged by it.
+   */
+  {
+    mrn: PHASE8B_MRN,
+    registeredHoursAgo: 4,
+    losHours: 2,
+    shift: 'MORNING',
+    reason: { stage: 'dc', name: 'Patient signing DAMA' },
+    ctas: 3,
+    area: 'ACUTE',
+    triage: 0.1,
+    physician: 0.4,
+    decision: 1,
+    disposition: 'DECEASED',
+    // The Adaa pain block: 45 minutes from the door, so the case lands in the second band.
+    pain: { given: 0.75, pethidine: 100, sickleCell: true },
+    caseMgmt: { referral: 'COMPLEX_CARE', criteria: 'MEETS', action: 'ENROLLED', called: 0.5, replied: 1.25 },
+    instructionsGiven: 'YES',
+    familyEngagement: 'NOT_SURE',
+    reviewed: 2.5,
+    investigation: { type: 'MRI', ordered: 0.5, mid: 1, done: 1.5, preliminary: 1.25 },
+    updates: [
+      { at: 0.6, text: 'Escalated to the medical admin on call', action: 'LEADERSHIP_ESCALATION' },
+      { at: 1.2, text: 'Social work asked to sit with the family', action: 'PRO_SOCIAL_WORK' },
+    ],
+  },
 ]
 
 /** Every MRN this fixture writes, once each. An assertion narrows to this list, never to a prefix. */
@@ -273,6 +346,12 @@ export async function seedDashboardCases(): Promise<void> {
       select: { id: true },
     })
     if (!navigator) throw new Error('[e2e] seedE2EUsers() must run before seedDashboardCases()')
+    // Decision H's review mark names a real reviewer, and the QCH sheet prints their display name.
+    const supervisor = await prisma.user.findUnique({
+      where: { username: E2E_USERS.supervisor.username },
+      select: { id: true },
+    })
+    if (!supervisor) throw new Error('[e2e] seedE2EUsers() must run before seedDashboardCases()')
 
     const [stages, departments, wards, areas] = await Promise.all([
       prisma.stage.findMany({
@@ -346,11 +425,28 @@ export async function seedDashboardCases(): Promise<void> {
           decisionAt: seed.decision == null ? null : after(seed.decision),
           medAdminInformedAt: seed.escalated == null ? null : after(seed.escalated),
           transferRequestedAt: seed.transferRequested == null ? null : after(seed.transferRequested),
+          // Phase 8b: the pain block, the case-management referral, the two discharge answers and
+          // the review mark. A seed that names none of them writes nulls, exactly as today.
+          sickleCellTreatment: seed.pain?.sickleCell ? 'YES' : null,
+          painkillerPrescribed: seed.pain ? 'YES' : null,
+          painkillerAt: seed.pain?.given == null ? null : after(seed.pain.given),
+          pethidinePrescribed: seed.pain ? (seed.pain.pethidine == null ? 'NO' : 'YES') : null,
+          pethidineDoseMg: seed.pain?.pethidine ?? null,
+          caseMgmtReferral: seed.caseMgmt?.referral ?? null,
+          caseMgmtCriteria: seed.caseMgmt?.criteria ?? null,
+          caseMgmtAction: seed.caseMgmt?.action ?? null,
+          caseMgmtCalledAt: seed.caseMgmt == null ? null : after(seed.caseMgmt.called),
+          caseMgmtRepliedAt: seed.caseMgmt == null ? null : after(seed.caseMgmt.replied),
+          instructionsGiven: seed.instructionsGiven ?? null,
+          familyEngagement: seed.familyEngagement ?? null,
+          reviewedAt: seed.reviewed == null ? null : after(seed.reviewed),
+          reviewedById: seed.reviewed == null ? null : supervisor.id,
           updates: {
             create: (seed.updates ?? []).map((u) => ({
               authorId: navigator.id,
               createdAt: after(u.at),
               text: u.text,
+              action: u.action ?? null,
             })),
           },
           reasons: {
