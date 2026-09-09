@@ -226,10 +226,22 @@ describe('investigationsSheet', () => {
       'Received by lab',
       'Resulted',
       'Scan done',
+      // Phase 8: imaging only, between the scan and the official report.
+      'Preliminary report',
       'Reported',
       'Done',
       'Order to result (h)',
     ])
+  })
+
+  it('writes the preliminary report on an imaging row and leaves it blank on a lab one', () => {
+    // C6's CT: ordered 48 h before NOW, scanned 46 h, read out 45 h, reported 43 h.
+    const ct = sheet.rows.find((r) => r[1] === 'CT')!
+    expect(ct[column(INVESTIGATIONS_HEADER, 'Preliminary report')]).toBe('06/09 18:00')
+    const lab = sheet.rows.find((r) => r[1] === 'Lab')!
+    expect(lab[column(INVESTIGATIONS_HEADER, 'Preliminary report')]).toBe('')
+    // "Order to result" is still measured to the OFFICIAL report, not the verbal one.
+    expect(ct[column(INVESTIGATIONS_HEADER, 'Order to result (h)')]).toBe('5.00')
   })
 
   it('fills only the columns that belong to the row`s own test type', () => {

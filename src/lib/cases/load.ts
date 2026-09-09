@@ -30,6 +30,8 @@ export function blankDraft(input: { now: Date; shift: CaseDraft['shift'] }): Cas
     mrn: '',
     registrationAt: registrationAt.toISOString(),
     shift: input.shift,
+    ctas: null,
+    areaId: null,
     stages: [],
     reasons: [],
     primaryReasonId: null,
@@ -63,6 +65,8 @@ type CaseRow = {
   mrn: string
   registrationAt: Date
   shift: CaseDraft['shift']
+  ctas: number | null
+  areaId: string | null
   primaryReasonId: string | null
   roomType: CaseDraft['roomType']
   triageAt: Date | null
@@ -98,6 +102,7 @@ type CaseRow = {
     collectedAt: Date | null
     receivedAt: Date | null
     doneAt: Date | null
+    preliminaryAt: Date | null
     resultedAt: Date | null
   }>
 }
@@ -112,6 +117,8 @@ export function draftFromCase(row: CaseRow, reference: ReferenceData): CaseDraft
     mrn: row.mrn,
     registrationAt: row.registrationAt.toISOString(),
     shift: row.shift,
+    ctas: row.ctas,
+    areaId: row.areaId,
     stages,
     reasons: row.reasons.map((r) => ({ reasonId: r.reasonId, otherText: r.otherText })),
     primaryReasonId: row.primaryReasonId,
@@ -127,6 +134,7 @@ export function draftFromCase(row: CaseRow, reference: ReferenceData): CaseDraft
       collectedAt: iso(i.collectedAt),
       receivedAt: iso(i.receivedAt),
       doneAt: iso(i.doneAt),
+      preliminaryAt: iso(i.preliminaryAt),
       resultedAt: iso(i.resultedAt),
     })),
     roomType: row.roomType,

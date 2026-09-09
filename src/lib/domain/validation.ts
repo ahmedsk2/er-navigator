@@ -62,17 +62,45 @@ export const investigationInput = z.object({
   collectedAt: timeSchema,
   receivedAt: timeSchema,
   doneAt: timeSchema,
+  /** Imaging only; a LAB row simply never sends it (Phase 8). Optional, like every other time. */
+  preliminaryAt: timeSchema,
   resultedAt: timeSchema,
 })
+
+/**
+ * CTAS is 1 to 5 and optional (Phase 8). The bound lives here rather than in a database CHECK,
+ * so widening the scale one day is an Admin decision and not a migration.
+ */
+export const CTAS_MIN = 1
+export const CTAS_MAX = 5
+export const ctasSchema = z
+  .number()
+  .int('CTAS is a whole number from 1 to 5.')
+  .min(CTAS_MIN, 'CTAS is a whole number from 1 to 5.')
+  .max(CTAS_MAX, 'CTAS is a whole number from 1 to 5.')
 
 /** What the factory needs to know about each reason id the client may send. */
 export type ReasonMeta = { requiresDepartment: boolean; requiresReferralNo: boolean; isOther: boolean }
 
-export function buildCaseSchemas(meta: ReadonlyMap<string, ReasonMeta>, now: () => Date = () => new Date()) {
+/**
+ * `areaIds` is the set of `EdArea` ids this request may use. It comes from the request's own
+ * reference data, which is why it is a parameter and not a constant: `loadReference()` is the
+ * active list, so a new case can only be opened on an active area, while
+ * `loadReferenceForCase(id)` adds the one deactivated area that case already carries, so editing
+ * such a case still saves (the Phase 7 retired-row pattern). The default is empty, so a caller
+ * that forgets to pass it refuses every area rather than accepting any.
+ */
+export function buildCaseSchemas(
+  meta: ReadonlyMap<string, ReasonMeta>,
+  now: () => Date = () => new Date(),
+  areaIds: ReadonlySet<string> = new Set(),
+) {
   const base = z.object({
     mrn: mrnSchema,
     registrationAt: isoOrDate,
     shift: shiftSchema.nullable().optional(),
+    ctas: ctasSchema.nullable().optional(),
+    areaId: z.string().nullable().optional(),
     reasons: z.array(caseReasonInput).min(1, 'Select at least one delay reason.'),
     primaryReasonId: z.string().nullable().optional(),
     consults: z.array(consultInput).default([]),
@@ -112,6 +140,11 @@ export function buildCaseSchemas(meta: ReadonlyMap<string, ReasonMeta>, now: () 
     // registrationAt <= now
     if (c.registrationAt.getTime() > now().getTime() + 60_000) {
       ctx.addIssue({ code: 'custom', path: ['registrationAt'], message: 'Registration time cannot be in the future.' })
+    }
+    // The ED area must be one this request knows: active, or retired but already on this case.
+    const areaId = c.areaId?.trim()
+    if (areaId && !areaIds.has(areaId)) {
+      ctx.addIssue({ code: 'custom', path: ['areaId'], message: 'That ED area is no longer on the list.' })
     }
     // unknown reason ids are rejected before the rules that depend on them
     const ids = c.reasons.map((r) => r.reasonId)

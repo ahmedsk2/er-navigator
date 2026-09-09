@@ -67,6 +67,8 @@ function draft(over: Partial<CaseDraft> = {}): CaseDraft {
     mrn: nextTestMrn(),
     registrationAt: new Date(Date.now() - 6 * HOUR).toISOString(),
     shift: 'MORNING',
+    ctas: null,
+    areaId: null,
     stages: [],
     reasons: [{ reasonId: reasonNamed('adm', 'No bed available on accepting ward'), otherText: null }],
     primaryReasonId: null,

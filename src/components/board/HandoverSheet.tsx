@@ -6,7 +6,7 @@
  * screen rows, and shows this instead. Same rows, same order, same clock — a plain table with
  * hairlines, 11 px, no colour to run out of a ward printer's toner.
  */
-import { elapsedOf, idleHours, resolvedText, stalenessText } from '@/src/lib/board/rows'
+import { elapsedOf, identityChips, idleHours, resolvedText, stalenessText } from '@/src/lib/board/rows'
 import type { BoardRow } from '@/src/lib/board/types'
 import { fmtSheetStamp, fmtStamp } from '@/src/lib/cases/local-time'
 import { fmtHours } from '@/src/lib/domain/time'
@@ -55,7 +55,16 @@ export function HandoverSheet({
         <tbody>
           {rows.map((row) => (
             <tr key={row.id} className="break-inside-avoid">
-              <td className={`num ${CELL} font-bold`}>{row.mrn}</td>
+              {/* CTAS and the ED area ride with the MRN rather than costing two more columns on
+                  a sheet that already has seven and has to fit a ward printer's page. */}
+              <td className={`num ${CELL} font-bold`}>
+                {row.mrn}
+                {identityChips(row).map((chip) => (
+                  <span key={chip} data-chip={chip} className="ml-1 font-normal">
+                    {chip}
+                  </span>
+                ))}
+              </td>
               <td className={`num ${CELL}`}>{fmtStamp(row.registrationAt)}</td>
               <td className={`num ${CELL}`}>{fmtHours(elapsedOf(row, now))}</td>
               <td className={CELL}>{row.primaryReason ?? 'No reason set'}</td>

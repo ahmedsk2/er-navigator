@@ -37,7 +37,7 @@ export const FIXTURE: CaseForStats[] = [
     consults: [{ departmentName: 'ICU', consultedAt: h(5), seenAt: h(3), repliedAt: null }] }),
   // C3: open 13h (h12), Tue 02:00
   c({ id: 'C3', mrn: '100003', status: 'OPEN', registrationAt: h(13), shift: 'NIGHT', primaryReasonName: 'Lab: delay in processing', stageNames: ['Investigations'],
-    investigations: [{ type: 'LAB', orderedAt: h(12), collectedAt: h(11), receivedAt: h(10), doneAt: null, resultedAt: h(8) }] }),
+    investigations: [{ type: 'LAB', orderedAt: h(12), collectedAt: h(11), receivedAt: h(10), doneAt: null, preliminaryAt: null, resultedAt: h(8) }] }),
   // C4: open 25h (h24), Mon 14:00
   c({ id: 'C4', mrn: '100004', status: 'OPEN', registrationAt: h(25), shift: 'MORNING', primaryReasonName: 'Fax/communication breakdown between units', stageNames: ['Administrative / coordination'] }),
   // C5: resolved, reg 30h ago (Mon 09:00), left 22h ago: LOS 8. Two teams, admission chain.
@@ -50,7 +50,7 @@ export const FIXTURE: CaseForStats[] = [
     admOrderAt: h(27), bedRequestedAt: h(26.5), bedAssignedAt: h(23) }),
   // C6: resolved, reg 50h ago (Sun 13:00), left 40h ago: LOS 10. CT.
   c({ id: 'C6', mrn: '100006', status: 'RESOLVED', registrationAt: h(50), departedAt: h(40), resolvedAt: h(40), shift: 'EVENING', primaryReasonName: 'Imaging: acquisition delay (CT)', stageNames: ['Investigations'], disposition: 'DISCHARGED_HOME',
-    investigations: [{ type: 'CT', orderedAt: h(48), collectedAt: null, receivedAt: null, doneAt: h(46), resultedAt: h(43) }] }),
+    investigations: [{ type: 'CT', orderedAt: h(48), collectedAt: null, receivedAt: null, doneAt: h(46), preliminaryAt: h(45), resultedAt: h(43) }] }),
   // C7: resolved, reg 74h ago (Sat 13:00), left 68h ago: LOS 6.
   c({ id: 'C7', mrn: '100007', status: 'RESOLVED', registrationAt: h(74), departedAt: h(68), resolvedAt: h(68), shift: 'NIGHT', primaryReasonName: 'Awaiting pharmacy', stageNames: ['Discharge process'], disposition: 'DISCHARGED_HOME' }),
   // C8: resolved, reg 240h ago (Sat 15:00, 10 days), left 233h ago: LOS 7. Other text.

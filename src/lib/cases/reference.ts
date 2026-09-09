@@ -1,7 +1,8 @@
 /**
  * Reference data for the case editor: the active stages with their reasons, the active
- * departments and the active wards, read once per request and handed both to the editor (for the
- * chips) and to `buildCaseSchemas()` (for the rules that depend on reason metadata).
+ * departments, the active wards and the active ED areas, read once per request and handed both to
+ * the editor (for the chips) and to `buildCaseSchemas()` (for the rules that depend on reason
+ * metadata and on which area ids are allowed).
  *
  * The database is the source of truth — from Phase 6 an Admin renames, reorders and deactivates
  * these rows — so nothing here reads `src/lib/domain/taxonomy.ts`, which only seeds an empty
@@ -21,7 +22,7 @@ import { buildCaseSchemas, type ReasonMeta } from '@/src/lib/domain/validation'
 import type { ReferenceData } from './types'
 
 export const loadReference = cache(async (): Promise<ReferenceData> => {
-  const [stages, departments, wards] = await Promise.all([
+  const [stages, departments, wards, areas] = await Promise.all([
     prisma.stage.findMany({
       where: { active: true },
       orderBy: { sortOrder: 'asc' },
@@ -46,14 +47,19 @@ export const loadReference = cache(async (): Promise<ReferenceData> => {
       orderBy: { sortOrder: 'asc' },
       select: { id: true, code: true, name: true },
     }),
+    prisma.edArea.findMany({
+      where: { active: true },
+      orderBy: { sortOrder: 'asc' },
+      select: { id: true, code: true, name: true },
+    }),
   ])
-  return { stages, departments, wards }
+  return { stages, departments, wards, areas }
 })
 
 /**
  * The reference for an existing case: the active rows PLUS any deactivated row this case already
- * carries — the reasons on its `CaseReason` rows, the departments on its consults and its ward —
- * each flagged `retired: true` (Phase 7, C4/C10).
+ * carries — the reasons on its `CaseReason` rows, the departments on its consults, its ward and
+ * (Phase 8) its ED area — each flagged `retired: true` (Phase 7, C4/C10).
  *
  * Without this, deactivating a reference row in Admin froze every case that carried it: the id
  * survived in the draft, the chips (active-only) offered nothing to deselect it with, and both
@@ -68,6 +74,7 @@ export const loadReferenceForCase = cache(async (caseId: string): Promise<Refere
       where: { id: caseId },
       select: {
         wardId: true,
+        areaId: true,
         reasons: { select: { reasonId: true } },
         consults: { select: { departmentId: true } },
       },
@@ -82,9 +89,12 @@ export const loadReferenceForCase = cache(async (caseId: string): Promise<Refere
     (id) => !knownDepartments.has(id),
   )
   const missingWard = row.wardId && !active.wards.some((w) => w.id === row.wardId) ? row.wardId : null
-  if (missingReasons.length === 0 && missingDepartments.length === 0 && !missingWard) return active
+  const missingArea = row.areaId && !active.areas.some((a) => a.id === row.areaId) ? row.areaId : null
+  if (missingReasons.length === 0 && missingDepartments.length === 0 && !missingWard && !missingArea) {
+    return active
+  }
 
-  const [reasons, departments, ward] = await Promise.all([
+  const [reasons, departments, ward, area] = await Promise.all([
     missingReasons.length > 0
       ? prisma.reason.findMany({
           where: { id: { in: missingReasons } },
@@ -107,6 +117,7 @@ export const loadReferenceForCase = cache(async (caseId: string): Promise<Refere
         })
       : [],
     missingWard ? prisma.ward.findUnique({ where: { id: missingWard }, select: { id: true, code: true, name: true } }) : null,
+    missingArea ? prisma.edArea.findUnique({ where: { id: missingArea }, select: { id: true, code: true, name: true } }) : null,
   ])
 
   // A retired reason joins its own stage, at the end of that stage's list. Stages are fixed —
@@ -135,6 +146,7 @@ export const loadReferenceForCase = cache(async (caseId: string): Promise<Refere
     stages,
     departments: [...active.departments, ...departments.map((d) => ({ id: d.id, name: d.name, retired: true }))],
     wards: [...active.wards, ...(ward ? [{ id: ward.id, code: ward.code, name: ward.name, retired: true }] : [])],
+    areas: [...active.areas, ...(area ? [{ id: area.id, code: area.code, name: area.name, retired: true }] : [])],
   }
 })
 
@@ -155,7 +167,16 @@ export function reasonMetaOf(reference: ReferenceData): Map<string, ReasonMeta> 
 
 /** The `draft` and `resolve` schemas for this request's reference data. */
 export function caseSchemas(reference: ReferenceData) {
-  return buildCaseSchemas(reasonMetaOf(reference))
+  return buildCaseSchemas(reasonMetaOf(reference), undefined, areaIdsOf(reference))
+}
+
+/**
+ * The ED area ids this reference allows. On `loadReference()` that is the active list, so a new
+ * case cannot be opened on a retired area; on `loadReferenceForCase(id)` it also holds the one
+ * retired area that case already carries, so editing it still saves (Phase 7, C4/C10).
+ */
+export function areaIdsOf(reference: ReferenceData): Set<string> {
+  return new Set(reference.areas.map((a) => a.id))
 }
 
 /** reasonId -> the stage that owns it, for the "Other" review queue and the warning labels. */

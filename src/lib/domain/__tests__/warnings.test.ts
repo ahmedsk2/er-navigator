@@ -41,6 +41,40 @@ describe('timeWarnings (prototype port)', () => {
     expect(w).toEqual(['CT scan done is before CT ordered'])
   })
 
+  /**
+   * Phase 8. The verbal report belongs between the scan and the official one, so an official
+   * report typed in before the preliminary one is out of order — a warning, never a refused save,
+   * because that is exactly the sequence a busy radiologist can enter backwards.
+   */
+  it('flags an official report entered before the preliminary one, and only warns', () => {
+    const w = timeWarnings({
+      registrationAt: t(0),
+      investigations: [{ type: 'CT', orderedAt: t(1), doneAt: t(2), preliminaryAt: t(4), resultedAt: t(3) }],
+    })
+    expect(w).toEqual(['CT reported is before CT preliminary report'])
+  })
+
+  it('says nothing about a preliminary report in its proper place, or a lab row without one', () => {
+    expect(
+      timeWarnings({
+        registrationAt: t(0),
+        investigations: [
+          { type: 'US', orderedAt: t(1), doneAt: t(2), preliminaryAt: t(2.5), resultedAt: t(4) },
+          { type: 'LAB', orderedAt: t(1), collectedAt: t(1.2), receivedAt: t(1.5), resultedAt: t(3) },
+        ],
+      }),
+    ).toEqual([])
+  })
+
+  it('flags a preliminary report entered before the scan was done', () => {
+    expect(
+      timeWarnings({
+        registrationAt: t(0),
+        investigations: [{ type: 'XR', orderedAt: t(1), doneAt: t(3), preliminaryAt: t(2) }],
+      }),
+    ).toEqual(['X-ray / KUB preliminary report is before X-ray / KUB done'])
+  })
+
   it('flags the admission and transfer chains', () => {
     const w = timeWarnings({ registrationAt: t(0), admOrderAt: t(5), bedRequestedAt: t(4), transferRequestedAt: t(6), transferAcceptedAt: t(5.5) })
     expect(w).toEqual(['bed requested (fax sent) is before admission order written', 'accepted by facility is before transfer requested'])

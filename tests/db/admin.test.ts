@@ -86,6 +86,8 @@ function draft(overrides: Partial<CaseDraft> = {}): CaseDraft {
     mrn: '661557',
     registrationAt: new Date(Date.now() - 6 * HOUR).toISOString(),
     shift: 'MORNING',
+    ctas: null,
+    areaId: null,
     stages: [],
     reasons: [],
     primaryReasonId: null,

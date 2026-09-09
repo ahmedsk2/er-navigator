@@ -27,6 +27,8 @@ export type InvestigationForStats = {
   collectedAt: Date | null
   receivedAt: Date | null
   doneAt: Date | null
+  /** Imaging only (Phase 8); a LAB row is always null. */
+  preliminaryAt: Date | null
   resultedAt: Date | null
 }
 
@@ -147,7 +149,12 @@ export function consultRows(cases: ReadonlyArray<CaseForStats>): ConsultRow[] {
 
 export type InvestigationRow = { type: keyof typeof INVESTIGATION_STEPS; name: string; n: number; ids: string[]; toMid: number | null; toDone: number | null }
 
-/** Per test type: order→mid step (collected / scan done) and order→final (resulted / reported). */
+/**
+ * Per test type: order→mid step (collected / scan done) and order→final (resulted / reported).
+ * `mid` and `last` are read off `INVESTIGATION_STEPS` by position, and Phase 8's "Preliminary
+ * report" was inserted between the scan and the official report, so both are unchanged: still
+ * `doneAt` and still `resultedAt`.
+ */
 export function investigationRows(cases: ReadonlyArray<CaseForStats>): InvestigationRow[] {
   return (Object.keys(INVESTIGATION_STEPS) as Array<keyof typeof INVESTIGATION_STEPS>)
     .map((type) => {

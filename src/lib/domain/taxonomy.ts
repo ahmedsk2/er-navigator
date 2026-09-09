@@ -169,19 +169,25 @@ export const INVESTIGATION_STEPS = {
     ['receivedAt', 'Received by lab'],
     ['resultedAt', 'Resulted'],
   ],
+  // Imaging only (Phase 8): "Preliminary report" is the verbal read the ward acts on, hours
+  // before the official one, recorded between the scan and the report. A LAB row has no such
+  // step, which is why this is a per-type list and not one shared chain.
   CT: [
     ['orderedAt', 'Ordered'],
     ['doneAt', 'Scan done'],
+    ['preliminaryAt', 'Preliminary report'],
     ['resultedAt', 'Reported'],
   ],
   US: [
     ['orderedAt', 'Ordered'],
     ['doneAt', 'Scan done'],
+    ['preliminaryAt', 'Preliminary report'],
     ['resultedAt', 'Reported'],
   ],
   XR: [
     ['orderedAt', 'Ordered'],
     ['doneAt', 'Done'],
+    ['preliminaryAt', 'Preliminary report'],
     ['resultedAt', 'Reported'],
   ],
 } as const

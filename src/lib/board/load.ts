@@ -29,8 +29,10 @@ const BOARD_ROW_SELECT = {
   resolvedAt: true,
   disposition: true,
   createdAt: true,
+  ctas: true,
   primaryReason: { select: { name: true } },
   ward: { select: { code: true } },
+  area: { select: { code: true } },
   consults: {
     orderBy: { department: { sortOrder: 'asc' } },
     select: { department: { select: { name: true } } },
@@ -47,8 +49,10 @@ type SelectedRow = {
   resolvedAt: Date | null
   disposition: BoardRow['disposition']
   createdAt: Date
+  ctas: number | null
   primaryReason: { name: string } | null
   ward: { code: string } | null
+  area: { code: string } | null
   consults: ReadonlyArray<{ department: { name: string } }>
   updates: ReadonlyArray<{ createdAt: Date }>
 }
@@ -61,6 +65,8 @@ function toBoardRow(row: SelectedRow): BoardRow {
     registrationAt: row.registrationAt.toISOString(),
     departedAt: iso(row.departedAt),
     resolvedAt: iso(row.resolvedAt),
+    ctas: row.ctas,
+    area: row.area?.code ?? null,
     primaryReason: row.primaryReason?.name ?? null,
     departments: row.consults.map((consult) => consult.department.name),
     disposition: row.disposition,
