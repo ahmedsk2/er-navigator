@@ -55,8 +55,9 @@ export type CaseForStats = CaseClock & {
   disposition: string | null
   consults: ReadonlyArray<ConsultForStats>
   investigations: ReadonlyArray<InvestigationForStats>
-  // The journey milestones the Adaa KPIs are measured between.
+  // The journey milestones the Adaa KPIs are measured between, and the per-case timeline lists.
   triageAt: Date | null
+  roomAt: Date | null
   physicianAt: Date | null
   decisionAt: Date | null
   // The admission chain, plus the escalation and transfer steps "actions documented" counts.
@@ -65,6 +66,8 @@ export type CaseForStats = CaseClock & {
   bedAssignedAt: Date | null
   handoverAt: Date | null
   transferRequestedAt: Date | null
+  transferAcceptedAt: Date | null
+  transportArrivedAt: Date | null
   medAdminInformedAt: Date | null
   /** The ward's short code (ICU, FMW …), which is how `unitTypeOf` tells an ICU from a ward. */
   wardCode: string | null

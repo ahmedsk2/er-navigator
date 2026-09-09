@@ -53,6 +53,7 @@ function clocksOf(payload: BoardPayload): CaseForStats[] {
         // The tiles depend on the clock alone, so everything else is the empty value a case
         // with nothing recorded really has.
         triageAt: null,
+        roomAt: null,
         physicianAt: null,
         decisionAt: null,
         admOrderAt: null,
@@ -60,6 +61,8 @@ function clocksOf(payload: BoardPayload): CaseForStats[] {
         bedAssignedAt: null,
         handoverAt: null,
         transferRequestedAt: null,
+        transferAcceptedAt: null,
+        transportArrivedAt: null,
         medAdminInformedAt: null,
         wardCode: null,
         ctas: null,

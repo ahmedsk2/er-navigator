@@ -146,11 +146,11 @@ describe('30-day dashboard, hand-computed', () => {
 
 /**
  * Phase 8, Slice D. `src/lib/domain/kpi.ts` is written in parallel and takes a `KpiCase`, "a
- * structural subset of `CaseForStats`". The shape below is that contract copied from
- * docs/specs/phase8-reports.md, restated here so a field dropped from `CaseForStats` — or handed
- * back with the wrong type — is a compile error in this file rather than a merge conflict in the
- * lead's. It deliberately does not import from kpi.ts: this must fail loudly before that module
- * lands, not after.
+ * structural subset of `CaseForStats`". The shape below is that contract, field for field, from
+ * `docs/specs/phase8-reports.md` — restated here rather than imported, because this branch was
+ * cut before the module landed and the loader's job is to satisfy the contract whether or not
+ * the module is present. A field dropped from `CaseForStats`, or handed back with the wrong
+ * type, is a compile error in this file.
  */
 type KpiConsultContract = {
   departmentName: string
@@ -173,6 +173,7 @@ type KpiCaseContract = {
   status: 'OPEN' | 'RESOLVED' | 'VOIDED'
   registrationAt: Date
   triageAt: Date | null
+  roomAt: Date | null
   physicianAt: Date | null
   decisionAt: Date | null
   departedAt: Date | null
@@ -182,6 +183,8 @@ type KpiCaseContract = {
   bedAssignedAt: Date | null
   handoverAt: Date | null
   transferRequestedAt: Date | null
+  transferAcceptedAt: Date | null
+  transportArrivedAt: Date | null
   medAdminInformedAt: Date | null
   disposition: string | null
   wardCode: string | null

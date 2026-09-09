@@ -25,9 +25,6 @@ export const CASE_EXPORT_SELECT = {
     },
   },
   openedBy: { select: { displayName: true } },
-  roomAt: true,
-  transferAcceptedAt: true,
-  transportArrivedAt: true,
   referralTrackingNo: true,
   transferFacility: true,
   isolation: true,
@@ -54,9 +51,6 @@ export function toCaseForExport(row: CaseExportRow): CaseForExport {
     reasonLabels: [...row.reasons]
       .sort((a, b) => a.reason.stage.sortOrder - b.reason.stage.sortOrder || a.reason.name.localeCompare(b.reason.name))
       .map((r) => label(r.reason)),
-    roomAt: row.roomAt,
-    transferAcceptedAt: row.transferAcceptedAt,
-    transportArrivedAt: row.transportArrivedAt,
     referralTrackingNo: row.referralTrackingNo,
     transferFacility: row.transferFacility,
     isolation: row.isolation,

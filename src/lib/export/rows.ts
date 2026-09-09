@@ -47,9 +47,6 @@ export type CaseForExport = CaseForStats & {
   /** "Stage: reason", the prototype's `${stageOf(c.primary).name}: ${reasonLabel(c.primary)}`. */
   primaryReasonLabel: string | null
   reasonLabels: ReadonlyArray<string>
-  roomAt: Date | null
-  transferAcceptedAt: Date | null
-  transportArrivedAt: Date | null
   referralTrackingNo: string | null
   transferFacility: string | null
   isolation: boolean
