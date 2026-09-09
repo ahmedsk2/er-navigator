@@ -18,6 +18,12 @@ import { can, type Action } from '@/src/lib/authz/policy'
 import { prisma } from '@/src/lib/db'
 
 export const SESSION_COOKIE = 'ern_session'
+/**
+ * Set alongside the session cookie when "Remember this device" was ticked. It carries no secret
+ * (value "1"); the route gate uses its presence to re-stamp both cookies' 12 h lifetime on every
+ * request, which is what makes the browser-side expiry slide like the server-side one.
+ */
+export const REMEMBER_COOKIE = 'ern_remember'
 export const TOKEN_BYTES = 32
 export const SESSION_TTL_MS = 12 * 60 * 60 * 1000
 /** A session's lastSeenAt/expiresAt are refreshed at most this often: one UPDATE per five minutes. */
@@ -100,9 +106,9 @@ export type SessionCookieOptions = {
 
 /**
  * "Remember this device" is the only difference: it gives the cookie a 12 h lifetime, otherwise
- * the browser drops it when it closes. The server-side expiry is 12 h either way, and only the
- * server-side one slides — the browser is not told about a refresh, so a remembered device is
- * asked to sign in again 12 h after it signed in, however busy it has been.
+ * the browser drops it when it closes. The server-side expiry is 12 h either way and slides in
+ * resolveSessionToken(); for remembered devices the route gate (proxy.ts) re-stamps the cookie
+ * lifetime on every request, so the browser-side expiry slides too.
  */
 export function sessionCookieOptions(remember: boolean): SessionCookieOptions {
   return {
@@ -213,11 +219,14 @@ export async function readSessionCookie(): Promise<string | null> {
 export async function setSessionCookie(token: string, remember: boolean): Promise<void> {
   const store = await cookies()
   store.set(SESSION_COOKIE, token, sessionCookieOptions(remember))
+  if (remember) store.set(REMEMBER_COOKIE, '1', sessionCookieOptions(true))
+  else store.set(REMEMBER_COOKIE, '', { ...sessionCookieOptions(false), maxAge: 0 })
 }
 
 export async function clearSessionCookie(): Promise<void> {
   const store = await cookies()
   store.set(SESSION_COOKIE, '', { ...sessionCookieOptions(false), maxAge: 0 })
+  store.set(REMEMBER_COOKIE, '', { ...sessionCookieOptions(false), maxAge: 0 })
 }
 
 /**

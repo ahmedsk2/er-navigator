@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { SESSION_COOKIE } from '@/src/lib/auth/session'
+import { REMEMBER_COOKIE, SESSION_COOKIE, SESSION_TTL_MS } from '@/src/lib/auth/session'
 
 /**
  * proxy.ts deliberately duplicates the cookie name instead of importing it: the gate runs on
@@ -11,9 +11,12 @@ import { SESSION_COOKIE } from '@/src/lib/auth/session'
 const proxy = readFileSync(path.resolve(__dirname, '../../../../proxy.ts'), 'utf8')
 
 describe('the route gate agrees with the session module', () => {
-  it('checks the same cookie name', () => {
+  it('checks the same cookie names and the same lifetime', () => {
     expect(SESSION_COOKIE).toBe('ern_session')
+    expect(REMEMBER_COOKIE).toBe('ern_remember')
     expect(proxy).toContain(`'${SESSION_COOKIE}'`)
+    expect(proxy).toContain(`'${REMEMBER_COOKIE}'`)
+    expect(proxy).toContain(`COOKIE_MAX_AGE_S = ${SESSION_TTL_MS / 1000 / 60 / 60} * 60 * 60`)
   })
 
   it('imports nothing from src/lib', () => {

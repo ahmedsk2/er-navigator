@@ -4,6 +4,7 @@ One line per finished slice, newest first. The gate reports reference this file.
 
 ## Phase 1
 
+- 2026-09-09 [ERN-P1.8] Lead review and merge: remembered devices now slide the browser-side cookie lifetime on every request (route gate re-stamps `ern_session` and `ern_remember`), runbook NUL byte removed and the CI NUL guard extended to docs, nested worktrees excluded from lint/tests/tsc. Verified after merge: 236 unit and database tests, 22 Playwright tests, typecheck, lint, build.
 - 2026-09-09 [ERN-P1.6] Sign-in, sessions, lockout and the role gate: `Session` model and migration (sha256 of an opaque 32-byte cookie, 12 h sliding expiry, rotated on login and password change, deleted on logout and deactivation); `src/lib/auth/` (password with a dummy-hash timing path, session, lockout at 10 failures for 15 minutes, in-process 5-per-minute IP rate limiter, login and change-password cores); `proxy.ts` route gate on cookie presence only; `/login` with remember-this-device; the authenticated shell at `/` with the band legend and logout; `/account` change-password; `auth.login`, `auth.logout`, `auth.fail`, `auth.locked`, `auth.forbidden` and `user.password` audit rows; 187 unit and database tests (171 without a database), 22 Playwright checks at both viewports, screenshots in `design/screens/phase1-*`.
 
 ## Phase 0

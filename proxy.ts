@@ -14,6 +14,9 @@ import { NextResponse, type NextRequest } from 'next/server'
  * asserts this file and the session module agree on the cookie name.
  */
 const SESSION_COOKIE = 'ern_session'
+const REMEMBER_COOKIE = 'ern_remember'
+/** 12 h, the session TTL. Duplicated from the session module for the same bundle reason. */
+const COOKIE_MAX_AGE_S = 12 * 60 * 60
 
 const PUBLIC_PATHS = new Set([
   '/login',
@@ -38,7 +41,17 @@ export default function proxy(request: NextRequest): NextResponse {
   if (pathname === '/login') {
     return signedIn ? NextResponse.redirect(new URL('/', request.url)) : NextResponse.next()
   }
-  if (isPublic(pathname) || signedIn) return NextResponse.next()
+  if (isPublic(pathname) || signedIn) {
+    const response = NextResponse.next()
+    // A remembered device: slide the browser-side lifetime of both cookies on every request, so
+    // a busy shift is never signed out mid-way. The server-side expiry slides in getSession().
+    if (signedIn && request.cookies.has(REMEMBER_COOKIE)) {
+      const attrs = { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' as const, path: '/', maxAge: COOKIE_MAX_AGE_S }
+      response.cookies.set(SESSION_COOKIE, request.cookies.get(SESSION_COOKIE)!.value, attrs)
+      response.cookies.set(REMEMBER_COOKIE, '1', attrs)
+    }
+    return response
+  }
 
   const url = new URL('/login', request.url)
   url.searchParams.set('next', `${pathname}${search}`)
