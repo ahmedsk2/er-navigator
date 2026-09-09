@@ -1,17 +1,9 @@
-import type { Role } from '@prisma/client'
 import { NewCaseFab } from '@/src/components/shell/NewCaseFab'
 import { OverflowMenu } from '@/src/components/shell/OverflowMenu'
 import { TabBar } from '@/src/components/shell/TabBar'
+import { ROLE_LABELS } from '@/src/lib/admin/user-view'
 import { requireUser } from '@/src/lib/auth/session'
 import { can } from '@/src/lib/authz/policy'
-
-// No all-caps labels (design/tokens.md), so the enum is rendered in sentence case.
-const ROLE_LABEL: Record<Role, string> = {
-  NAVIGATOR: 'Navigator',
-  SUPERVISOR: 'Supervisor',
-  ADMIN: 'Admin',
-  VIEWER: 'Viewer',
-}
 
 /**
  * The signed-in shell: a slim app bar with the overflow menu, the page, the floating "+ New case"
@@ -28,11 +20,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await requireUser()
 
   // `print:max-w-none`: the centred phone column becomes a paper-width sheet on the printer.
+  //
+  // `has-[[data-wide]]`: the board, the dashboard and the export page are a phone column; Admin
+  // is a laptop screen with tables (Phase 6 spec: "desktop first for admin (1280) but usable at
+  // 390"). Rather than a second shell, the admin pages mark themselves `data-wide` and the same
+  // container relaxes its width for them. At 390 the max-width never binds either way.
   return (
-    <div className="mx-auto flex min-h-dvh max-w-md flex-col print:max-w-none">
+    <div className="mx-auto flex min-h-dvh max-w-md flex-col has-[[data-wide]]:max-w-[1200px] print:max-w-none">
       <header className="no-print flex items-center justify-between gap-3 border-b border-line bg-panel px-4 py-2">
         <h1 className="text-section tracking-tight">ER Navigator</h1>
-        <OverflowMenu displayName={user.displayName} roleLabel={ROLE_LABEL[user.role]} />
+        <OverflowMenu displayName={user.displayName} roleLabel={ROLE_LABELS[user.role]} />
       </header>
 
       <main className="flex-1 pb-28">{children}</main>
