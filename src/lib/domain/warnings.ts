@@ -83,14 +83,18 @@ export function timeWarnings(c: CaseTimes): string[] {
     check(w, x.seenAt, x.repliedAt, `${d} seen`, `${d} replied`)
   }
 
-  // Investigations: the step order of each type.
+  // Investigations: the step order of each type. Each recorded step is compared with the last
+  // RECORDED step before it, not the literal previous entry: the optional preliminary report
+  // sits between "scan done" and "reported", and comparing only neighbours would let a report
+  // typed before the scan pass whenever the preliminary field is empty (Phase 8 review).
   for (const x of c.investigations ?? []) {
     const steps = INVESTIGATION_STEPS[x.type]
     const name = INVESTIGATION_LABELS[x.type]
-    for (let i = 1; i < steps.length; i++) {
-      const [prevKey, prevLabel] = steps[i - 1]!
-      const [key, label] = steps[i]!
-      check(w, x[prevKey], x[key], `${name} ${prevLabel.toLowerCase()}`, `${name} ${label.toLowerCase()}`)
+    let previous: { key: (typeof steps)[number][0]; label: string } | null = null
+    for (const [key, label] of steps) {
+      if (ms(x[key]) == null) continue
+      if (previous) check(w, x[previous.key], x[key], `${name} ${previous.label.toLowerCase()}`, `${name} ${label.toLowerCase()}`)
+      previous = { key, label }
     }
   }
 

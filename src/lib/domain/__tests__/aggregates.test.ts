@@ -268,7 +268,7 @@ describe('Phase 8 panels', () => {
       ['Open 24 h with no disposition decided', ['C4']],
       ['Resolved without a disposition', []],
       ['Times out of order', ['C12']], // its consult was "seen" before it was requested
-      ['Registration in the future', []],
+      ['Stay cannot be computed (leaving before registration)', []],
     ])
   })
 

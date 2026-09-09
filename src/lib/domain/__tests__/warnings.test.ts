@@ -75,6 +75,30 @@ describe('timeWarnings (prototype port)', () => {
     ).toEqual(['X-ray / KUB preliminary report is before X-ray / KUB done'])
   })
 
+  it('still flags a report before the scan when no preliminary report was entered (Phase 8 review C2)', () => {
+    expect(
+      timeWarnings({
+        registrationAt: t(0),
+        investigations: [{ type: 'CT', orderedAt: t(1), doneAt: t(5), preliminaryAt: null, resultedAt: t(3) }],
+      }),
+    ).toEqual(['CT reported is before CT scan done'])
+  })
+
+  it('compares each recorded step with the last recorded one, whatever is missing between them', () => {
+    expect(
+      timeWarnings({
+        registrationAt: t(0),
+        investigations: [{ type: 'CT', orderedAt: t(5), doneAt: null, preliminaryAt: null, resultedAt: t(3) }],
+      }),
+    ).toEqual(['CT reported is before CT ordered'])
+    expect(
+      timeWarnings({
+        registrationAt: t(0),
+        investigations: [{ type: 'LAB', orderedAt: t(1), collectedAt: null, receivedAt: t(4), resultedAt: t(3) }],
+      }),
+    ).toEqual(['Lab resulted is before Lab received by lab'])
+  })
+
   it('flags the admission and transfer chains', () => {
     const w = timeWarnings({ registrationAt: t(0), admOrderAt: t(5), bedRequestedAt: t(4), transferRequestedAt: t(6), transferAcceptedAt: t(5.5) })
     expect(w).toEqual(['bed requested (fax sent) is before admission order written', 'accepted by facility is before transfer requested'])

@@ -213,7 +213,7 @@ export function qchRow(c: CaseForExport): string[] {
   const admitted = c.disposition === 'ADMITTED'
   // Admission signals: an order, a ward, or a nursing handover. Without any of them the patient
   // never went to a ward, and the two ward columns are blank rather than repeating the departure.
-  const toWard = c.admOrderAt || c.wardCode || c.handoverAt ? (c.handoverAt ?? left) : null
+  const toWard = admitted || (c.disposition == null && (c.admOrderAt || c.wardCode || c.handoverAt)) ? (c.handoverAt ?? left) : null
   const imagingReasons = investigationReasons(c, false)
   const referralReasons = reasonsOf(c, STAGE.referral)
 
@@ -256,7 +256,7 @@ export function qchRow(c: CaseForExport): string[] {
     '', // Time of call case manger
     '', // Time of case manger replay
     fmtFormTime(toWard),
-    fmtHm(duration(c.admOrderAt, left ?? c.handoverAt)),
+    fmtHm(duration(c.admOrderAt, toWard)),
     admitted ? fmtHm(doorToDispositionHours(c)) : '',
     reasonsOf(c, STAGE.admission),
     c.updates.map((u) => `${fmtClock(u.at)} ${u.text}`).join(' | '),

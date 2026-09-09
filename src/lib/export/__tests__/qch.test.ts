@@ -215,7 +215,7 @@ describe('qchRow', () => {
       '', // Time of call case manger
       '', // Time of case manger replay
       '14:45',
-      '2:45',
+      '2:15',
       '7:15',
       'No bed available on accepting ward',
       '09:00 Bed requested | 13:00 Chased ward',
@@ -275,6 +275,24 @@ describe('qchRow', () => {
     )
     expect(discharged[QCH_GROUP_HEADER.indexOf('Time of Disposition TO WARD')]).toBe('')
     expect(discharged[QCH_GROUP_HEADER.indexOf('order to disposition /H')]).toBe('')
+  })
+
+  it('leaves the two ward time columns blank for a patient discharged with a ward still on the case (Phase 8 review C1)', () => {
+    const home = caseWith({
+      status: 'RESOLVED',
+      registrationAt: new Date('2026-09-01T05:00:00Z'),
+      admOrderAt: new Date('2026-09-01T07:00:00Z'),
+      departedAt: new Date('2026-09-01T09:00:00Z'),
+      resolvedAt: new Date('2026-09-01T09:00:00Z'),
+      disposition: 'DISCHARGED_HOME',
+      wardCode: 'MMW',
+    })
+    const row = qchRow(home)
+    expect(row[QCH_GROUP_HEADER.indexOf('Time of Disposition TO WARD')]).toBe('')
+    expect(row[QCH_GROUP_HEADER.indexOf('order to disposition /H')]).toBe('')
+    // Still open with an order: the ward time is the departure or handover when it comes.
+    const open = caseWith({ status: 'OPEN', admOrderAt: new Date('2026-09-01T07:00:00Z'), handoverAt: new Date('2026-09-01T08:00:00Z') })
+    expect(qchRow(open)[QCH_GROUP_HEADER.indexOf('Time of Disposition TO WARD')]).toBe('11:00')
   })
 
   it('marks isolation on the ward column, with or without a ward code', () => {

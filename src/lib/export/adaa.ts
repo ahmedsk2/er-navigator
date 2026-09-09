@@ -34,7 +34,7 @@ import {
 } from '@/src/lib/domain/kpi'
 import { MIN_N } from '@/src/lib/domain/time'
 import { dayOffset, fmtAt, fmtFormDate, fmtFormTime } from './format'
-import { EXPORT_STATUS_LABELS, type ExportRange } from './range'
+import { EXPORT_STATUS_LABELS, riyadhDateKey, type ExportRange } from './range'
 import type { Sheet, SummaryRow } from './rows'
 import { freePart, tablePart, type WorkbookPart } from './workbook'
 
@@ -100,23 +100,34 @@ export function dischargeType(disposition: string | null): string {
   return disposition ? (DISCHARGE_TYPES[disposition] ?? '') : ''
 }
 
-/** One case as one form row. Every offset is measured from the Riyadh date in column B. */
+/**
+ * The form dates a visit from its registration and offers only "days LATER" columns, so a triage
+ * on the Riyadh day BEFORE the registration (an ambulance patient triaged at 23:50 and clerked at
+ * 00:30) cannot be written into it: the offset would be negative, and a blank would date the
+ * triage a day late. Such a row keeps its triage cells blank, and the Read me counts it so the
+ * data collector enters it by hand (Phase 8 review).
+ */
+export function triageBeforeRegistrationDay(c: KpiCase): boolean {
+  return c.triageAt != null && riyadhDateKey(c.triageAt) < riyadhDateKey(c.registrationAt)
+}
+
 export function adaaRow(c: KpiCase): string[] {
   const base = c.registrationAt
   const left = leftAt(c)
+  const hideTriage = triageBeforeRegistrationDay(c)
   return [
     c.mrn,
     fmtFormDate(base),
     fmtFormTime(base),
-    dayOffset(base, c.triageAt),
-    fmtFormTime(c.triageAt),
+    hideTriage ? '' : dayOffset(base, c.triageAt),
+    hideTriage ? '' : fmtFormTime(c.triageAt),
     c.ctas == null ? '' : String(c.ctas),
     dayOffset(base, c.physicianAt),
     fmtFormTime(c.physicianAt),
     ...PAIN_BLOCK,
     dayOffset(base, c.decisionAt),
     fmtFormTime(c.decisionAt),
-    admissionType(c.wardCode),
+    admissionType(c.disposition == null || c.disposition === 'ADMITTED' ? c.wardCode : null),
     dischargeType(c.disposition),
     dayOffset(base, left),
     fmtFormTime(left),
@@ -249,6 +260,7 @@ export function adaaReadMeRows(input: {
 }): SummaryRow[] {
   const { cases, range } = input
   const noCtas = cases.filter((c) => c.ctas == null).length
+  const triageHidden = cases.filter(triageBeforeRegistrationDay).length
   const last = cases.length + 1
   return [
     HEADING('Adaa ED KPIs — read me'),
@@ -258,6 +270,7 @@ export function adaaReadMeRows(input: {
     { cells: ['Status filter', EXPORT_STATUS_LABELS[range.status]] },
     { cells: ['Rows written', String(cases.length)] },
     { cells: ['Rows with no CTAS recorded', String(noCtas)] },
+    { cells: ['Rows whose triage cells were left blank (triage on the day before registration; enter by hand)', String(triageHidden)] },
     { cells: ['Generated at', `${fmtAt(input.generatedAt)} (Asia/Riyadh)`] },
     BLANK,
     HEADING('Dates and times'),
@@ -303,7 +316,7 @@ export function adaaReadMeRows(input: {
     },
     {
       cells: [
-        'Admission Type is blank when no ward was recorded. Discharge Type is blank for an admission, for "left without being seen" and for "other".',
+        'Admission Type is filled only for a patient who was admitted, or who is still in the ED with a ward already recorded; a ward left on a patient who was then discharged, transferred or left is not reported as an admission. It is blank when no ward was recorded. Discharge Type is blank for an admission, for "left without being seen" and for "other".',
       ],
     },
     {

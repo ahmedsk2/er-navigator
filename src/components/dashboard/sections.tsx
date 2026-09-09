@@ -106,7 +106,7 @@ export function HeadlineTiles({ kpi, range }: Props) {
       {h.measured < h.cases ? (
         <p className="px-4 pb-3 text-caption text-muted" data-headline-note>
           {h.cases - h.measured} {h.cases - h.measured === 1 ? 'case has' : 'cases have'} no computable stay
-          (registration in the future).
+          (leaving time recorded before registration).
         </p>
       ) : null}
     </>

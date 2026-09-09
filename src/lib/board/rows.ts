@@ -32,7 +32,7 @@ function clockOf(row: BoardRow): CaseClock {
   }
 }
 
-/** Elapsed ED stay in hours; null when there is no sane clock (registration in the future). */
+/** Elapsed ED stay in hours; null when there is no sane clock (leaving before registration). */
 export function elapsedOf(row: BoardRow, now: Date): number | null {
   return elapsedHours(clockOf(row), now)
 }

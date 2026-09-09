@@ -125,6 +125,38 @@ describe('adaaRow', () => {
     ])
   })
 
+  it('leaves Admission Type blank on a patient who was discharged with a ward still on the case (Phase 8 review C1)', () => {
+    const home = caseWith({
+      status: 'RESOLVED',
+      registrationAt: new Date('2026-09-01T05:00:00Z'),
+      departedAt: new Date('2026-09-01T09:00:00Z'),
+      resolvedAt: new Date('2026-09-01T09:00:00Z'),
+      disposition: 'DISCHARGED_HOME',
+      wardCode: 'ICU',
+    })
+    const row = adaaRow(home)
+    expect(row[16]).toBe('')
+    expect(row[17]).toBe('Home')
+    // Admitted: the ward is reported. Open with a ward already recorded: reported too.
+    expect(adaaRow(caseWith({ ...home, disposition: 'ADMITTED' }))[16]).toBe('ICU')
+    expect(adaaRow(caseWith({ status: 'OPEN', wardCode: 'MMW' }))[16]).toBe('Ward')
+  })
+
+  it('blanks the triage cells when the triage fell on the Riyadh day before registration (Phase 8 review C3)', () => {
+    const ambulance = caseWith({
+      registrationAt: new Date('2026-09-01T21:30:00Z'), // 00:30 Riyadh, 02-Sep
+      triageAt: new Date('2026-09-01T20:50:00Z'), // 23:50 Riyadh, 01-Sep
+    })
+    const row = adaaRow(ambulance)
+    expect(row[1]).toBe('02-Sep-2026')
+    expect(row[2]).toBe('00:30')
+    expect(row[3]).toBe('')
+    expect(row[4]).toBe('')
+    // A triage earlier the same Riyadh day is written as it is: no offset, its own time.
+    const sameDay = caseWith({ registrationAt: new Date('2026-09-01T05:30:00Z'), triageAt: new Date('2026-09-01T05:10:00Z') })
+    expect(adaaRow(sameDay).slice(3, 5)).toEqual(['', '08:10'])
+  })
+
   it('is one row per case, in the order it was given them', () => {
     const sheet = adaaManualSheet([OVERNIGHT, caseWith({})])
     expect(sheet.name).toBe('ED KPIs manual')
@@ -257,6 +289,16 @@ describe('the Read me', () => {
     expect(text).toContain('DD-MMM-YYYY')
     expect(text).toContain('KPI 8 cannot be produced')
     expect(text).toContain('KPI 7 (mortality) is not produced')
+  })
+
+  it('counts the rows whose triage cells were left blank', () => {
+    const ambulance = caseWith({
+      registrationAt: new Date('2026-09-01T21:30:00Z'),
+      triageAt: new Date('2026-09-01T20:50:00Z'),
+    })
+    const rows = adaaReadMeRows({ cases: [ambulance, OVERNIGHT], range: RANGE, generatedAt: new Date('2026-09-09T12:00:00Z') })
+    const row = rows.find((r) => r.cells[0]?.startsWith('Rows whose triage cells were left blank'))
+    expect(row?.cells[1]).toBe('1')
   })
 
   it('gives the paste range for exactly the rows written', () => {

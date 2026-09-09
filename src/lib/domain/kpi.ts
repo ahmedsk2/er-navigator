@@ -160,7 +160,7 @@ function stayValues(cases: ReadonlyArray<KpiCase>, now: Date): Array<{ id: strin
   return out
 }
 
-/** One case per band; a case whose stay cannot be computed (registration in the future) is in none. */
+/** One case per band; a case whose stay cannot be computed (leaving before registration) is in none. */
 export function stayBands(cases: ReadonlyArray<KpiCase>, now: Date): IdRow[] {
   return bandRows(STAY_BANDS, stayValues(cases, now))
 }
@@ -304,7 +304,7 @@ export type Completeness = {
   noDecision24h: IdRow
   resolvedNoDisposition: IdRow
   outOfOrder: IdRow
-  /** Registration in the future: no stay can be computed, so the case is in no stay-based figure. */
+  /** No computable stay: a leaving time before the registration (validation refuses a future registration, so this is the case that reaches the database); the case is in no stay-based figure. */
   noStay: IdRow
 }
 
@@ -351,7 +351,7 @@ export function completeness(cases: ReadonlyArray<KpiCase>, now: Date): Complete
     noDecision24h: row('Open 24 h with no disposition decided', (c) => c.status === 'OPEN' && !c.decisionAt && now.getTime() - c.registrationAt.getTime() >= hours(24)),
     resolvedNoDisposition: row('Resolved without a disposition', (c) => c.status === 'RESOLVED' && !c.disposition),
     outOfOrder: row('Times out of order', isOutOfOrder),
-    noStay: row('Registration in the future', (c) => elapsedHours(c, now) == null),
+    noStay: row('Stay cannot be computed (leaving before registration)', (c) => elapsedHours(c, now) == null),
   }
 }
 
