@@ -16,7 +16,7 @@ import {
   renameListItem as renameListItemAction,
   setListItemActive as setListItemActiveAction,
 } from '@/app/(app)/admin/actions'
-import { Button, Field, Input, Select } from '@/src/components/ui'
+import { Button, Field, Input, Select, UNREACHABLE_MESSAGE } from '@/src/components/ui'
 import type { ListItem, ListKind, ReferenceLists } from '@/src/lib/admin/lists'
 
 type Editing = { kind: ListKind; id: string; name: string }
@@ -40,6 +40,9 @@ export function ListsPanel({ lists }: { lists: ReferenceLists }) {
       // The field was cleared above, so only a problem needs writing back.
       if (problem) setMessage(problem)
       else router.refresh()
+    } catch {
+      // A thrown action, not a refusal: say so rather than re-enabling in silence (Phase 7, C11).
+      setMessage(UNREACHABLE_MESSAGE)
     } finally {
       setBusy(false)
     }

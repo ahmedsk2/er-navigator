@@ -10,6 +10,15 @@ import { useEffect, useId, useState, type ReactNode } from 'react'
 import { fromLocalInput, toLocalInput } from '@/src/lib/cases/local-time'
 import { useHydrated } from './hydrated'
 
+/**
+ * What every action runner says when the call itself threw rather than answering (Phase 7, C11):
+ * a dropped ward wifi, a 502 during the stop-then-start deploy window, a Prisma transaction
+ * timeout. It must say that nothing was saved, because a failed save is otherwise
+ * indistinguishable from a successful one — the button simply re-enables.
+ */
+export const UNREACHABLE_MESSAGE =
+  'Could not reach the server. Nothing was saved. Check the connection and try again.'
+
 // --- section ----------------------------------------------------------------------------------
 
 export function Section({

@@ -10,7 +10,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { acknowledgeAlert as acknowledgeAlertAction } from '@/app/(app)/admin/actions'
-import { Button } from '@/src/components/ui'
+import { Button, UNREACHABLE_MESSAGE } from '@/src/components/ui'
 import type { AlertRow } from '@/src/lib/alerts/service'
 import { fmtStamp } from '@/src/lib/cases/local-time'
 import { band, type Band } from '@/src/lib/domain/time'
@@ -36,6 +36,9 @@ export function AlertsPanel({ alerts, canAcknowledge }: { alerts: AlertRow[]; ca
       const result = await acknowledgeAlertAction(row.id)
       if (result.ok) router.refresh()
       else setMessage(result.message)
+    } catch {
+      // A thrown action, not a refusal: say so rather than re-enabling in silence (Phase 7, C11).
+      setMessage(UNREACHABLE_MESSAGE)
     } finally {
       setBusy(false)
     }

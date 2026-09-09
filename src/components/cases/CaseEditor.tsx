@@ -34,6 +34,7 @@ import {
   Section,
   Select,
   TimeRow,
+  UNREACHABLE_MESSAGE,
 } from '@/src/components/ui'
 import { fmtStamp, hoursAgo, nowLocalInput, shiftMinutes } from '@/src/lib/cases/local-time'
 import type {
@@ -116,6 +117,8 @@ export function CaseEditor(props: CaseEditorProps) {
   const [issues, setIssues] = useState<ValidationIssue[]>([])
   const [conflict, setConflict] = useState<{ changedBy: string; changedAt: string } | null>(null)
   const [forbidden, setForbidden] = useState(false)
+  /** The action threw rather than answering: nothing reached the database (Phase 7, C11). */
+  const [unreachable, setUnreachable] = useState(false)
   const [saved, setSaved] = useState(false)
   const [busy, setBusy] = useState(false)
   const [voidReasonText, setVoidReasonText] = useState('')
@@ -287,6 +290,7 @@ export function CaseEditor(props: CaseEditorProps) {
     setIssues([])
     setConflict(null)
     setForbidden(false)
+    setUnreachable(false)
     setSaved(false)
   }
 
@@ -303,11 +307,19 @@ export function CaseEditor(props: CaseEditorProps) {
     } else setForbidden(true)
   }
 
+  /**
+   * A thrown action — a dropped connection, a 404 during the deploy window, a Prisma transaction
+   * timeout — used to be swallowed here: `void onSave()` discarded the rejection, the button
+   * greyed and un-greyed, and the nurse read that as "saved". The catch says what happened, and
+   * says it in the one way that matters: nothing was written (Phase 7, C11).
+   */
   async function run(work: () => Promise<void>): Promise<void> {
     setBusy(true)
     clearFeedback()
     try {
       await work()
+    } catch {
+      setUnreachable(true)
     } finally {
       setBusy(false)
     }
@@ -832,6 +844,15 @@ export function CaseEditor(props: CaseEditorProps) {
       {forbidden ? (
         <p className="mx-4 mb-2.5 rounded-card border border-line bg-panel p-3 text-body text-danger" role="alert">
           Your role cannot do that.
+        </p>
+      ) : null}
+      {unreachable ? (
+        <p
+          data-unreachable
+          className="mx-4 mb-2.5 rounded-card border border-danger bg-panel p-3 text-body text-danger"
+          role="alert"
+        >
+          {UNREACHABLE_MESSAGE}
         </p>
       ) : null}
       {saved ? (
