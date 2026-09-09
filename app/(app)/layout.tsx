@@ -1,7 +1,9 @@
 import type { Role } from '@prisma/client'
-import Link from 'next/link'
+import { NewCaseFab } from '@/src/components/shell/NewCaseFab'
+import { OverflowMenu } from '@/src/components/shell/OverflowMenu'
+import { TabBar } from '@/src/components/shell/TabBar'
 import { requireUser } from '@/src/lib/auth/session'
-import { logout } from './actions'
+import { can } from '@/src/lib/authz/policy'
 
 // No all-caps labels (design/tokens.md), so the enum is rendered in sentence case.
 const ROLE_LABEL: Record<Role, string> = {
@@ -12,35 +14,31 @@ const ROLE_LABEL: Record<Role, string> = {
 }
 
 /**
+ * The signed-in shell: a slim app bar with the overflow menu, the page, the floating "+ New case"
+ * button and the bottom tab bar (the prototype's `ERNavigatorTracker`).
+ *
  * Everything inside this route group needs a signed-in user. The gate in proxy.ts only sees the
  * cookie; this is where the session is actually resolved, and a stale or forged cookie is turned
- * into a redirect to /login. The bottom tab bar arrives with the board in Phase 3.
+ * into a redirect to /login.
+ *
+ * `/cases/*` deliberately sits outside this group — the editor is a full-screen task with its own
+ * "‹ Back", exactly as the prototype hides the bar and the FAB in its editor view.
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser()
 
+  // `print:max-w-none`: the centred phone column becomes a paper-width sheet on the printer.
   return (
-    <div className="mx-auto flex min-h-dvh max-w-md flex-col">
-      <header className="flex items-center justify-between gap-3 border-b border-line bg-panel px-4 py-3">
-        <div className="min-w-0">
-          <h1 className="text-title tracking-tight">ER Navigator</h1>
-          <Link
-            href="/account"
-            className="block truncate text-label font-medium text-muted underline-offset-4 hover:underline"
-          >
-            {user.displayName} · {ROLE_LABEL[user.role]}
-          </Link>
-        </div>
-        <form action={logout}>
-          <button
-            type="submit"
-            className="min-h-11 rounded-button border border-line px-3 text-body font-semibold text-accent-ink"
-          >
-            Log out
-          </button>
-        </form>
+    <div className="mx-auto flex min-h-dvh max-w-md flex-col print:max-w-none">
+      <header className="no-print flex items-center justify-between gap-3 border-b border-line bg-panel px-4 py-2">
+        <h1 className="text-section tracking-tight">ER Navigator</h1>
+        <OverflowMenu displayName={user.displayName} roleLabel={ROLE_LABEL[user.role]} />
       </header>
-      <main className="flex-1 px-4 pt-6 pb-16">{children}</main>
+
+      <main className="flex-1 pb-28">{children}</main>
+
+      {can(user.role, 'case.create') ? <NewCaseFab /> : null}
+      <TabBar showAdmin={user.role === 'ADMIN'} />
     </div>
   )
 }

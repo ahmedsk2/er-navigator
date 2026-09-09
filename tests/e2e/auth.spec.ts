@@ -66,8 +66,11 @@ test.describe('signing in', () => {
     await signIn(page, ADMIN_USERNAME, ADMIN_PASSWORD)
     await expect(page).toHaveURL('/')
     await expect(page.getByRole('heading', { name: 'ER Navigator' })).toBeVisible()
-    await expect(page.getByRole('link', { name: `${ADMIN_DISPLAY_NAME} · Admin` })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Elapsed-time bands' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'ER board' })).toBeVisible()
+
+    // Phase 3 moved the name and Log out from the header bar into the overflow menu.
+    await page.getByRole('button', { name: 'Menu' }).click()
+    await expect(page.getByRole('menuitem', { name: `${ADMIN_DISPLAY_NAME} · Admin` })).toBeVisible()
   })
 
   test('a locked account is told to wait, not that the password was wrong', async ({ page }) => {
@@ -91,7 +94,8 @@ test.describe('signed in', () => {
     await signIn(page, ADMIN_USERNAME, ADMIN_PASSWORD)
     await expect(page).toHaveURL('/')
 
-    await page.getByRole('button', { name: 'Log out' }).click()
+    await page.getByRole('button', { name: 'Menu' }).click()
+    await page.getByRole('menuitem', { name: 'Log out' }).click()
     await expect(page).toHaveURL('/login')
     await expect(page.getByLabel('Username')).toBeVisible()
 

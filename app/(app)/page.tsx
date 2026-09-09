@@ -1,58 +1,34 @@
-import Link from 'next/link'
+import type { Metadata } from 'next'
+import { Board } from '@/src/components/board/Board'
 import { requireUser } from '@/src/lib/auth/session'
-import { can } from '@/src/lib/authz/policy'
-import { THRESHOLDS_H } from '@/src/lib/domain/taxonomy'
+import { loadBoard } from '@/src/lib/board/load'
+import { parseFilter } from '@/src/lib/board/rows'
 
-const bands = [
-  ['none', 'bg-band-none', 'no data'],
-  ['ok', 'bg-band-ok', 'under 4h'],
-  ['h4', 'bg-band-h4', '4h and over'],
-  ['h6', 'bg-band-h6', '6h and over'],
-  ['h12', 'bg-band-h12', '12h and over'],
-  ['h24', 'bg-band-h24', '24h and over'],
-] as const
+export const metadata: Metadata = { title: 'ER board · ER Navigator' }
+export const dynamic = 'force-dynamic'
 
-// The board itself lands in Phase 3. Until then this is the signed-in home: the band legend
-// (kept from the Phase 0 holding page), the way in to the Phase 2 case editor, and a note about
-// what is coming.
-export default async function Home() {
+/**
+ * `/` — the board, for every role (`case.view` is ALL).
+ *
+ * The rows are loaded and sorted here, on the server, so the first paint is the real board and
+ * not a spinner; `Board` then keeps it current on a 30 s beat. `f` decides which cases the query
+ * asks for, so it must be read here; `q` is a client-side filter over the rows already sent, so
+ * it is only handed through as the input's initial value.
+ *
+ * `key={filter}` is deliberate: a filter change is a navigation, and remounting is what discards
+ * the previous tab's rows instead of showing them for one frame.
+ */
+export default async function BoardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ f?: string | string[]; q?: string | string[] }>
+}) {
   const user = await requireUser()
+  const params = await searchParams
+  const filter = parseFilter(Array.isArray(params.f) ? params.f[0] : params.f)
+  const query = (Array.isArray(params.q) ? params.q[0] : params.q) ?? ''
 
-  return (
-    <>
-      <p className="text-body text-ink-2">
-        The board arrives in Phase 3. Until then this page confirms your account, your role and
-        the elapsed-time bands every case will be coloured by.
-      </p>
+  const payload = await loadBoard(filter, new Date())
 
-      {can(user.role, 'case.create') ? (
-        <Link
-          href="/cases/new"
-          className="mt-6 flex min-h-11 items-center justify-center rounded-button bg-accent px-4 text-body font-semibold text-white"
-        >
-          New case
-        </Link>
-      ) : null}
-
-      <section className="mt-6 rounded-card border border-line bg-panel p-4 shadow-panel">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-section">Elapsed-time bands</h2>
-          <span className="num text-caption text-muted">thresholds {THRESHOLDS_H.join(' / ')} h</span>
-        </div>
-        <ul className="mt-3 divide-y divide-line-soft">
-          {bands.map(([key, cls, label]) => (
-            <li key={key} className="flex min-h-11 items-center gap-3 py-2">
-              <span className={`h-6 w-1.5 rounded-r ${cls}`} aria-hidden />
-              <span className="num text-body font-semibold">{label}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <p className="mt-8 text-caption text-muted">
-        Phase 1 deployed: sign-in, sessions and the role gate. Build progress: <code>docs/PLAN.md</code>{' '}
-        in the repository.
-      </p>
-    </>
-  )
+  return <Board key={filter} initial={payload} initialQuery={query} printedBy={user.displayName} />
 }

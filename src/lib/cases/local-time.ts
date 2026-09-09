@@ -47,6 +47,27 @@ export function fmtStamp(iso: string): string {
   return `${get('day')}/${get('month')} ${get('hour')}:${get('minute')}`
 }
 
+const sheetFormat = new Intl.DateTimeFormat('en-GB', {
+  timeZone: RIYADH,
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+})
+
+/**
+ * "dd/mm/yyyy HH:mm" in Asia/Riyadh — the handover sheet's printed-at line. Assembled from parts
+ * rather than `format()` on purpose: a locale's joining text can differ between the Node build's
+ * ICU and the phone's, and this string is rendered on both sides of hydration.
+ */
+export function fmtSheetStamp(iso: string): string {
+  const parts = sheetFormat.formatToParts(new Date(iso))
+  const get = (type: Intl.DateTimeFormatPartTypes): string => parts.find((p) => p.type === type)?.value ?? '00'
+  return `${get('day')}/${get('month')}/${get('year')} ${get('hour')}:${get('minute')}`
+}
+
 /** Shift a registration time by whole minutes (the −30m / +30m chips). */
 export function shiftMinutes(iso: string, minutes: number): string {
   return new Date(new Date(iso).getTime() + minutes * 60_000).toISOString()

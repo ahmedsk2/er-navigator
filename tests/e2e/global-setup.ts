@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs'
 import { LOCKOUT_MS } from '../../src/lib/auth/lockout'
 import { prisma } from '../../src/lib/db'
+import { seedBoardCases } from './fixtures/board-cases'
 import { seedE2EUsers } from './fixtures/seed-users'
 
 /**
@@ -35,4 +36,8 @@ export default async function globalSetup(): Promise<void> {
   // Phase 2: the navigator, supervisor and viewer accounts the case tests sign in as, seeded
   // through the owner role so the previous run's fixture cases can be cleared too.
   await seedE2EUsers()
+
+  // Phase 3: a board worth looking at — eight cases across every band, plus a voided one that
+  // must never appear. Strictly after seedE2EUsers(), which is what clears the last run's copies.
+  await seedBoardCases()
 }

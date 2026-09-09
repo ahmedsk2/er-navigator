@@ -56,7 +56,7 @@ export async function signIn(page: Page, user: E2EUser, taps = new Taps()): Prom
   return taps
 }
 
-/** The shortest real path to an open case: home -> New case -> MRN -> stage -> reason -> save. */
+/** The shortest real path to an open case: the board's FAB -> MRN -> stage -> reason -> save. */
 export async function openCase(
   page: Page,
   mrn: string,
@@ -64,7 +64,7 @@ export async function openCase(
   reason: string,
   taps: Taps,
 ): Promise<string> {
-  await taps.clickLink(page, 'New case')
+  await taps.clickLink(page, '+ New case')
   await expect(page).toHaveURL('/cases/new')
   await taps.fill(page, 'MRN (digits only)', mrn)
   await taps.click(page, stage)

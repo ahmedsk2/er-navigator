@@ -34,4 +34,9 @@ describe('the route gate agrees with the session module', () => {
   it('never reads the database in the gate', () => {
     expect(proxy).not.toMatch(/prisma|PrismaClient/)
   })
+
+  it('answers a signed-out route handler with 401 instead of redirecting it to an HTML form', () => {
+    expect(proxy).toContain(`pathname.startsWith('/api/')`)
+    expect(proxy).toContain('status: 401')
+  })
 })
