@@ -144,6 +144,72 @@ describe('30-day dashboard, hand-computed', () => {
   })
 })
 
+/**
+ * Phase 8, Slice D. `src/lib/domain/kpi.ts` is written in parallel and takes a `KpiCase`, "a
+ * structural subset of `CaseForStats`". The shape below is that contract copied from
+ * docs/specs/phase8-reports.md, restated here so a field dropped from `CaseForStats` — or handed
+ * back with the wrong type — is a compile error in this file rather than a merge conflict in the
+ * lead's. It deliberately does not import from kpi.ts: this must fail loudly before that module
+ * lands, not after.
+ */
+type KpiConsultContract = {
+  departmentName: string
+  consultedAt: Date | null
+  seenAt: Date | null
+  repliedAt: Date | null
+}
+type KpiInvestigationContract = {
+  type: 'LAB' | 'CT' | 'US' | 'XR'
+  orderedAt: Date | null
+  collectedAt: Date | null
+  receivedAt: Date | null
+  doneAt: Date | null
+  preliminaryAt: Date | null
+  resultedAt: Date | null
+}
+type KpiCaseContract = {
+  id: string
+  mrn: string
+  status: 'OPEN' | 'RESOLVED' | 'VOIDED'
+  registrationAt: Date
+  triageAt: Date | null
+  physicianAt: Date | null
+  decisionAt: Date | null
+  departedAt: Date | null
+  resolvedAt: Date | null
+  admOrderAt: Date | null
+  bedRequestedAt: Date | null
+  bedAssignedAt: Date | null
+  handoverAt: Date | null
+  transferRequestedAt: Date | null
+  medAdminInformedAt: Date | null
+  disposition: string | null
+  wardCode: string | null
+  ctas: number | null
+  areaName: string | null
+  stageNames: ReadonlyArray<string>
+  updatesCount: number
+  lastUpdateAt: Date | null
+  consults: ReadonlyArray<KpiConsultContract>
+  investigations: ReadonlyArray<KpiInvestigationContract>
+}
+
+describe('CaseForStats satisfies the KpiCase contract', () => {
+  it('every case in the fixture is usable as a KpiCase', () => {
+    const asKpi: KpiCaseContract[] = FIXTURE
+    expect(asKpi).toHaveLength(FIXTURE.length)
+  })
+
+  it('carries the Phase 8 collection fields and the update counters', () => {
+    const c1 = FIXTURE.find((c) => c.id === 'C1')!
+    expect(c1.ctas).toBe(3)
+    expect(c1.areaName).toBe('Rapid assessment zone')
+    // Untouched by every Phase 4 aggregate, so the hand-computed answers above are unchanged.
+    expect(FIXTURE.every((c) => typeof c.updatesCount === 'number')).toBe(true)
+    expect(FIXTURE.filter((c) => c.ctas != null).map((c) => c.id)).toEqual(['C1', 'C5', 'C6'])
+  })
+})
+
 describe('all-time dashboard adds C9', () => {
   it('median LOS over six resolved (2,6,7,8,9,10) = 7.5; Resus and TRANSFERRED appear', () => {
     const d = dashboard(FIXTURE, 'all', NOW)

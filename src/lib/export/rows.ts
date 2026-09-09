@@ -37,24 +37,21 @@ export type ExportUpdate = { at: Date; text: string; authorName: string }
  * A case as the workbook needs it: everything the dashboard maths already reads, plus the columns
  * only the sheet shows. Still no PHI — the MRN, times, taxonomy labels and display names.
  */
+/**
+ * Phase 8 widened `CaseForStats` with most of the journey, the ward code, CTAS and the ED area,
+ * so what is left here is only what the workbook alone shows: the room, the rest of the transfer
+ * chain, the referral details, isolation, the note, the labels and the update text.
+ */
 export type CaseForExport = CaseForStats & {
   navigatorName: string
   /** "Stage: reason", the prototype's `${stageOf(c.primary).name}: ${reasonLabel(c.primary)}`. */
   primaryReasonLabel: string | null
   reasonLabels: ReadonlyArray<string>
-  medAdminInformedAt: Date | null
-  triageAt: Date | null
   roomAt: Date | null
-  physicianAt: Date | null
-  decisionAt: Date | null
-  handoverAt: Date | null
-  transferRequestedAt: Date | null
   transferAcceptedAt: Date | null
   transportArrivedAt: Date | null
   referralTrackingNo: string | null
   transferFacility: string | null
-  /** The ward's short code (ICU, FMW …), which is how every other surface in the app names it. */
-  wardCode: string | null
   isolation: boolean
   resolutionNote: string | null
   updates: ReadonlyArray<ExportUpdate>
@@ -80,6 +77,10 @@ export const CASES_HEADER: string[] = [
   'Hours waiting so far (open)',
   'Weekday',
   'Shift',
+  // Phase 8: every KPI in both ED decks and in the Adaa form is reported per CTAS, and the
+  // monthly deck splits everything by ED area, so both sit beside the shift they qualify.
+  'CTAS',
+  'ED area',
   'Navigator',
   'Stages',
   'Primary reason',
@@ -110,6 +111,8 @@ export function casesRow(c: CaseForExport, now: Date): string[] {
     c.status === 'OPEN' ? fmtHours2(elapsed) : '',
     riyadhWeekday(c.registrationAt),
     c.shift ? SHIFT_LABELS[c.shift] : '',
+    c.ctas == null ? '' : String(c.ctas),
+    c.areaName ?? '',
     c.navigatorName,
     join(c.stageNames),
     c.primaryReasonLabel ?? '',

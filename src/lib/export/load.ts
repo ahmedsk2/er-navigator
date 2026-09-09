@@ -25,20 +25,16 @@ export const CASE_EXPORT_SELECT = {
     },
   },
   openedBy: { select: { displayName: true } },
-  ward: { select: { code: true } },
-  medAdminInformedAt: true,
-  triageAt: true,
   roomAt: true,
-  physicianAt: true,
-  decisionAt: true,
-  handoverAt: true,
-  transferRequestedAt: true,
   transferAcceptedAt: true,
   transportArrivedAt: true,
   referralTrackingNo: true,
   transferFacility: true,
   isolation: true,
   resolutionNote: true,
+  // Widens the dashboard's `take: 1` newest-first read to the whole list, oldest first, which is
+  // the order the Updates sheet prints. `toCaseForStats` finds the newest by scanning, so both
+  // shapes agree on `lastUpdateAt`.
   updates: {
     select: { createdAt: true, text: true, author: { select: { displayName: true } } },
     orderBy: { createdAt: 'asc' },
@@ -58,18 +54,11 @@ export function toCaseForExport(row: CaseExportRow): CaseForExport {
     reasonLabels: [...row.reasons]
       .sort((a, b) => a.reason.stage.sortOrder - b.reason.stage.sortOrder || a.reason.name.localeCompare(b.reason.name))
       .map((r) => label(r.reason)),
-    medAdminInformedAt: row.medAdminInformedAt,
-    triageAt: row.triageAt,
     roomAt: row.roomAt,
-    physicianAt: row.physicianAt,
-    decisionAt: row.decisionAt,
-    handoverAt: row.handoverAt,
-    transferRequestedAt: row.transferRequestedAt,
     transferAcceptedAt: row.transferAcceptedAt,
     transportArrivedAt: row.transportArrivedAt,
     referralTrackingNo: row.referralTrackingNo,
     transferFacility: row.transferFacility,
-    wardCode: row.ward?.code ?? null,
     isolation: row.isolation,
     resolutionNote: row.resolutionNote,
     updates: row.updates.map((u) => ({

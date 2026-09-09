@@ -169,6 +169,22 @@ describe('casesSheet', () => {
     expect(row[column(CASES_HEADER, 'Note')]).toBe('Admitted to ICU')
   })
 
+  it('carries the CTAS and the ED area, right after the shift, and blanks them when unrecorded', () => {
+    expect(CASES_HEADER.slice(column(CASES_HEADER, 'Shift'), column(CASES_HEADER, 'Shift') + 3)).toEqual([
+      'Shift',
+      'CTAS',
+      'ED area',
+    ])
+    const c1 = rowFor(sheet.rows, '100001')
+    expect(c1[column(CASES_HEADER, 'CTAS')]).toBe('3')
+    expect(c1[column(CASES_HEADER, 'ED area')]).toBe('Rapid assessment zone')
+
+    // C2 has neither: two empty cells, not a zero and not a dash.
+    const c2 = rowFor(sheet.rows, '100002')
+    expect(c2[column(CASES_HEADER, 'CTAS')]).toBe('')
+    expect(c2[column(CASES_HEADER, 'ED area')]).toBe('')
+  })
+
   it('leaves the isolation column blank rather than writing "No"', () => {
     expect(rowFor(sheet.rows, '100001')[column(CASES_HEADER, 'Isolation')]).toBe('')
   })

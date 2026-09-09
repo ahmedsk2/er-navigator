@@ -3,6 +3,11 @@
  * NOW is Tuesday 2026-09-08 12:00 UTC = 15:00 in Asia/Riyadh. Hours are relative to NOW.
  * Twelve cases: nine open/resolved inside 30 days, one 40 days old, one voided, one with an
  * out-of-order consult. Every number in the tests is derived from this table by hand.
+ *
+ * Phase 8 widened `CaseForStats` so it satisfies `KpiCase`. The new fields default to null / 0
+ * in `c()` below and are set on individual cases only where a column would otherwise never be
+ * exercised, so every hand-computed expectation in aggregates.test.ts is unchanged: nothing the
+ * Phase 4 aggregates read has moved.
  */
 import type { CaseForStats } from '../aggregates'
 
@@ -19,9 +24,20 @@ const c = (p: Seed): CaseForStats => ({
   disposition: null,
   consults: [],
   investigations: [],
+  triageAt: null,
+  physicianAt: null,
+  decisionAt: null,
   admOrderAt: null,
   bedRequestedAt: null,
   bedAssignedAt: null,
+  handoverAt: null,
+  transferRequestedAt: null,
+  medAdminInformedAt: null,
+  wardCode: null,
+  ctas: null,
+  areaName: null,
+  updatesCount: 0,
+  lastUpdateAt: null,
   otherTexts: [],
   departedAt: null,
   resolvedAt: null,
@@ -30,7 +46,7 @@ const c = (p: Seed): CaseForStats => ({
 
 export const FIXTURE: CaseForStats[] = [
   // C1: open 3h (ok band), Tue 12:00 Riyadh
-  c({ id: 'C1', mrn: '100001', status: 'OPEN', registrationAt: h(3), shift: 'MORNING', primaryReasonName: 'No bed available on accepting ward', stageNames: ['Admission process'], departmentNames: ['MROD'],
+  c({ id: 'C1', mrn: '100001', status: 'OPEN', registrationAt: h(3), shift: 'MORNING', ctas: 3, areaName: 'Rapid assessment zone', primaryReasonName: 'No bed available on accepting ward', stageNames: ['Admission process'], departmentNames: ['MROD'],
     consults: [{ departmentName: 'MROD', consultedAt: h(2), seenAt: h(1), repliedAt: h(0.5) }] }),
   // C2: open 7h (h6), Tue 08:00
   c({ id: 'C2', mrn: '100002', status: 'OPEN', registrationAt: h(7), shift: 'EVENING', primaryReasonName: 'Awaiting consulted team response/callback', stageNames: ['Referral / consulted team'], departmentNames: ['ICU'],
@@ -41,7 +57,7 @@ export const FIXTURE: CaseForStats[] = [
   // C4: open 25h (h24), Mon 14:00
   c({ id: 'C4', mrn: '100004', status: 'OPEN', registrationAt: h(25), shift: 'MORNING', primaryReasonName: 'Fax/communication breakdown between units', stageNames: ['Administrative / coordination'] }),
   // C5: resolved, reg 30h ago (Mon 09:00), left 22h ago: LOS 8. Two teams, admission chain.
-  c({ id: 'C5', mrn: '100005', status: 'RESOLVED', registrationAt: h(30), departedAt: h(22), resolvedAt: h(22), shift: 'MORNING', primaryReasonName: 'No bed available on accepting ward',
+  c({ id: 'C5', mrn: '100005', status: 'RESOLVED', registrationAt: h(30), departedAt: h(22), resolvedAt: h(22), shift: 'MORNING', ctas: 2, areaName: 'Resuscitation area', primaryReasonName: 'No bed available on accepting ward',
     stageNames: ['Admission process', 'Referral / consulted team'], departmentNames: ['MROD', 'General Surgery'], disposition: 'ADMITTED',
     consults: [
       { departmentName: 'MROD', consultedAt: h(28), seenAt: h(27), repliedAt: h(26.5) },
@@ -49,7 +65,7 @@ export const FIXTURE: CaseForStats[] = [
     ],
     admOrderAt: h(27), bedRequestedAt: h(26.5), bedAssignedAt: h(23) }),
   // C6: resolved, reg 50h ago (Sun 13:00), left 40h ago: LOS 10. CT.
-  c({ id: 'C6', mrn: '100006', status: 'RESOLVED', registrationAt: h(50), departedAt: h(40), resolvedAt: h(40), shift: 'EVENING', primaryReasonName: 'Imaging: acquisition delay (CT)', stageNames: ['Investigations'], disposition: 'DISCHARGED_HOME',
+  c({ id: 'C6', mrn: '100006', status: 'RESOLVED', registrationAt: h(50), departedAt: h(40), resolvedAt: h(40), shift: 'EVENING', ctas: 4, areaName: 'Acute area', primaryReasonName: 'Imaging: acquisition delay (CT)', stageNames: ['Investigations'], disposition: 'DISCHARGED_HOME',
     investigations: [{ type: 'CT', orderedAt: h(48), collectedAt: null, receivedAt: null, doneAt: h(46), preliminaryAt: h(45), resultedAt: h(43) }] }),
   // C7: resolved, reg 74h ago (Sat 13:00), left 68h ago: LOS 6.
   c({ id: 'C7', mrn: '100007', status: 'RESOLVED', registrationAt: h(74), departedAt: h(68), resolvedAt: h(68), shift: 'NIGHT', primaryReasonName: 'Awaiting pharmacy', stageNames: ['Discharge process'], disposition: 'DISCHARGED_HOME' }),

@@ -32,9 +32,22 @@ export type InvestigationForStats = {
   resultedAt: Date | null
 }
 
+/**
+ * One case, as every number in the app is computed from.
+ *
+ * Phase 8 widened it so that it structurally satisfies `KpiCase` in `src/lib/domain/kpi.ts`: the
+ * Adaa KPIs need the door-to-doctor and doctor-to-decision milestones, the admission-to-unit
+ * bands need the whole admission chain and the ward, the "actions documented" panel needs the
+ * update count and the transfer and escalation steps, and the by-CTAS and by-area sections need
+ * the two new collection fields. `departedAt` and `resolvedAt` are restated here so they are
+ * required rather than optional as `CaseClock` leaves them — `toCaseForStats` has always set
+ * both, and `KpiCase` reads them as plain nullable fields.
+ */
 export type CaseForStats = CaseClock & {
   id: string
   mrn: string
+  departedAt: Date | null
+  resolvedAt: Date | null
   shift: 'MORNING' | 'EVENING' | 'NIGHT' | null
   primaryReasonName: string | null
   stageNames: ReadonlyArray<string>
@@ -42,9 +55,25 @@ export type CaseForStats = CaseClock & {
   disposition: string | null
   consults: ReadonlyArray<ConsultForStats>
   investigations: ReadonlyArray<InvestigationForStats>
+  // The journey milestones the Adaa KPIs are measured between.
+  triageAt: Date | null
+  physicianAt: Date | null
+  decisionAt: Date | null
+  // The admission chain, plus the escalation and transfer steps "actions documented" counts.
   admOrderAt: Date | null
   bedRequestedAt: Date | null
   bedAssignedAt: Date | null
+  handoverAt: Date | null
+  transferRequestedAt: Date | null
+  medAdminInformedAt: Date | null
+  /** The ward's short code (ICU, FMW …), which is how `unitTypeOf` tells an ICU from a ward. */
+  wardCode: string | null
+  /** Phase 8 collection fields: the triage acuity, and the name of the ED area. */
+  ctas: number | null
+  areaName: string | null
+  /** How many updates the case has, and when the newest was written. */
+  updatesCount: number
+  lastUpdateAt: Date | null
   otherTexts: ReadonlyArray<{ stageName: string; text: string }>
 }
 

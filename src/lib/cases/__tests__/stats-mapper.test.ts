@@ -21,10 +21,21 @@ function row(over: Partial<CaseStatsRow> = {}): CaseStatsRow {
     resolvedAt: null,
     shift: 'MORNING',
     disposition: null,
+    triageAt: null,
+    physicianAt: null,
+    decisionAt: null,
     admOrderAt: null,
     bedRequestedAt: null,
     bedAssignedAt: null,
+    handoverAt: null,
+    transferRequestedAt: null,
+    medAdminInformedAt: null,
+    ctas: null,
     primaryReason: null,
+    ward: null,
+    area: null,
+    _count: { updates: 0 },
+    updates: [],
     reasons: [],
     consults: [],
     investigations: [],
@@ -41,21 +52,32 @@ describe('CASE_STATS_SELECT', () => {
   it('asks for every field CaseForStats needs and nothing else', () => {
     expect(Object.keys(CASE_STATS_SELECT).sort()).toEqual(
       [
+        '_count',
         'admOrderAt',
+        'area',
         'bedAssignedAt',
         'bedRequestedAt',
         'consults',
+        'ctas',
+        'decisionAt',
         'departedAt',
         'disposition',
+        'handoverAt',
         'id',
         'investigations',
+        'medAdminInformedAt',
         'mrn',
+        'physicianAt',
         'primaryReason',
         'reasons',
         'registrationAt',
         'resolvedAt',
         'shift',
         'status',
+        'transferRequestedAt',
+        'triageAt',
+        'updates',
+        'ward',
       ].sort(),
     )
   })
@@ -143,9 +165,20 @@ describe('toCaseForStats', () => {
           resultedAt: at('2026-09-07T10:00:00Z'),
         },
       ],
+      triageAt: null,
+      physicianAt: null,
+      decisionAt: null,
       admOrderAt: at('2026-09-07T09:00:00Z'),
       bedRequestedAt: at('2026-09-07T09:30:00Z'),
       bedAssignedAt: at('2026-09-07T13:00:00Z'),
+      handoverAt: null,
+      transferRequestedAt: null,
+      medAdminInformedAt: null,
+      wardCode: null,
+      ctas: null,
+      areaName: null,
+      updatesCount: 0,
+      lastUpdateAt: null,
       otherTexts: [],
     })
 
@@ -186,6 +219,57 @@ describe('toCaseForStats', () => {
     expect(mapped.disposition).toBeNull()
     expect(mapped.stageNames).toEqual([])
     expect(mapped.departmentNames).toEqual([])
+  })
+
+  /**
+   * Phase 8. `KpiCase` reads the ward by its code and the area by its name, and needs how many
+   * updates a case has and when the newest was written. The count comes from `_count`, so it is
+   * right even though the dashboard's own select only fetches one update row.
+   */
+  it('maps the ward code, the CTAS, the ED area name and the update count', () => {
+    const mapped = toCaseForStats(
+      row({
+        ctas: 2,
+        ward: { code: 'ICU' },
+        area: { name: 'Resuscitation area' },
+        triageAt: at('2026-09-08T06:10:00Z'),
+        physicianAt: at('2026-09-08T06:40:00Z'),
+        decisionAt: at('2026-09-08T09:00:00Z'),
+        handoverAt: at('2026-09-08T11:00:00Z'),
+        transferRequestedAt: at('2026-09-08T10:00:00Z'),
+        medAdminInformedAt: at('2026-09-08T10:30:00Z'),
+        _count: { updates: 4 },
+        updates: [{ createdAt: at('2026-09-08T11:30:00Z') }],
+      }),
+    )
+    expect(mapped.ctas).toBe(2)
+    expect(mapped.wardCode).toBe('ICU')
+    expect(mapped.areaName).toBe('Resuscitation area')
+    expect(mapped.triageAt).toEqual(at('2026-09-08T06:10:00Z'))
+    expect(mapped.physicianAt).toEqual(at('2026-09-08T06:40:00Z'))
+    expect(mapped.decisionAt).toEqual(at('2026-09-08T09:00:00Z'))
+    expect(mapped.handoverAt).toEqual(at('2026-09-08T11:00:00Z'))
+    expect(mapped.transferRequestedAt).toEqual(at('2026-09-08T10:00:00Z'))
+    expect(mapped.medAdminInformedAt).toEqual(at('2026-09-08T10:30:00Z'))
+    expect(mapped.updatesCount).toBe(4)
+    expect(mapped.lastUpdateAt).toEqual(at('2026-09-08T11:30:00Z'))
+  })
+
+  it('finds the newest update whatever order the query returned them in', () => {
+    // The export widens the same select to every update, oldest first; the dashboard takes the
+    // newest one only. Both must produce the same answer.
+    const oldestFirst = toCaseForStats(
+      row({
+        _count: { updates: 3 },
+        updates: [
+          { createdAt: at('2026-09-08T06:00:00Z') },
+          { createdAt: at('2026-09-08T09:00:00Z') },
+          { createdAt: at('2026-09-08T07:00:00Z') },
+        ],
+      }),
+    )
+    expect(oldestFirst.lastUpdateAt).toEqual(at('2026-09-08T09:00:00Z'))
+    expect(toCaseForStats(row()).lastUpdateAt).toBeNull()
   })
 
   it('keeps a voided case voided, so inRange() can drop it', () => {
