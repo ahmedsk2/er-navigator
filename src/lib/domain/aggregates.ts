@@ -52,6 +52,7 @@ export type Range = (typeof RANGES)[number]
 
 export type ConsultForStats = { departmentName: string; consultedAt: Date | null; seenAt: Date | null; repliedAt: Date | null }
 export type InvestigationForStats = {
+  /** Every type the taxonomy names, so Phase 8b's MRI arrives here the moment it is seeded. */
   type: keyof typeof INVESTIGATION_STEPS
   orderedAt: Date | null
   collectedAt: Date | null
@@ -61,6 +62,22 @@ export type InvestigationForStats = {
   preliminaryAt: Date | null
   resultedAt: Date | null
 }
+
+/**
+ * The Phase 8b vocabularies, spelled out as literal unions the way every other enum in this file
+ * is (`shift`, `disposition`) rather than imported from `@prisma/client`, which this module has
+ * never depended on. They are the KPI contract's `Answer` and `UpdateActionKind`
+ * (docs/specs/phase8b-decisions.md, "The KPI contract additions"): once `kpi.ts` carries them,
+ * `CaseForStats` satisfies `KpiCase` structurally, as it already does for everything else here.
+ */
+export type Answer = 'YES' | 'NO' | 'NOT_SURE'
+export type UpdateActionKind =
+  | 'LEADERSHIP_ESCALATION'
+  | 'BED_MANAGEMENT'
+  | 'FAX_RCC'
+  | 'PRO_SOCIAL_WORK'
+  | 'FORCED_SAFETY_ADMISSION'
+  | 'DAMA_MANAGEMENT'
 
 /**
  * One case, as every number in the app is computed from.
@@ -107,6 +124,36 @@ export type CaseForStats = CaseClock & {
   /** How many updates the case has, and when the newest was written. */
   updatesCount: number
   lastUpdateAt: Date | null
+  // --- Phase 8b: Ahmed's collection decisions -------------------------------------------------
+  // Every field the KPI contract names, so that the Adaa pain block, the discharge-communication
+  // shares, the case-management panel, the "resolved, not reviewed" row and the deck's action
+  // categories are all computed from the same one query the dashboard already issues.
+  /** Pain management, Adaa KPI 8. The app only ever writes YES or NO here (decision F). */
+  painkillerPrescribed: Answer | null
+  pethidinePrescribed: Answer | null
+  pethidineDoseMg: number | null
+  painkillerAt: Date | null
+  sickleCellTreatment: Answer | null
+  /** Discharge communication (decision D): YES, NO or NOT_SURE. */
+  instructionsGiven: Answer | null
+  familyEngagement: Answer | null
+  /** Case management (decision B). */
+  caseMgmtReferral: 'CASE_MANAGER' | 'COMPLEX_CARE' | null
+  caseMgmtCriteria: 'MEETS' | 'NOT_MEETING' | null
+  caseMgmtAction: 'ENROLLED' | 'FOR_ENROLLMENT' | null
+  caseMgmtCalledAt: Date | null
+  caseMgmtRepliedAt: Date | null
+  /** The supervisor review (decision H): when, and the reviewer's display name. */
+  reviewedAt: Date | null
+  reviewedByName: string | null
+  /** The DISTINCT action categories on this case's updates (decision C), in no particular order. */
+  updateActions: ReadonlyArray<UpdateActionKind>
+  /**
+   * How many of those updates carried no category at all. Counted rather than inferred: the
+   * deck's seventh row is "an update was written and no action was named", and a set of distinct
+   * kinds cannot say whether one plain update was written or nine.
+   */
+  untaggedUpdatesCount: number
   otherTexts: ReadonlyArray<{ stageName: string; text: string }>
 }
 

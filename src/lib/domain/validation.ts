@@ -11,6 +11,7 @@
  * are not here; they are warnings (warnings.ts, phiWarnings below).
  */
 import { z } from 'zod'
+import { PETHIDINE_DOSES } from './taxonomy'
 
 /**
  * Turn zod 4's JIT compiler off, process-wide (Phase 7).
@@ -34,6 +35,23 @@ export const updateTextSchema = freeText(1000).min(1, 'Type what changed.')
 export const noteSchema = freeText(1000)
 export const otherTextSchema = freeText(300)
 
+/**
+ * The weekly deck's action category on an update (Phase 8b, decision C). Already nullable and
+ * optional, unlike `updateTextSchema`, because tagging an update is never required: an update
+ * that describes no action at all is the ordinary case and is counted as its own row in the deck.
+ */
+export const updateActionSchema = z
+  .enum([
+    'LEADERSHIP_ESCALATION',
+    'BED_MANAGEMENT',
+    'FAX_RCC',
+    'PRO_SOCIAL_WORK',
+    'FORCED_SAFETY_ADMISSION',
+    'DAMA_MANAGEMENT',
+  ])
+  .nullable()
+  .optional()
+
 /** A 10-digit run is the shape of a Saudi national ID, an Iqama and a mobile number. Warn only. */
 export const TEN_DIGIT_RUN = /(?<!\d)\d{10}(?!\d)/
 export function phiWarnings(label: string, text: string | null | undefined): string[] {
@@ -46,8 +64,39 @@ export const timeSchema = isoOrDate.nullable().optional()
 
 export const shiftSchema = z.enum(['MORNING', 'EVENING', 'NIGHT'])
 export const roomTypeSchema = z.enum(['RESUS', 'EXAM'])
-export const dispositionSchema = z.enum(['ADMITTED', 'DISCHARGED_HOME', 'DISCHARGED_DAMA', 'TRANSFERRED', 'LEFT_WITHOUT_BEING_SEEN', 'OTHER'])
-export const investigationTypeSchema = z.enum(['LAB', 'CT', 'US', 'XR'])
+export const dispositionSchema = z.enum([
+  'ADMITTED',
+  'DISCHARGED_HOME',
+  'DISCHARGED_DAMA',
+  'TRANSFERRED',
+  'LEFT_WITHOUT_BEING_SEEN',
+  'OTHER',
+  // Phase 8b, decision E. Additions to Appendix A's six, never renames.
+  'DECEASED',
+  'REFERRED_UCC',
+])
+export const investigationTypeSchema = z.enum(['LAB', 'CT', 'US', 'XR', 'MRI'])
+
+/**
+ * Phase 8b. Two answer vocabularies, and the difference between them is a decision, not an
+ * oversight: a navigator writing the case up after the shift may genuinely not know whether the
+ * doctor gave discharge instructions (decision D, three answers), while "not sure whether a
+ * painkiller was prescribed" is not an answer the national form has a column for — Adaa KPI 8 is
+ * a yes or a no (decision F), so `answerYesNoSchema` refuses NOT_SURE outright.
+ */
+export const answerSchema = z.enum(['YES', 'NO', 'NOT_SURE'])
+export const answerYesNoSchema = z.enum(['YES', 'NO'])
+
+export const caseManagementReferralSchema = z.enum(['CASE_MANAGER', 'COMPLEX_CARE'])
+export const caseManagementCriteriaSchema = z.enum(['MEETS', 'NOT_MEETING'])
+export const caseManagementActionSchema = z.enum(['ENROLLED', 'FOR_ENROLLMENT'])
+
+/** 50, 100 or 150 mg — the three doses the ED gives, from `PETHIDINE_DOSES`. */
+export const PETHIDINE_DOSE_MESSAGE = 'The pethidine dose is 50, 100 or 150 mg.'
+export const pethidineDoseSchema = z
+  .number()
+  .int(PETHIDINE_DOSE_MESSAGE)
+  .refine((v) => (PETHIDINE_DOSES as ReadonlyArray<number>).includes(v), PETHIDINE_DOSE_MESSAGE)
 
 export const caseReasonInput = z.object({ reasonId: z.string().min(1), otherText: otherTextSchema.nullable().optional() })
 export const consultInput = z.object({
@@ -121,6 +170,20 @@ export function buildCaseSchemas(
     referralTrackingNo: freeText(64).nullable().optional(),
     transferFacility: freeText(120).nullable().optional(),
     medAdminInformedAt: timeSchema,
+    // Phase 8b (docs/specs/phase8b-decisions.md). Every one of these is optional: a navigator who
+    // does not know an answer leaves it blank, and nothing here can refuse a save on its own.
+    painkillerPrescribed: answerYesNoSchema.nullable().optional(),
+    pethidinePrescribed: answerYesNoSchema.nullable().optional(),
+    pethidineDoseMg: pethidineDoseSchema.nullable().optional(),
+    painkillerAt: timeSchema,
+    sickleCellTreatment: answerYesNoSchema.nullable().optional(),
+    instructionsGiven: answerSchema.nullable().optional(),
+    familyEngagement: answerSchema.nullable().optional(),
+    caseMgmtReferral: caseManagementReferralSchema.nullable().optional(),
+    caseMgmtCriteria: caseManagementCriteriaSchema.nullable().optional(),
+    caseMgmtAction: caseManagementActionSchema.nullable().optional(),
+    caseMgmtCalledAt: timeSchema,
+    caseMgmtRepliedAt: timeSchema,
     disposition: dispositionSchema.nullable().optional(),
     wardId: z.string().nullable().optional(),
     isolation: z.boolean().default(false),
@@ -145,6 +208,27 @@ export function buildCaseSchemas(
     const areaId = c.areaId?.trim()
     if (areaId && !areaIds.has(areaId)) {
       ctx.addIssue({ code: 'custom', path: ['areaId'], message: 'That ED area is no longer on the list.' })
+    }
+    /**
+     * Phase 8b, decision F. The dose and the administration time are answers to "was a painkiller
+     * prescribed?"; recorded against a No or a blank they would be counted by Adaa KPI 8 as a
+     * treatment that never happened. Refused rather than warned, because unlike an out-of-order
+     * timestamp there is no reading of the pair that is merely unusual — one of the two values is
+     * simply wrong, and the editor never offers the controls unless the answer is Yes.
+     */
+    if (c.pethidineDoseMg != null && c.pethidinePrescribed !== 'YES') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['pethidineDoseMg'],
+        message: 'Record the pethidine dose only when pethidine was prescribed.',
+      })
+    }
+    if (c.painkillerAt && c.painkillerPrescribed !== 'YES') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['painkillerAt'],
+        message: 'Record when the painkiller was given only when one was prescribed.',
+      })
     }
     // unknown reason ids are rejected before the rules that depend on them
     const ids = c.reasons.map((r) => r.reasonId)

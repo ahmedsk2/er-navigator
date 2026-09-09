@@ -125,6 +125,15 @@ export function reasonText(row: BoardRow): string {
   return row.departments.length ? `${reason} · ${row.departments.join(', ')}` : reason
 }
 
+/**
+ * A resolved case a supervisor has signed off (Phase 8b, decision H). Open cases are excluded on
+ * purpose: a review is a reading of a finished record, and `saveCase` clears it the moment the
+ * case is edited again, so a reviewed OPEN row would only ever be a case reopened after review.
+ */
+export function isReviewed(row: BoardRow): boolean {
+  return row.status === 'RESOLVED' && row.reviewedAt !== null
+}
+
 /** Line 3 of a resolved row: what happened to the patient, and where they went. */
 export function resolvedText(row: BoardRow): string {
   return [row.disposition ? DISPOSITION_LABELS[row.disposition] : null, row.ward]

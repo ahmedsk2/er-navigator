@@ -19,6 +19,8 @@ export type AuditAction =
   | 'case.reopen'
   | 'case.void'
   | 'case.update.add'
+  /** Phase 8b, decision H: a supervisor marked the case reviewed (after: reviewedAt/reviewedById). */
+  | 'case.review'
   | 'alert.acknowledge'
   | 'alert.fire'
   | 'user.create'

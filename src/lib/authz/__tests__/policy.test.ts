@@ -9,6 +9,7 @@ import { ACTIONS, can, matrix } from '../policy'
  *   Action                                     NAVIGATOR SUPERVISOR ADMIN VIEWER
  *   View board and case detail                 yes       yes        yes   yes
  *   Create/edit/add update/resolve/reopen      yes       yes        yes   no
+ *   Mark a case reviewed (Phase 8b, dec. H)    no        yes        yes   no
  *   Acknowledge threshold alert                no        yes        yes   no
  *   Void a case                                no        yes        yes   no
  *   Dashboard                                  yes       yes        yes   yes
@@ -22,6 +23,7 @@ const expected: Record<string, [boolean, boolean, boolean, boolean]> = {
   'case.update.add': [true, true, true, false],
   'case.resolve': [true, true, true, false],
   'case.reopen': [true, true, true, false],
+  'case.review': [false, true, true, false],
   'alert.acknowledge': [false, true, true, false],
   'case.void': [false, true, true, false],
   'dashboard.view': [true, true, true, true],

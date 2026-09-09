@@ -14,6 +14,7 @@ import {
   elapsedOf,
   identityChips,
   idleHours,
+  isReviewed,
   isStale,
   reasonText,
   resolvedText,
@@ -78,7 +79,19 @@ export function BoardRowItem({ row, now }: { row: BoardRow; now: Date }) {
           <span className="mt-[3px] block truncate text-label text-ink">{reasonText(row)}</span>
 
           {row.status === 'RESOLVED' ? (
-            <span className="mt-0.5 block text-caption text-band-ok">{resolvedText(row)}</span>
+            <span className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 text-caption text-band-ok">
+              <span>{resolvedText(row)}</span>
+              {/* Phase 8b: a supervisor has read this one. The chip and nothing else — who and
+                  when are on the case page, and the row has one line for the outcome. */}
+              {isReviewed(row) ? (
+                <span
+                  data-chip="Reviewed"
+                  className="rounded-chip border border-line px-1.5 py-px text-caption text-ink-2"
+                >
+                  Reviewed
+                </span>
+              ) : null}
+            </span>
           ) : (
             <span
               className={`num mt-0.5 block text-caption ${stale ? 'font-semibold text-band-h4-ink' : 'text-muted'}`}

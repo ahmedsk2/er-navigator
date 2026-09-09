@@ -35,6 +35,11 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
   const mayAcknowledge = can(user.role, 'alert.acknowledge')
   const alert = mayAcknowledge ? await loadUnacknowledgedAlert(loaded.id) : null
 
+  // Phase 8b, decision H. Every role sees whether the case has been reviewed; only a SUPERVISOR
+  // or an ADMIN is offered the control, and only while the case is not voided — `reviewCase`
+  // checks `case.review` and refuses a voided case again on the server.
+  const canReview = can(user.role, 'case.review') && loaded.status !== 'VOIDED'
+
   return (
     <CaseEditor
       alert={alert}
@@ -49,6 +54,8 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
       // slotted into the editor after the updates. The editor never touches it; every time on it
       // is edited in the section that owns it.
       timeline={<CaseTimeline steps={loaded.timeline} />}
+      review={loaded.review}
+      canReview={canReview}
       readOnly={readOnly}
       canVoid={canVoid}
       nowIso={new Date().toISOString()}

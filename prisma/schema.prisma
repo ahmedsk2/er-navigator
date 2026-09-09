@@ -40,6 +40,9 @@ enum RoomType {
   EXAM
 }
 
+// Ahmed's decision E (docs/specs/phase8b-decisions.md): Deceased and "Referred to UCC" are the
+// two outcomes the navigators record that this list could not hold; LAMA was declined, because
+// DAMA already covers it. Additions, never renames — Appendix A's six values are untouched.
 enum Disposition {
   ADMITTED
   DISCHARGED_HOME
@@ -47,6 +50,8 @@ enum Disposition {
   TRANSFERRED
   LEFT_WITHOUT_BEING_SEEN
   OTHER
+  DECEASED
+  REFERRED_UCC
 }
 
 enum InvestigationType {
@@ -54,6 +59,49 @@ enum InvestigationType {
   CT
   US
   XR
+  MRI
+}
+
+/**
+ * A three-way answer to a yes/no question a navigator may genuinely not know (Ahmed's decision D).
+ * The pain-management questions (decision F) take YES or NO only; zod refuses NOT_SURE there,
+ * because "not sure whether a painkiller was prescribed" is not an Adaa KPI 8 answer.
+ */
+enum Answer {
+  YES
+  NO
+  NOT_SURE
+}
+
+/**
+ * Case management (decision B): who the case was referred to, and what came of it.
+ */
+enum CaseManagementReferral {
+  CASE_MANAGER
+  COMPLEX_CARE
+}
+
+enum CaseManagementCriteria {
+  MEETS
+  NOT_MEETING
+}
+
+enum CaseManagementAction {
+  ENROLLED
+  FOR_ENROLLMENT
+}
+
+/**
+ * The six action categories the weekly delayed-tickets deck counts (decision C). Recorded on the
+ * update that describes the action, at creation only — `CaseUpdate` stays append-only.
+ */
+enum UpdateAction {
+  LEADERSHIP_ESCALATION
+  BED_MANAGEMENT
+  FAX_RCC
+  PRO_SOCIAL_WORK
+  FORCED_SAFETY_ADMISSION
+  DAMA_MANAGEMENT
 }
 
 enum OtherReviewStatus {
@@ -84,6 +132,8 @@ model User {
   updates         CaseUpdate[]
   acknowledged    Alert[]       @relation("AlertAcknowledgedBy")
   reviewsReviewed OtherReview[] @relation("OtherReviewReviewedBy")
+  // Phase 8b, decision H: the cases this supervisor has marked reviewed.
+  reviewedCases   Case[]        @relation("CaseReviewedBy")
   auditEntries    AuditLog[]
   sessions        Session[]
 }
@@ -148,6 +198,36 @@ model Case {
   referralTrackingNo  String?
   transferFacility    String?
 
+  // Phase 8b collection decisions (docs/specs/phase8b-decisions.md). Every field below is optional:
+  // a navigator who does not know one leaves it blank, exactly as with CTAS and the ED area. None
+  // of them can hold a patient identifier — they are answers, doses, times and one staff id.
+
+  // F: pain management, which is Adaa KPI 8 (door to painkiller). The answers here are YES or NO;
+  // zod refuses NOT_SURE, because the national form has no such column.
+  painkillerPrescribed Answer?
+  pethidinePrescribed  Answer?
+  pethidineDoseMg      Int? // 50, 100 or 150, and only when pethidinePrescribed is YES
+  painkillerAt         DateTime? // when the painkiller was actually given
+  sickleCellTreatment  Answer? // "was the treatment identified for the sickle-cell condition?"
+
+  // D: discharge communication, on the QCH navigator log. YES, NO or NOT_SURE, because a
+  // navigator writing the case up after the shift genuinely may not know.
+  instructionsGiven Answer?
+  familyEngagement  Answer?
+
+  // B: case management. Who the case was referred to, what the coordinator decided, and the two
+  // times that make the response measurable.
+  caseMgmtReferral  CaseManagementReferral?
+  caseMgmtCriteria  CaseManagementCriteria?
+  caseMgmtAction    CaseManagementAction?
+  caseMgmtCalledAt  DateTime?
+  caseMgmtRepliedAt DateTime?
+
+  // H: supervisor review. Not case content: `reviewCase` sets it without a version check, and any
+  // later edit to the case itself clears it (a reviewed entry that is changed is not reviewed).
+  reviewedAt   DateTime?
+  reviewedById String?
+
   // resolution
   disposition    Disposition?
   wardId         String?
@@ -163,6 +243,7 @@ model Case {
   primaryReason Reason? @relation("CasePrimaryReason", fields: [primaryReasonId], references: [id], onDelete: Restrict)
   ward          Ward?   @relation(fields: [wardId], references: [id], onDelete: Restrict)
   area          EdArea? @relation(fields: [areaId], references: [id], onDelete: Restrict)
+  reviewedBy    User?   @relation("CaseReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
 
   reasons        CaseReason[]
   consults       CaseConsult[]
@@ -283,11 +364,14 @@ model EdArea {
 
 // Append-only: no update or delete route exists, and the app DB role has UPDATE/DELETE revoked.
 model CaseUpdate {
-  id        String   @id @default(cuid())
+  id        String        @id @default(cuid())
   caseId    String
   authorId  String
-  createdAt DateTime @default(now())
+  createdAt DateTime      @default(now())
   text      String
+  // Phase 8b, decision C: the weekly deck's action category, chosen when the update is written.
+  // Set at creation only — this table has no update path, which is what keeps it append-only.
+  action    UpdateAction?
 
   case   Case @relation(fields: [caseId], references: [id], onDelete: Restrict)
   author User @relation(fields: [authorId], references: [id], onDelete: Restrict)

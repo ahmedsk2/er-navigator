@@ -8,6 +8,11 @@
  * in `c()` below and are set on individual cases only where a column would otherwise never be
  * exercised, so every hand-computed expectation in aggregates.test.ts is unchanged: nothing the
  * Phase 4 aggregates read has moved.
+ *
+ * Phase 8b widened it again, with Ahmed's collection decisions. Same rule, and this time nothing
+ * is set on any case at all: `kpi.ts` does not read these yet (the lead's half of the contract),
+ * and the loader's own test — src/lib/cases/__tests__/stats-mapper.test.ts — is where a real row
+ * carrying them is asserted.
  */
 import type { CaseForStats } from '../aggregates'
 
@@ -41,6 +46,25 @@ const c = (p: Seed): CaseForStats => ({
   areaName: null,
   updatesCount: 0,
   lastUpdateAt: null,
+  // Phase 8b's collection fields. Defaulted to "not recorded" here on purpose: every
+  // hand-computed answer in aggregates.test.ts is a Phase 4 figure, and none of the Phase 4
+  // aggregates reads one of these, so the twelve cases below are numerically unchanged.
+  painkillerPrescribed: null,
+  pethidinePrescribed: null,
+  pethidineDoseMg: null,
+  painkillerAt: null,
+  sickleCellTreatment: null,
+  instructionsGiven: null,
+  familyEngagement: null,
+  caseMgmtReferral: null,
+  caseMgmtCriteria: null,
+  caseMgmtAction: null,
+  caseMgmtCalledAt: null,
+  caseMgmtRepliedAt: null,
+  reviewedAt: null,
+  reviewedByName: null,
+  updateActions: [],
+  untaggedUpdatesCount: 0,
   otherTexts: [],
   departedAt: null,
   resolvedAt: null,

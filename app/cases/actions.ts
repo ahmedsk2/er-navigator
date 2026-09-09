@@ -1,7 +1,7 @@
 'use server'
 
 /**
- * The six case mutations as server actions. Each one is the same four steps: resolve the session,
+ * The case mutations as server actions. Each one is the same four steps: resolve the session,
  * hand the actor to the service (which checks the permission matrix, validates, writes in one
  * transaction and audits), revalidate what changed, return a plain result.
  *
@@ -21,6 +21,7 @@ import type {
   CreateCaseResult,
   ReopenCaseResult,
   ResolveCaseResult,
+  ReviewCaseResult,
   SaveCaseResult,
   VoidCaseResult,
 } from '@/src/lib/cases/types'
@@ -68,11 +69,15 @@ export async function saveCase(id: string, input: unknown): Promise<SaveCaseResu
   return result
 }
 
-export async function addCaseUpdate(id: string, text: string): Promise<AddUpdateResult> {
+/**
+ * Phase 8b, decision C: `action` is the weekly deck's category for this update, or null when the
+ * nurse tagged nothing. It is validated by the service (`updateActionSchema`), like the text.
+ */
+export async function addCaseUpdate(id: string, text: string, action?: unknown): Promise<AddUpdateResult> {
   const { user, ctx } = await currentActor()
   let result: AddUpdateResult
   try {
-    result = await service.addCaseUpdate(user, id, text, ctx)
+    result = await service.addCaseUpdate(user, id, text, ctx, action)
   } catch (error) {
     return asFailure(error)
   }
@@ -119,6 +124,23 @@ export async function acknowledgeAlert(id: string, alertId: string): Promise<{ o
     if (isForbiddenError(error)) return { ok: false }
     throw error
   }
+}
+
+/**
+ * Phase 8b, decision H. `case.review` is checked in the service like every other mutation, so a
+ * NAVIGATOR calling this endpoint directly gets `{ ok: false, error: 'forbidden' }` and one
+ * `auth.forbidden` audit row, whatever the screen offered them.
+ */
+export async function reviewCase(id: string): Promise<ReviewCaseResult> {
+  const { user, ctx } = await currentActor()
+  let result: ReviewCaseResult
+  try {
+    result = await service.reviewCase(user, id, ctx)
+  } catch (error) {
+    return asFailure(error)
+  }
+  if (result.ok) revalidateCase(id)
+  return result
 }
 
 export async function voidCase(id: string, input: unknown): Promise<VoidCaseResult> {

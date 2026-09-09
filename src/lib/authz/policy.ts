@@ -12,6 +12,7 @@ export const ACTIONS = [
   'case.update.add',
   'case.resolve',
   'case.reopen',
+  'case.review',
   'alert.acknowledge',
   'case.void',
   'dashboard.view',
@@ -38,6 +39,9 @@ const MATRIX: Record<Action, ReadonlyArray<Role>> = {
   'case.update.add': EDITORS,
   'case.resolve': EDITORS,
   'case.reopen': EDITORS,
+  // Phase 8b, decision H: a supervisor signs a case off as reviewed. It changes no case
+  // content, which is why it is not in EDITORS: a navigator cannot mark their own work checked.
+  'case.review': SUPERVISORS,
   'alert.acknowledge': SUPERVISORS,
   'case.void': SUPERVISORS,
   'dashboard.view': ALL,
