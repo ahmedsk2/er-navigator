@@ -53,8 +53,11 @@ Coolify → er-navigator → Deployments → pick the last good deployment → R
 ## Stop, start, restart (without a deploy)
 
 From the host, with the Coolify token. Stop takes every container of this application down,
-the database included, so the site answers 404 from Traefik until Start; sessions survive
-(they live in the database volume) and the alerts worker resumes its cycle on Start.
+the database included, and removes the built `db` image; the site answers 404 from Traefik until
+Start finishes. Start is not a plain `docker compose up`: it queues a full deployment (rebuild,
+migrate, seed, about three minutes, measured 2026-09-09), so a stop/start round trip costs about
+the same downtime as a deploy. Sessions survive (they live in the database volume) and the
+alerts worker resumes its cycle on Start. Restart is the same as Stop then Start.
 
 ```bash
 T=$(cat ~/.coolify-token); A=jqcjqhmcmizxs1u51wnqlfwv
@@ -162,8 +165,12 @@ sudo docker exec "$DB" dropdb -U ernav_owner ernav_restore_test
 
 For the case the backups exist for: a migration or an operator mistake has destroyed or
 corrupted case data. Everything runs on the host. The application must be STOPPED for the
-restore, so no client holds a connection while tables are dropped and recreated; the site
-answers 404 from the moment of the stop until Start finishes (about four minutes in the drill).
+restore, so no client holds a connection while tables are dropped and recreated. Two facts the
+drill established (2026-09-09): Coolify's Stop also removes the built `db` image, and Start is a
+full deployment (rebuild, migrate, seed), so the site is down from the stop until that deployment
+finishes, five minutes in the drill; and the restore itself recreates the tables under the
+owner's default privileges, which GRANT the app role DELETE on `AuditLog` until the deployment's
+`sync-app-role` revokes it again. Step 6's privilege check is therefore not optional.
 
 ```bash
 T=$(cat ~/.coolify-token); A=jqcjqhmcmizxs1u51wnqlfwv
@@ -173,12 +180,15 @@ sudo UPLOAD_CMD=/opt/ernav-backup/upload.sh /opt/ernav-backup/backup.sh
 ls -la /home/ubuntu/backups/ernav/
 FILE=/home/ubuntu/backups/ernav/<the dump to restore>.dump
 
-# 2. Note the db image, then stop the application (all containers go; the volume stays).
-IMG=$(sudo docker inspect --format '{{.Config.Image}}' "$(sudo docker ps --format '{{.Names}}' | grep "^db-$A")")
+# 2. Stop the application (all containers AND the built db image go; the volume stays).
 curl -s -H "Authorization: Bearer $T" "http://localhost:8000/api/v1/applications/$A/stop"; echo
 until [ -z "$(sudo docker ps -q --filter "name=$A")" ]; do sleep 2; done
 
-# 3. A throwaway Postgres on the SAME volume and image, reachable by nothing else.
+# 3. A throwaway Postgres on the SAME volume, from the SAME pinned base image the db image is
+#    built from (the FROM line of docker/postgres/Dockerfile; alpine, so the collation library
+#    matches the data directory), reachable by nothing else.
+IMG=postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+sudo docker pull -q "$IMG"
 sudo docker run -d --name ernav-restore -v "${A}_ernav-db:/var/lib/postgresql/data" -e POSTGRES_PASSWORD=unused "$IMG"
 until sudo docker exec ernav-restore pg_isready -q -U ernav_owner -d ernav; do sleep 2; done
 
@@ -188,10 +198,12 @@ until sudo docker exec ernav-restore pg_isready -q -U ernav_owner -d ernav; do s
 sudo cat "$FILE" | sudo docker exec -i ernav-restore pg_restore -U ernav_owner -d ernav --clean --if-exists --no-owner --single-transaction
 sudo docker exec ernav-restore psql -U ernav_owner -d ernav -tAc 'SELECT count(*) FROM "Case"; SELECT count(*) FROM "AuditLog"; SELECT max(migration_name) FROM _prisma_migrations'
 
-# 5. Remove the throwaway container, then Start. migrate applies anything newer than the dump,
-#    sync-app-role re-grants the app role (the dump carries the grants too), the seed adds nothing.
+# 5. Remove the throwaway container, then Start, which queues a full deployment (about three
+#    minutes): migrate applies anything newer than the dump, sync-app-role re-applies the app
+#    role's grants and REVOKEs, the seed adds nothing. Poll /api/ready until it answers 200.
 sudo docker rm -f ernav-restore
 curl -s -H "Authorization: Bearer $T" "http://localhost:8000/api/v1/applications/$A/start"; echo
+until [ "$(curl -s -m 10 -o /dev/null -w '%{http_code}' https://nav.towardpcc.com/api/ready)" = "200" ]; do sleep 5; done
 
 # 6. Verify, as after a deploy: ready, fingerprint, privileges, the counts from step 4.
 curl -s https://nav.towardpcc.com/api/ready
@@ -201,7 +213,9 @@ sudo docker exec "$DB" psql -U ernav_owner -d ernav -tAc "SELECT has_table_privi
 
 `--single-transaction` makes the restore all-or-nothing: a failure leaves the database as it
 was. Drop it only if a dump is too large for one transaction, and then restore into a scratch
-database first. Drilled on production on 2026-09-09 (see History).
+database first. Drilled on production on 2026-09-09 (see History): stop 5 s, restore under a
+second, Start-to-ready 2 min 50 s, site down 5 min 10 s in all, counts and migrations identical
+before and after, app role privileges back to `f|f|f` once the deployment had run.
 
 ## PHI scrub
 
@@ -317,6 +331,8 @@ browser console for a CSP refusal before anything else.
 
 ## History
 
+- 2026-09-09 13:58 to 14:03 UTC: PLANNED OUTAGE, 5 min 10 s, the restore-into-production drill ("Backup and restore"). Fresh dump 13:57 (uploaded), Coolify Stop, restore over the live database with `--clean --if-exists --single-transaction` from a throwaway `postgres:16-alpine` on the volume (the built db image is removed by Stop; first attempt failed on that and on a `sudo` glob, both fixed in the procedure), Coolify Start = a full deployment, ready after 2 min 50 s. Counts and migrations identical before and after; the app role held DELETE on `AuditLog` between the restore and the deployment's `sync-app-role`, then `f` again.
+- 2026-09-09 (final review, `docs/specs/phase7-review-findings.md`): session cookies renamed `__Host-ern_session`/`__Host-ern_remember`; COOP/CORP headers; every admin page checks its own permission (the shared layout was skippable on an RSC request); the weekly chart applies n<3; heartbeat only after a completed cycle plus the `ALERT_PUSH_URL` push monitor; `AUTH_SECRET`, `AUTH_TRUST_HOST`, `APP_TIMEZONE`, `LOG_LEVEL` dropped as dead configuration.
 - 2026-09-09 (Phase 7): `ALERT_EMAIL_MAP` removed — alert recipients are now the users with an email in Admin → Users. CSP moved into `proxy.ts` with a per-request nonce and no `'unsafe-inline'` for scripts. A refused page answers HTTP 403. Installable as a PWA (`/manifest.webmanifest`, `/icons/*`, `/apple-touch-icon.png`, all public). Lighthouse mobile: board 98/100, case editor 96/100 (performance/accessibility). `pnpm audit` clean at moderate and above, with three `pnpm.overrides` pins.
 - 2026-09-08: repository, deploy key, DNS record, Coolify application and GitHub push webhook (id 676338800) created. First deploy (commit ac3672f, fingerprint cf6c356bcc69ff4b) verified: migrations applied, seed counts 10/48/16/8/1, app role privileges AuditLog DELETE=f, CaseUpdate DELETE=f, Case DELETE=f, superuser=f; Traefik router Host(nav.towardpcc.com) → app:3000; db on `internal` plus the per-app network.
 - 2026-09-08 (later): adversarial review found that Coolify's env file put the owner and admin passwords in the app container (fixed by the entrypoint allowlist), that the seed would overwrite Admin edits (now insert-if-missing), that rotating the app role password would break the app (now reconciled on every deploy), that compose deploys are stop-then-start (documented), and that the Prisma client leaked a pool per query in production (fixed).
