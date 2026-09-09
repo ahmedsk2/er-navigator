@@ -16,6 +16,7 @@ import { assertCan, isForbiddenError, type AuthUser } from '@/src/lib/auth/sessi
 import { dashboard } from '@/src/lib/domain/aggregates'
 import { adaaWorkbook } from './adaa'
 import { countCasesForExport, loadCasesForExport } from './load'
+import { qchWorkbook } from './qch'
 import { exportFilename, type ExportRange } from './range'
 import { dataSheets, summaryRows, type CaseForExport } from './rows'
 import { freePart, tablePart, xlsxResponseOf, type WorkbookPart } from './workbook'
@@ -85,6 +86,7 @@ function workbookFor(
   now: Date,
 ): WorkbookPart[] {
   if (range.format === 'adaa') return adaaWorkbook({ cases, range, generatedAt: now })
+  if (range.format === 'qch') return qchWorkbook({ cases, range, generatedAt: now })
   // `dashboard()` does its own range filter; the rows are already the range, so 'all' is a no-op.
   const data = dashboard(cases, 'all', now)
   return [

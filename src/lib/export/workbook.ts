@@ -36,7 +36,13 @@ export function columnWidth(header: string, sample: ReadonlyArray<string>): numb
 
 function widthsFor(sheet: Sheet): number[] {
   const sample = sheet.rows.slice(0, WIDTH_SAMPLE_ROWS)
-  return sheet.header.map((header, i) => columnWidth(header, sample.map((row) => row[i] ?? '')))
+  return sheet.header.map((header, i) => {
+    // A grouped sheet keeps the column's own name on the second row, so the longer of the two
+    // header cells is what the column has to hold.
+    const group = sheet.groupHeader?.[i] ?? ''
+    const longest = group.length > header.length ? group : header
+    return columnWidth(longest, sample.map((row) => row[i] ?? ''))
+  })
 }
 
 /**
