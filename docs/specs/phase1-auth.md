@@ -33,8 +33,8 @@ Add `sessions Session[]` to `User`. Migration name `20260909100000_sessions`. Ge
 
 ## 2. Session mechanics (`src/lib/auth/session.ts`)
 
-- Cookie name `ern_session`; value = 32 random bytes, base64url. Store only `sha256(value)` as `tokenHash`.
-- Attributes: `httpOnly`, `secure` (except when `NODE_ENV !== 'production'`), `sameSite: 'lax'`, `path: '/'`. "Remember this device" checked: `maxAge` 12 h. Unchecked: a session cookie (no `maxAge`); the server-side expiry is still 12 h.
+- Cookie name `ern_session` (renamed `__Host-ern_session` in Phase 7, security audit SPC-WEB-002: the prefix makes the browser refuse the cookie unless it is Secure, `Path=/` and has no Domain); value = 32 random bytes, base64url. Store only `sha256(value)` as `tokenHash`.
+- Attributes: `httpOnly`, `secure` (always, since Phase 7; Chromium and Firefox accept Secure cookies on http://localhost, which is all local development and Playwright use), `sameSite: 'lax'`, `path: '/'`. "Remember this device" checked: `maxAge` 12 h. Unchecked: a session cookie (no `maxAge`); the server-side expiry is still 12 h.
 - Sliding expiry: on every authenticated request where `lastSeenAt` is older than 5 minutes, set `lastSeenAt = now` and `expiresAt = now + 12 h` (one UPDATE, not per request).
 - Rotation: login always creates a new session and deletes any session whose cookie was presented. Logout deletes the session and clears the cookie. Deactivating a user or changing a password deletes all of that user's sessions.
 - `getSession()` (server, cached per request with `React.cache`): reads the cookie, looks up by hash, returns `{ user, session }` or `null`; returns `null` if expired or `user.active === false` (and deletes the row). Never returns the password hash.
@@ -56,7 +56,7 @@ Add `sessions Session[]` to `User`. Migration name `20260909100000_sessions`. Ge
 ## 4. Route gate (`proxy.ts` at the repo root, Next 16's request gate; not `middleware.ts`)
 
 - Public: `/login`, `/api/health`, `/api/ready`, `/manifest.webmanifest`, `/icons/*`, `/_next/*`, `/favicon.ico`, `/robots.txt`.
-- Everything else: if the `ern_session` cookie is absent, redirect to `/login?next=<path>`. The gate only checks cookie presence (no database access in the gate); pages and actions do the real check with `getSession()`.
+- Everything else: if the session cookie (`__Host-ern_session` since Phase 7) is absent, redirect to `/login?next=<path>`. The gate only checks cookie presence (no database access in the gate); pages and actions do the real check with `getSession()`.
 - Authenticated users visiting `/login` are redirected to `/`.
 
 ## 5. Post-login shell (`app/(app)/layout.tsx`, `app/(app)/page.tsx`)

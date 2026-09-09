@@ -12,8 +12,8 @@ const proxy = readFileSync(path.resolve(__dirname, '../../../../proxy.ts'), 'utf
 
 describe('the route gate agrees with the session module', () => {
   it('checks the same cookie names and the same lifetime', () => {
-    expect(SESSION_COOKIE).toBe('ern_session')
-    expect(REMEMBER_COOKIE).toBe('ern_remember')
+    expect(SESSION_COOKIE).toBe('__Host-ern_session')
+    expect(REMEMBER_COOKIE).toBe('__Host-ern_remember')
     expect(proxy).toContain(`'${SESSION_COOKIE}'`)
     expect(proxy).toContain(`'${REMEMBER_COOKIE}'`)
     expect(proxy).toContain(`COOKIE_MAX_AGE_S = ${SESSION_TTL_MS / 1000 / 60 / 60} * 60 * 60`)

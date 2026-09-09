@@ -50,6 +50,23 @@ Poll `GET /api/v1/deployments/<deployment_uuid>` until `status` is `finished`. R
 
 Coolify → er-navigator → Deployments → pick the last good deployment → Redeploy. Migrations are forward-only: a schema revert is a new migration. If the failure was in `migrate`, do the section below first; Redeploy alone fails at the same step.
 
+## Stop, start, restart (without a deploy)
+
+From the host, with the Coolify token. Stop takes every container of this application down,
+the database included, so the site answers 404 from Traefik until Start; sessions survive
+(they live in the database volume) and the alerts worker resumes its cycle on Start.
+
+```bash
+T=$(cat ~/.coolify-token); A=jqcjqhmcmizxs1u51wnqlfwv
+curl -s -H "Authorization: Bearer $T" "http://localhost:8000/api/v1/applications/$A/stop"
+curl -s -H "Authorization: Bearer $T" "http://localhost:8000/api/v1/applications/$A/start"
+curl -s -H "Authorization: Bearer $T" "http://localhost:8000/api/v1/applications/$A/restart"
+```
+
+The same three buttons exist in Coolify → er-navigator. Never `docker stop` the containers by
+hand: Coolify would still believe they are running, and the next deploy or restart then fails
+on names that already exist.
+
 ## Deploy failed at migrate
 
 Symptoms: the deployment log ends with `dependency failed to start` or a Prisma error, no `app-…` container exists, the site is 404. Prisma has recorded the migration as failed in `_prisma_migrations` (`finished_at IS NULL`) and will refuse every further `migrate deploy` with P3009, on any commit, until that record is resolved.
@@ -215,10 +232,22 @@ Uptime Kuma (`uptime.towardpcc.com`): add an HTTP monitor on `https://nav.toward
 ## Security headers
 
 Every response carries HSTS, `X-Frame-Options: DENY`, `X-Content-Type-Options`, a strict
-Referrer-Policy and a minimal Permissions-Policy from `next.config.ts`, plus a
-Content-Security-Policy built per request in `proxy.ts` — the only place that can mint the
-nonce it carries. There is exactly one source for the CSP, and a unit test fails if a second
-one appears in the config.
+Referrer-Policy, a Permissions-Policy that denies every device and tracking feature the app
+does not use, and `Cross-Origin-Opener-Policy` / `Cross-Origin-Resource-Policy: same-origin`
+from `next.config.ts`, plus a Content-Security-Policy built per request in `proxy.ts` — the
+only place that can mint the nonce it carries. There is exactly one source for the CSP, and a
+unit test fails if a second one appears in the config. `tests/e2e/headers.spec.ts` asserts the
+whole set on every CI run.
+
+The session cookies are `__Host-ern_session` and `__Host-ern_remember`: `Secure`, `HttpOnly`,
+`SameSite=Lax`, `Path=/`, no Domain. The `__Host-` prefix makes the browser refuse the cookie
+under any other attributes, so nothing else served under `*.towardpcc.com` can set or shadow a
+session for this app. Consequence for a local `pnpm start` on plain HTTP: only `localhost`
+works (browsers treat it as secure); an IP address or a LAN hostname will never sign in.
+
+Cloudflare-side settings that complete the picture (zone → SSL/TLS, founder account): minimum
+TLS version 1.2 and the Modern cipher profile. Both are zone-wide, so they apply to every
+towardpcc.com app at once; the origin only ever hears from Cloudflare.
 
 ```bash
 curl -sI https://nav.towardpcc.com/login | grep -i 'content-security-policy'

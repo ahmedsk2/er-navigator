@@ -4,6 +4,8 @@ import {
   hashSessionToken,
   isSessionExpired,
   needsSlidingRefresh,
+  REMEMBER_COOKIE,
+  SESSION_COOKIE,
   SESSION_TTL_MS,
   sessionCookieOptions,
   sessionExpiry,
@@ -86,9 +88,20 @@ describe('cookie attributes', () => {
     }
   })
 
-  it('is not marked secure outside production, so http://localhost works', () => {
-    expect(process.env.NODE_ENV).not.toBe('production')
-    expect(sessionCookieOptions(true).secure).toBe(false)
+  /**
+   * Phase 7: the `__Host-` prefix on both cookie names makes every browser refuse them unless
+   * they are Secure, so the flag can no longer depend on NODE_ENV. Browsers accept Secure
+   * cookies on http://localhost, which is all local development and Playwright use.
+   */
+  it('is always marked secure, which the __Host- prefix requires', () => {
+    expect(SESSION_COOKIE.startsWith('__Host-')).toBe(true)
+    expect(REMEMBER_COOKIE.startsWith('__Host-')).toBe(true)
+    for (const remember of [true, false]) {
+      const o = sessionCookieOptions(remember)
+      expect(o.secure).toBe(true)
+      expect(o.path).toBe('/')
+      expect('domain' in o).toBe(false)
+    }
   })
 
   it('"remember this device" is the only thing that gives the cookie a lifetime', () => {

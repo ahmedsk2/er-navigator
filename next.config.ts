@@ -13,7 +13,15 @@ const securityHeaders = [
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-  { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()' },
+  {
+    key: 'Permissions-Policy',
+    value:
+      'camera=(), microphone=(), geolocation=(), payment=(), usb=(), display-capture=(), serial=(), bluetooth=(), hid=(), midi=(), xr-spatial-tracking=(), accelerometer=(), gyroscope=(), magnetometer=(), browsing-topics=(), interest-cohort=()',
+  },
+  // Security audit SPC-WEB-004: isolate the browsing context and stop cross-origin embedding
+  // of our responses. Every asset is same-origin, so CORP same-origin costs nothing.
+  { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+  { key: 'Cross-Origin-Resource-Policy', value: 'same-origin' },
 ]
 
 const nextConfig: NextConfig = {

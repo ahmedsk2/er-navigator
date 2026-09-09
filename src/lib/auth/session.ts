@@ -17,13 +17,19 @@ import { auditQuietly, contextFrom, type AuditContext } from '@/src/lib/audit'
 import { can, type Action } from '@/src/lib/authz/policy'
 import { prisma } from '@/src/lib/db'
 
-export const SESSION_COOKIE = 'ern_session'
+/**
+ * `__Host-` prefix (security audit SPC-WEB-002): the browser refuses any cookie of this name
+ * that is not Secure, not Path=/, or carries a Domain attribute, so a sibling app on
+ * *.towardpcc.com can never plant or shadow our session cookie. It requires `secure: true`
+ * everywhere; Chromium and Firefox accept Secure cookies on http://localhost for development.
+ */
+export const SESSION_COOKIE = '__Host-ern_session'
 /**
  * Set alongside the session cookie when "Remember this device" was ticked. It carries no secret
  * (value "1"); the route gate uses its presence to re-stamp both cookies' 12 h lifetime on every
  * request, which is what makes the browser-side expiry slide like the server-side one.
  */
-export const REMEMBER_COOKIE = 'ern_remember'
+export const REMEMBER_COOKIE = '__Host-ern_remember'
 export const TOKEN_BYTES = 32
 export const SESSION_TTL_MS = 12 * 60 * 60 * 1000
 /** A session's lastSeenAt/expiresAt are refreshed at most this often: one UPDATE per five minutes. */
@@ -113,7 +119,7 @@ export type SessionCookieOptions = {
 export function sessionCookieOptions(remember: boolean): SessionCookieOptions {
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: true,
     sameSite: 'lax',
     path: '/',
     ...(remember ? { maxAge: Math.floor(SESSION_TTL_MS / 1000) } : {}),

@@ -37,10 +37,15 @@ export function readSmtpConfig(env: NodeJS.ProcessEnv): SmtpConfig | null {
 }
 
 export function smtpMailer(config: SmtpConfig): Mailer {
+  const implicitTls = isImplicitTls(config.port)
   const transport = nodemailer.createTransport({
     host: config.host,
     port: config.port,
-    secure: isImplicitTls(config.port),
+    secure: implicitTls,
+    // Security audit SPC-WEB-008: on 587 insist on STARTTLS rather than falling back to
+    // cleartext if a network attacker strips the capability; never below TLS 1.2 either way.
+    requireTLS: !implicitTls,
+    tls: { minVersion: 'TLSv1.2' },
     auth: config.user ? { user: config.user, pass: config.password } : undefined,
   })
 

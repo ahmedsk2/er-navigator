@@ -19,8 +19,8 @@ import { NextResponse, type NextRequest } from 'next/server'
  * `src/lib/auth/__tests__/route-gate.test.ts` asserts this file and the session module agree on
  * the cookie name.
  */
-const SESSION_COOKIE = 'ern_session'
-const REMEMBER_COOKIE = 'ern_remember'
+const SESSION_COOKIE = '__Host-ern_session'
+const REMEMBER_COOKIE = '__Host-ern_remember'
 /** 12 h, the session TTL. Duplicated from the session module for the same bundle reason. */
 const COOKIE_MAX_AGE_S = 12 * 60 * 60
 
@@ -46,7 +46,7 @@ function isPublic(pathname: string): boolean {
 function cookieAttrs(maxAge: number) {
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: true,
     sameSite: 'lax' as const,
     path: '/',
     maxAge,
