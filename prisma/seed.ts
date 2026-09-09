@@ -16,14 +16,15 @@ import { randomBytes } from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import { prisma } from '../src/lib/db'
 import { SYSTEM_DISPLAY_NAME, SYSTEM_USERNAME } from '../src/lib/auth/system-user'
-import { DEPARTMENTS, OTHER, STAGES, WARDS } from '../src/lib/domain/taxonomy'
+import { DEPARTMENTS, ED_AREAS, OTHER, STAGES, WARDS } from '../src/lib/domain/taxonomy'
 
 async function seedTaxonomy() {
   // Only an EMPTY reference table is filled. Once anything exists, Admin owns the list.
-  const [stageCount, deptCount, wardCount] = await Promise.all([
+  const [stageCount, deptCount, wardCount, areaCount] = await Promise.all([
     prisma.stage.count(),
     prisma.department.count(),
     prisma.ward.count(),
+    prisma.edArea.count(),
   ])
 
   if (stageCount === 0) {
@@ -64,6 +65,17 @@ async function seedTaxonomy() {
     console.log('[seed] wards created')
   } else {
     console.log(`[seed] wards already present (${wardCount}) — left untouched`)
+  }
+
+  // Phase 8. Not from Appendix A (see ED_AREAS in taxonomy.ts): the six areas the navigators'
+  // own sheet uses, filled once and owned by Admin from then on, exactly like the wards.
+  if (areaCount === 0) {
+    await prisma.edArea.createMany({
+      data: ED_AREAS.map((a, i) => ({ code: a.code, name: a.name, sortOrder: i + 1 })),
+    })
+    console.log('[seed] ED areas created')
+  } else {
+    console.log(`[seed] ED areas already present (${areaCount}) — left untouched`)
   }
 }
 
@@ -122,9 +134,12 @@ async function main() {
     prisma.reason.count(),
     prisma.department.count(),
     prisma.ward.count(),
+    prisma.edArea.count(),
     prisma.user.count(),
   ])
-  console.log(`[seed] stages=${counts[0]} reasons=${counts[1]} departments=${counts[2]} wards=${counts[3]} users=${counts[4]}`)
+  console.log(
+    `[seed] stages=${counts[0]} reasons=${counts[1]} departments=${counts[2]} wards=${counts[3]} areas=${counts[4]} users=${counts[5]}`,
+  )
 }
 
 main()
