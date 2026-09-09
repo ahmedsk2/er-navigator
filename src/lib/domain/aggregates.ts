@@ -36,6 +36,7 @@ import {
   type AdaaSummaryRow,
   type Headline,
   type IdRow,
+  type KpiCase,
   type LongestStay,
   type ShareRow,
   type StatRow,
@@ -291,17 +292,20 @@ export type DashboardTarget = ShareRow & { key: TargetKey; minutes: number; miss
  * "who missed this target" drill-down needs. The only arithmetic it does that `kpi.ts` does not
  * hand over is the two headline shares, and they are guarded by `MIN_N` like every other share.
  */
+/**
+ * `headline()` plus the two shares it reports as counts.
+ *
+ * The headline tile asks for the share of stays at 10 h or more (brief, section 3, item 1) and
+ * `kpi.ts` hands over the count. The denominator is `measured` — the cases with a computable
+ * stay, which is what the count is drawn from — and the share is null below MIN_N, like every
+ * other share in the app. This is the only arithmetic this module does on top of `kpi.ts`.
+ */
+export type HeadlineFigures = Headline & { atLeast10Share: number | null; atLeast12Share: number | null }
+
 export type DashboardKpi = {
-  headline: Headline
+  headline: HeadlineFigures
   /** The period of the same length before this one, measured to `asOf`. Null for 'all'. */
-  previous: { headline: Headline; asOf: Date } | null
-  /**
-   * `headline()` reports "10 h or more" and "12 h or more" as counts; the headline tile asks for
-   * a share (brief, section 3, item 1). The denominator is `measured` — the cases with a
-   * computable stay, which is what the counts are drawn from — and the share is null below MIN_N.
-   */
-  atLeast10Share: number | null
-  atLeast12Share: number | null
+  previous: { headline: HeadlineFigures; asOf: Date } | null
   stayBands: IdRow[]
   longest: LongestStay[]
   actions: Actions
@@ -325,17 +329,26 @@ function guardedShare(within: number, n: number): number | null {
   return n >= MIN_N ? within / n : null
 }
 
+// `KpiCase`, not `CaseForStats`: `previousRange` hands back the structural subset it filtered.
+function figures(cases: ReadonlyArray<KpiCase>, asOf: Date): HeadlineFigures {
+  const head = headline(cases, asOf)
+  return {
+    ...head,
+    atLeast10Share: guardedShare(head.atLeast10, head.measured),
+    atLeast12Share: guardedShare(head.atLeast12, head.measured),
+  }
+}
+
 export function kpiPanels(all: ReadonlyArray<CaseForStats>, cases: ReadonlyArray<CaseForStats>, range: Range, now: Date): DashboardKpi {
-  const head = headline(cases, now)
   // 'all' has no period before it; `previousRange` returns an empty window and no delta is shown.
   const before = previousRange(all, range, now)
   const rows = completeness(cases, now)
   const adaa = adaaSummary(cases)
   return {
-    headline: head,
-    previous: range === 'all' ? null : { headline: headline(before.cases, before.asOf), asOf: before.asOf },
-    atLeast10Share: guardedShare(head.atLeast10, head.measured),
-    atLeast12Share: guardedShare(head.atLeast12, head.measured),
+    headline: figures(cases, now),
+    // Measured to the end of its own period, never to `now`: a case still open then must not be
+    // given today's clock (kpi.ts, `previousRange`).
+    previous: range === 'all' ? null : { headline: figures(before.cases, before.asOf), asOf: before.asOf },
     stayBands: stayBands(cases, now),
     longest: longestStays(cases, now),
     actions: actionsDocumented(cases),

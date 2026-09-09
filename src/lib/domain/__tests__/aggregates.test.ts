@@ -247,8 +247,8 @@ describe('Phase 8 panels', () => {
     expect(k.headline.atLeast10).toBe(3)
     expect(k.headline.atLeast12).toBe(2)
     expect(k.headline.longest).toEqual({ id: 'C4', mrn: '100004', hours: 25 })
-    expect(k.atLeast10Share).toBe(0.3)
-    expect(k.atLeast12Share).toBe(0.2)
+    expect(k.headline.atLeast10Share).toBe(0.3)
+    expect(k.headline.atLeast12Share).toBe(0.2)
   })
 
   it('the previous 30 days is C9 alone, measured to the end of its own period and not to now', () => {

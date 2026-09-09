@@ -1,14 +1,14 @@
 /**
  * The dashboard — the prototype's `Dashboard` (docs/reference/ERNavigatorTracker.jsx), section
- * for section and word for word, on `dashboard()` from `src/lib/domain/aggregates.ts`.
+ * for section and word for word, on `dashboard()` from `src/lib/domain/aggregates.ts`, with the
+ * Phase 8 panels from `sections.tsx` interleaved into it.
  *
  * Nothing on this page counts anything. Every number, every row and every drill-down id comes out
- * of that one call, which is tested against a fixture with hand-computed answers. The two charts
+ * of that one call, which is tested against a fixture with hand-computed answers. The three charts
  * are the only client components; the tiles, the tables and every link are server-rendered HTML,
  * so leadership can read this page with JavaScript off and print it.
  */
 import Link from 'next/link'
-import { HBar, type HBarColor, type HBarRow } from '@/src/components/dashboard/charts/HBar'
 import { WeeklyChart, type WeekPoint } from '@/src/components/dashboard/charts/WeeklyChart'
 import {
   BarLinks,
@@ -18,43 +18,33 @@ import {
   Footnote,
   Median,
   ThresholdLabel,
-  Tile,
   type TableRow,
 } from '@/src/components/dashboard/parts'
+import {
+  ActionsDocumented,
+  AdaaPanel,
+  AdmissionToUnit,
+  BarSection,
+  ByAreaSection,
+  ByCtasSection,
+  DocumentationSection,
+  ExamToConsultSection,
+  HeadlineTiles,
+  LongestStays,
+  OutcomesSection,
+  RepeatVisits,
+  StayBandsSection,
+  TurnaroundSection,
+  WorkingTargets,
+  hbarRows,
+} from '@/src/components/dashboard/sections'
 import { RANGE_LABELS, dashboardHref, drillKey, type DrillSection } from '@/src/lib/dashboard/drill'
-import { RANGES, type CountRow, type Range, type dashboard } from '@/src/lib/domain/aggregates'
-import { DISPOSITION_LABELS, SHIFT_LABELS } from '@/src/lib/domain/taxonomy'
+import { RANGES, type Range, type dashboard } from '@/src/lib/domain/aggregates'
+import { SHIFT_LABELS } from '@/src/lib/domain/taxonomy'
 import { weekPoint } from '@/src/lib/dashboard/weeks'
-import { MIN_N, fmtHours } from '@/src/lib/domain/time'
+import { MIN_N } from '@/src/lib/domain/time'
 
 type DashboardData = ReturnType<typeof dashboard>
-
-const hbarRows = (rows: ReadonlyArray<CountRow>, range: Range, section: DrillSection): HBarRow[] =>
-  rows.map((row) => ({
-    name: row.name,
-    value: row.value,
-    href: dashboardHref(range, drillKey(section, row.name)),
-  }))
-
-/** A bar section: the chart, and the same rows as links for keyboard, screen readers and print. */
-function BarSection({
-  title,
-  rows,
-  color,
-  unit = 'cases',
-}: {
-  title: string
-  rows: HBarRow[]
-  color: HBarColor
-  unit?: string
-}) {
-  return (
-    <DashSection title={title}>
-      <HBar rows={rows} color={color} unit={unit} />
-      <BarLinks caption={title} rows={rows} unit={unit} />
-    </DashSection>
-  )
-}
 
 export function DashboardView({ data, range }: { data: DashboardData; range: Range }) {
   return (
@@ -91,9 +81,22 @@ export function DashboardView({ data, range }: { data: DashboardData; range: Ran
  * chips. `/report` (Phase 5) renders exactly this under a hospital header for an explicit date
  * range, which is what "the dashboard sections for that range" means: one implementation of every
  * section, printed by the same Phase 4 stylesheet, so the report can never drift from the screen.
+ *
+ * `variant` is the one thing the two differ in, and it changes order, never content: a printed
+ * report opens with the four sections a reader of the deck looks for first — the headline, the
+ * stay bands, the Adaa panel and the working targets — and the screen keeps them where a reader
+ * scrolling the page expects them (Phase 8 spec, Slice E).
  */
-export function DashboardBody({ data, range }: { data: DashboardData; range: Range }) {
-  const { tiles, admission } = data
+export function DashboardBody({
+  data,
+  range,
+  variant = 'screen',
+}: {
+  data: DashboardData
+  range: Range
+  variant?: 'screen' | 'report'
+}) {
+  const { admission, kpi } = data
   const href = (section: DrillSection, name: string | number) => dashboardHref(range, drillKey(section, name))
 
   const thresholdRows: TableRow[] = data.thresholds.map((row) => ({
@@ -136,22 +139,20 @@ export function DashboardBody({ data, range }: { data: DashboardData; range: Ran
     ],
   }))
 
-  const dispoRows = data.byDispo.map((row) => ({
-    name: DISPOSITION_LABELS[row.name as keyof typeof DISPOSITION_LABELS] ?? row.name,
-    value: row.value,
-    href: href('dispo', row.name),
-  }))
+  /** What a printed report opens with, and what the screen keeps further down the page. */
+  const lead = (
+    <>
+      <StayBandsSection kpi={kpi} range={range} />
+      <AdaaPanel kpi={kpi} range={range} />
+      <WorkingTargets kpi={kpi} range={range} />
+    </>
+  )
 
   return (
     <>
-      <div className="flex gap-2 px-4 pb-3">
-        <Tile label="Open now" value={String(tiles.openNow)} />
-        <Tile label="Open past 6h" value={String(tiles.openPast6)} tone="danger" />
-        <Tile
-          label="Median LOS, resolved"
-          value={tiles.resolvedN < MIN_N ? `n<${MIN_N}` : fmtHours(tiles.medianLos)}
-        />
-      </div>
+      <HeadlineTiles kpi={kpi} range={range} />
+
+      {variant === 'report' ? lead : null}
 
       {data.inRange > 0 && (
         <DashSection title="Cases past each threshold">
@@ -171,6 +172,8 @@ export function DashboardBody({ data, range }: { data: DashboardData; range: Ran
         </section>
       ) : (
         <>
+          {variant === 'screen' ? <StayBandsSection kpi={kpi} range={range} /> : null}
+
           {data.weeks.length > 1 && (
             <DashSection title="By week: cases and median stay">
               <WeeklyChart weeks={weekPoints} />
@@ -187,12 +190,27 @@ export function DashboardBody({ data, range }: { data: DashboardData; range: Ran
           )}
 
           <BarSection title="Primary delay reason" rows={hbarRows(data.byPrimary, range, 'primary')} color="accent" />
+          {/* The weekly deck's "delay pathway" classification, expressed through the locked stage
+              taxonomy rather than a second one (brief, section 6). */}
           <BarSection
-            title="Journey stage where delays occur"
+            title="Pathways"
             rows={hbarRows(data.byStage, range, 'stage')}
             color="ink"
+            unit={`of ${data.inRange} cases`}
+            footnote="The journey stage each delay reason belongs to. A case whose reasons span several stages is counted in each, so the bars add to more than the number of cases."
           />
           <BarSection title="Departments involved" rows={hbarRows(data.byDept, range, 'dept')} color="plum" />
+
+          {variant === 'screen' ? (
+            <>
+              <AdaaPanel kpi={kpi} range={range} />
+              <WorkingTargets kpi={kpi} range={range} />
+            </>
+          ) : null}
+
+          <AdmissionToUnit kpi={kpi} range={range} />
+          <TurnaroundSection kpi={kpi} range={range} />
+          <ExamToConsultSection kpi={kpi} range={range} />
 
           <DashSection title="Consulted team response, median">
             {consultRows.length ? (
@@ -243,6 +261,9 @@ export function DashboardBody({ data, range }: { data: DashboardData; range: Ran
             )}
           </DashSection>
 
+          <LongestStays kpi={kpi} range={range} />
+          <ActionsDocumented kpi={kpi} range={range} />
+
           {shiftRows.length > 0 && (
             <DashSection title="By shift">
               <DataTable head={['Shift', 'Cases', 'Median stay']} rows={shiftRows} />
@@ -257,7 +278,11 @@ export function DashboardBody({ data, range }: { data: DashboardData; range: Ran
             />
           )}
 
-          <BarSection title="Final disposition" rows={dispoRows} color="ok" />
+          <OutcomesSection kpi={kpi} range={range} />
+          <ByCtasSection kpi={kpi} range={range} />
+          <ByAreaSection kpi={kpi} range={range} />
+          <RepeatVisits kpi={kpi} range={range} />
+          <DocumentationSection kpi={kpi} range={range} />
 
           <DashSection title={`Other reasons awaiting review (${data.otherQueue.length})`}>
             {data.otherQueue.length === 0 ? (
