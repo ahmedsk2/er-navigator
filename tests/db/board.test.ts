@@ -98,17 +98,28 @@ function draft(over: Partial<CaseDraft> = {}): CaseDraft {
 }
 
 /** Open a case and keep the exact draft, so a later resolve can send it back unchanged. */
+/**
+ * Every registration instant this file has opened a case at. `openRegistrations` is a list of
+ * timestamps with no ids on it, so this is how a whole-database counts strip is narrowed to the
+ * rows this file wrote — `Date.now()` is millisecond-precise, so no other suite can collide.
+ */
+const myRegistrations = new Set<string>()
+
 async function openCase(actor: AuthUser, over: Partial<CaseDraft> = {}): Promise<{ id: string; input: CaseDraft }> {
   const input = draft(over)
   const result = await createCase(actor, input, ctxFor(actor.id))
   if (!result.ok) throw new Error(`expected the case to open, got ${JSON.stringify(result)}`)
   cases.push(result.id)
+  myRegistrations.add(new Date(input.registrationAt).toISOString())
   return { id: result.id, input }
 }
 
 /** Only this file's rows: another suite may be writing to the same database. */
 const mine = <T extends { mrn: string }>(rows: ReadonlyArray<T>): T[] =>
   rows.filter((row) => row.mrn.startsWith(MRN_PREFIX))
+
+const myOpen = (registrations: ReadonlyArray<string>): string[] =>
+  registrations.filter((iso) => myRegistrations.has(iso)).sort()
 
 const mrnsOf = async (filter: 'open' | 'resolved' | 'all'): Promise<string[]> =>
   mine(await loadBoardRows(filter)).map((row) => row.mrn)
@@ -247,9 +258,14 @@ describe('loadBoard', () => {
 
     expect(onOpen.filter).toBe('open')
     expect(onResolved.filter).toBe('resolved')
-    expect(onResolved.openRegistrations.length).toBe(onOpen.openRegistrations.length)
-    expect(countsOf(onResolved.openRegistrations, now)).toEqual(countsOf(onOpen.openRegistrations, now))
-    expect(countsOf(onOpen.openRegistrations, now).past12).toBeGreaterThanOrEqual(1)
+    // Narrowed to this file's own registrations: the suite shares one database, and another spec
+    // file opening or resolving a case between the two loads would move a whole-database count
+    // without saying anything about whether the counts strip is scoped to the open cases.
+    expect(myOpen(onResolved.openRegistrations)).toEqual(myOpen(onOpen.openRegistrations))
+    expect(countsOf(myOpen(onResolved.openRegistrations), now)).toEqual(
+      countsOf(myOpen(onOpen.openRegistrations), now),
+    )
+    expect(countsOf(myOpen(onOpen.openRegistrations), now).past12).toBeGreaterThanOrEqual(1)
     expect(onOpen.now).toBe(now.toISOString())
     expect(onOpen.rows.every((row) => row.status === 'OPEN')).toBe(true)
     expect(onResolved.rows.every((row) => row.status === 'RESOLVED')).toBe(true)
