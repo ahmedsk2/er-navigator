@@ -34,9 +34,23 @@ function row(over: Partial<CaseStatsRow> = {}): CaseStatsRow {
     transportArrivedAt: null,
     medAdminInformedAt: null,
     ctas: null,
+    painkillerPrescribed: null,
+    pethidinePrescribed: null,
+    pethidineDoseMg: null,
+    painkillerAt: null,
+    sickleCellTreatment: null,
+    instructionsGiven: null,
+    familyEngagement: null,
+    caseMgmtReferral: null,
+    caseMgmtCriteria: null,
+    caseMgmtAction: null,
+    caseMgmtCalledAt: null,
+    caseMgmtRepliedAt: null,
+    reviewedAt: null,
     primaryReason: null,
     ward: null,
     area: null,
+    reviewedBy: null,
     _count: { updates: 0 },
     updates: [],
     reasons: [],
@@ -60,23 +74,37 @@ describe('CASE_STATS_SELECT', () => {
         'area',
         'bedAssignedAt',
         'bedRequestedAt',
+        'caseMgmtAction',
+        'caseMgmtCalledAt',
+        'caseMgmtCriteria',
+        'caseMgmtReferral',
+        'caseMgmtRepliedAt',
         'consults',
         'ctas',
         'decisionAt',
         'departedAt',
         'disposition',
+        'familyEngagement',
         'handoverAt',
         'id',
+        'instructionsGiven',
         'investigations',
         'medAdminInformedAt',
         'mrn',
+        'painkillerAt',
+        'painkillerPrescribed',
+        'pethidineDoseMg',
+        'pethidinePrescribed',
         'physicianAt',
         'primaryReason',
         'reasons',
         'registrationAt',
         'resolvedAt',
+        'reviewedAt',
+        'reviewedBy',
         'roomAt',
         'shift',
+        'sickleCellTreatment',
         'status',
         'transferAcceptedAt',
         'transferRequestedAt',
@@ -188,6 +216,21 @@ describe('toCaseForStats', () => {
       areaName: null,
       updatesCount: 0,
       lastUpdateAt: null,
+      painkillerPrescribed: null,
+      pethidinePrescribed: null,
+      pethidineDoseMg: null,
+      painkillerAt: null,
+      sickleCellTreatment: null,
+      instructionsGiven: null,
+      familyEngagement: null,
+      caseMgmtReferral: null,
+      caseMgmtCriteria: null,
+      caseMgmtAction: null,
+      caseMgmtCalledAt: null,
+      caseMgmtRepliedAt: null,
+      reviewedAt: null,
+      reviewedByName: null,
+      updateActions: [],
       otherTexts: [],
     })
 
@@ -233,7 +276,7 @@ describe('toCaseForStats', () => {
   /**
    * Phase 8. `KpiCase` reads the ward by its code and the area by its name, and needs how many
    * updates a case has and when the newest was written. The count comes from `_count`, so it is
-   * right even though the dashboard's own select only fetches one update row.
+   * right whatever subset of the update rows the caller's own select asked for.
    */
   it('maps the ward code, the CTAS, the ED area name and the update count', () => {
     const mapped = toCaseForStats(
@@ -248,7 +291,7 @@ describe('toCaseForStats', () => {
         transferRequestedAt: at('2026-09-08T10:00:00Z'),
         medAdminInformedAt: at('2026-09-08T10:30:00Z'),
         _count: { updates: 4 },
-        updates: [{ createdAt: at('2026-09-08T11:30:00Z') }],
+        updates: [{ createdAt: at('2026-09-08T11:30:00Z'), action: null }],
       }),
     )
     expect(mapped.ctas).toBe(2)
@@ -271,9 +314,9 @@ describe('toCaseForStats', () => {
       row({
         _count: { updates: 3 },
         updates: [
-          { createdAt: at('2026-09-08T06:00:00Z') },
-          { createdAt: at('2026-09-08T09:00:00Z') },
-          { createdAt: at('2026-09-08T07:00:00Z') },
+          { createdAt: at('2026-09-08T06:00:00Z'), action: null },
+          { createdAt: at('2026-09-08T09:00:00Z'), action: null },
+          { createdAt: at('2026-09-08T07:00:00Z'), action: null },
         ],
       }),
     )
@@ -285,5 +328,78 @@ describe('toCaseForStats', () => {
     const voided = toCaseForStats(row({ id: 'c10', status: 'VOIDED' }))
     expect(voided.status).toBe('VOIDED')
     expect(dashboard([voided], 'all', at('2026-09-08T12:00:00Z')).inRange).toBe(0)
+  })
+
+  /**
+   * Phase 8b (docs/specs/phase8b-decisions.md). Every field the widened KPI contract names, in one
+   * row, so a column dropped from the select or forgotten in the mapper is a failed assertion
+   * rather than a silently empty panel on the Adaa or discharge-communication sections.
+   */
+  it('maps the pain block, the discharge answers, case management and the review', () => {
+    const mapped = toCaseForStats(
+      row({
+        painkillerPrescribed: 'YES',
+        pethidinePrescribed: 'YES',
+        pethidineDoseMg: 100,
+        painkillerAt: at('2026-09-08T06:45:00Z'),
+        sickleCellTreatment: 'NO',
+        instructionsGiven: 'YES',
+        familyEngagement: 'NOT_SURE',
+        caseMgmtReferral: 'COMPLEX_CARE',
+        caseMgmtCriteria: 'MEETS',
+        caseMgmtAction: 'FOR_ENROLLMENT',
+        caseMgmtCalledAt: at('2026-09-08T07:00:00Z'),
+        caseMgmtRepliedAt: at('2026-09-08T08:30:00Z'),
+        reviewedAt: at('2026-09-08T13:00:00Z'),
+        reviewedBy: { displayName: 'Sami Supervisor' },
+      }),
+    )
+    expect(mapped.painkillerPrescribed).toBe('YES')
+    expect(mapped.pethidinePrescribed).toBe('YES')
+    expect(mapped.pethidineDoseMg).toBe(100)
+    expect(mapped.painkillerAt).toEqual(at('2026-09-08T06:45:00Z'))
+    expect(mapped.sickleCellTreatment).toBe('NO')
+    expect(mapped.instructionsGiven).toBe('YES')
+    expect(mapped.familyEngagement).toBe('NOT_SURE')
+    expect(mapped.caseMgmtReferral).toBe('COMPLEX_CARE')
+    expect(mapped.caseMgmtCriteria).toBe('MEETS')
+    expect(mapped.caseMgmtAction).toBe('FOR_ENROLLMENT')
+    expect(mapped.caseMgmtCalledAt).toEqual(at('2026-09-08T07:00:00Z'))
+    expect(mapped.caseMgmtRepliedAt).toEqual(at('2026-09-08T08:30:00Z'))
+    expect(mapped.reviewedAt).toEqual(at('2026-09-08T13:00:00Z'))
+    // The reviewer's NAME, not their id: nothing downstream should have to look a user up.
+    expect(mapped.reviewedByName).toBe('Sami Supervisor')
+  })
+
+  it('reduces the updates to the DISTINCT action categories, and leaves untagged ones out', () => {
+    const mapped = toCaseForStats(
+      row({
+        _count: { updates: 4 },
+        updates: [
+          { createdAt: at('2026-09-08T06:00:00Z'), action: 'BED_MANAGEMENT' },
+          { createdAt: at('2026-09-08T07:00:00Z'), action: null },
+          { createdAt: at('2026-09-08T08:00:00Z'), action: 'BED_MANAGEMENT' },
+          { createdAt: at('2026-09-08T09:00:00Z'), action: 'LEADERSHIP_ESCALATION' },
+        ],
+      }),
+    )
+    expect([...mapped.updateActions].sort()).toEqual(['BED_MANAGEMENT', 'LEADERSHIP_ESCALATION'])
+    // The count is every update, tagged or not; the newest is still found by scanning.
+    expect(mapped.updatesCount).toBe(4)
+    expect(mapped.lastUpdateAt).toEqual(at('2026-09-08T09:00:00Z'))
+    expect(toCaseForStats(row()).updateActions).toEqual([])
+  })
+
+  /**
+   * The export's own select overrides `updates` and does not ask for `action` (Slice H adds it).
+   * A row without the field must map to no actions rather than to a type error or a crash.
+   */
+  it('accepts an update row with no action field at all', () => {
+    const mapped = toCaseForStats({
+      ...row({ _count: { updates: 1 } }),
+      updates: [{ createdAt: at('2026-09-08T06:00:00Z') }],
+    })
+    expect(mapped.updateActions).toEqual([])
+    expect(mapped.lastUpdateAt).toEqual(at('2026-09-08T06:00:00Z'))
   })
 })

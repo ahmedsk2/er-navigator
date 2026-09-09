@@ -44,14 +44,32 @@ export const CASE_STATS_SELECT = {
   transportArrivedAt: true,
   medAdminInformedAt: true,
   ctas: true,
+  // Phase 8b (docs/specs/phase8b-decisions.md): the pain block, the two discharge-communication
+  // answers, the case-management referral with its outcome and times, and the review.
+  painkillerPrescribed: true,
+  pethidinePrescribed: true,
+  pethidineDoseMg: true,
+  painkillerAt: true,
+  sickleCellTreatment: true,
+  instructionsGiven: true,
+  familyEngagement: true,
+  caseMgmtReferral: true,
+  caseMgmtCriteria: true,
+  caseMgmtAction: true,
+  caseMgmtCalledAt: true,
+  caseMgmtRepliedAt: true,
+  reviewedAt: true,
   primaryReason: { select: { name: true } },
   ward: { select: { code: true } },
   area: { select: { name: true } },
-  // Two reads of the same relation, both cheap: the count, and the newest row's timestamp.
-  // `take: 1` is a hint, not a contract — the export widens this same select to every update in
-  // ascending order, so `toCaseForStats` finds the newest by scanning rather than by position.
+  reviewedBy: { select: { displayName: true } },
+  // The count, and every update's timestamp and action category. Phase 8b dropped the `take: 1`
+  // that used to sit here: `updateActions` is the DISTINCT set of categories on the case, which
+  // the newest row alone cannot answer, and Prisma has no per-parent grouped select to ask for it
+  // instead. Two scalars per update row is the price; `toCaseForStats` still finds the newest by
+  // scanning rather than by position, so the export's own ascending override agrees with it.
   _count: { select: { updates: true } },
-  updates: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true } },
+  updates: { orderBy: { createdAt: 'desc' }, select: { createdAt: true, action: true } },
   reasons: {
     select: {
       otherText: true,
@@ -82,7 +100,21 @@ export const CASE_STATS_SELECT = {
 /** The row shape `CASE_STATS_SELECT` returns, derived from the select so the two cannot drift. */
 export type CaseStatsRow = Prisma.CaseGetPayload<{ select: typeof CASE_STATS_SELECT }>
 
-export function toCaseForStats(row: CaseStatsRow): CaseForStats {
+/**
+ * What `toCaseForStats` actually reads: `CaseStatsRow`, with `action` optional on an update row.
+ *
+ * One caller overrides the `updates` relation with a select of its own — `CASE_EXPORT_SELECT` in
+ * src/lib/export/load.ts, which takes every update oldest-first with its text and author for the
+ * Updates sheet — and it does not ask for `action`. Rather than require a column that select does
+ * not have, the field is optional here and a row without it yields an empty `updateActions`. When
+ * the export needs the deck's categories (Slice H) it adds `action: true` to its own override and
+ * nothing else changes.
+ */
+type StatsRowInput = Omit<CaseStatsRow, 'updates'> & {
+  updates: ReadonlyArray<{ createdAt: Date; action?: CaseForStats['updateActions'][number] | null }>
+}
+
+export function toCaseForStats(row: StatsRowInput): CaseForStats {
   // Stage order is the taxonomy's, so a case's stage list reads Registration → Discharge; the
   // charts re-sort by count anyway, but a stable order keeps the drill-down labels predictable.
   const stageNames = [
@@ -96,8 +128,12 @@ export function toCaseForStats(row: CaseStatsRow): CaseForStats {
   // Order-independent on purpose: the dashboard's select takes the newest update only, the
   // export's takes all of them oldest-first, and both must yield the same "last update at".
   let lastUpdateAt: Date | null = null
+  // Phase 8b: the DISTINCT action categories on the case, in first-seen order. A Set, because the
+  // deck counts a case once per category however many updates carried it.
+  const updateActions = new Set<CaseForStats['updateActions'][number]>()
   for (const u of row.updates) {
     if (!lastUpdateAt || u.createdAt.getTime() > lastUpdateAt.getTime()) lastUpdateAt = u.createdAt
+    if (u.action) updateActions.add(u.action)
   }
 
   return {
@@ -145,6 +181,23 @@ export function toCaseForStats(row: CaseStatsRow): CaseForStats {
     areaName: row.area?.name ?? null,
     updatesCount: row._count.updates,
     lastUpdateAt,
+    painkillerPrescribed: row.painkillerPrescribed,
+    pethidinePrescribed: row.pethidinePrescribed,
+    pethidineDoseMg: row.pethidineDoseMg,
+    painkillerAt: row.painkillerAt,
+    sickleCellTreatment: row.sickleCellTreatment,
+    instructionsGiven: row.instructionsGiven,
+    familyEngagement: row.familyEngagement,
+    caseMgmtReferral: row.caseMgmtReferral,
+    caseMgmtCriteria: row.caseMgmtCriteria,
+    caseMgmtAction: row.caseMgmtAction,
+    caseMgmtCalledAt: row.caseMgmtCalledAt,
+    caseMgmtRepliedAt: row.caseMgmtRepliedAt,
+    reviewedAt: row.reviewedAt,
+    // The reviewer's name, not their id: `kpi.ts` reads it to print "Reviewed by …" and never
+    // needs to look a user up.
+    reviewedByName: row.reviewedBy?.displayName ?? null,
+    updateActions: [...updateActions],
     otherTexts: row.reasons
       .filter((r): r is typeof r & { otherText: string } => !!r.otherText && r.otherText.trim() !== '')
       .map((r) => ({ stageName: r.reason.stage.name, text: r.otherText })),
