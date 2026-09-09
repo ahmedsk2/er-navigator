@@ -4,6 +4,6 @@ import nextTs from 'eslint-config-next/typescript'
 const config = [
   ...nextVitals,
   ...nextTs,
-  { ignores: ['.next/**', 'node_modules/**', 'docs/**', 'coverage/**', 'playwright-report/**'] },
+  { ignores: ['.next/**', 'node_modules/**', 'docs/**', 'coverage/**', 'playwright-report/**', '.claude/**'] },
 ]
 export default config

@@ -11,3 +11,6 @@ test-results/
 .DS_Store
 Thumbs.db
 /generated/
+
+# nested agent worktrees created by the Claude Code harness
+.claude/worktrees/
