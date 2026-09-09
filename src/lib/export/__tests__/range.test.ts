@@ -1,0 +1,136 @@
+import { describe, expect, it } from 'vitest'
+import {
+  addDays,
+  defaultExportRange,
+  exportFilename,
+  parseDateKey,
+  parseExportRange,
+  parseExportStatus,
+  riyadhDateKey,
+  riyadhDayBounds,
+  riyadhDayStart,
+  riyadhWeekday,
+} from '../range'
+
+/**
+ * Asia/Riyadh is UTC+3 with no DST, so midnight local is 21:00 UTC the previous day. Every
+ * expectation below is that arithmetic done by hand — the point of the module is that the server
+ * (which runs in UTC) filters on the nurse's calendar day, not on its own.
+ */
+describe('riyadhDateKey', () => {
+  it('uses the Riyadh calendar day, not the UTC one', () => {
+    expect(riyadhDateKey(new Date('2026-09-08T12:00:00Z'))).toBe('2026-09-08')
+    // 22:30 UTC is 01:30 the next morning in Riyadh.
+    expect(riyadhDateKey(new Date('2026-09-08T22:30:00Z'))).toBe('2026-09-09')
+    // 20:59:59 UTC is still 23:59 the same evening.
+    expect(riyadhDateKey(new Date('2026-09-08T20:59:59Z'))).toBe('2026-09-08')
+  })
+})
+
+describe('riyadhWeekday', () => {
+  it('names the Riyadh weekday', () => {
+    expect(riyadhWeekday(new Date('2026-09-08T12:00:00Z'))).toBe('Tue')
+    // 21:30 UTC on Tuesday is already Wednesday in Riyadh.
+    expect(riyadhWeekday(new Date('2026-09-08T21:30:00Z'))).toBe('Wed')
+  })
+})
+
+describe('riyadhDayStart', () => {
+  it('is 21:00 UTC on the previous day', () => {
+    expect(riyadhDayStart('2026-09-08').toISOString()).toBe('2026-09-07T21:00:00.000Z')
+  })
+
+  it('rejects anything that is not a date', () => {
+    expect(() => riyadhDayStart('08/09/2026')).toThrow()
+  })
+})
+
+describe('addDays', () => {
+  it('walks the calendar, including over a month end', () => {
+    expect(addDays('2026-09-08', 1)).toBe('2026-09-09')
+    expect(addDays('2026-08-31', 1)).toBe('2026-09-01')
+    expect(addDays('2026-03-01', -1)).toBe('2026-02-28')
+  })
+})
+
+describe('riyadhDayBounds', () => {
+  const bounds = riyadhDayBounds('2026-09-01', '2026-09-08')
+
+  it('is half-open: the whole of `to` is inside, the next day is not', () => {
+    expect(bounds.gte.toISOString()).toBe('2026-08-31T21:00:00.000Z')
+    expect(bounds.lt.toISOString()).toBe('2026-09-08T21:00:00.000Z')
+  })
+
+  it('keeps a case registered at 23:59 Riyadh on the last day', () => {
+    const lastMinute = new Date('2026-09-08T20:59:00Z') // 23:59 Riyadh
+    expect(lastMinute >= bounds.gte && lastMinute < bounds.lt).toBe(true)
+  })
+
+  it('drops a case registered at 00:00 Riyadh the day after', () => {
+    const nextMidnight = new Date('2026-09-08T21:00:00Z')
+    expect(nextMidnight < bounds.lt).toBe(false)
+  })
+
+  it('keeps a case registered at 00:00 Riyadh on the first day', () => {
+    expect(new Date('2026-08-31T21:00:00Z') >= bounds.gte).toBe(true)
+    expect(new Date('2026-08-31T20:59:00Z') >= bounds.gte).toBe(false)
+  })
+})
+
+describe('parseDateKey', () => {
+  it('accepts a real date and rejects everything else', () => {
+    expect(parseDateKey('2026-09-08')).toBe('2026-09-08')
+    expect(parseDateKey(['2026-09-08', '2026-01-01'])).toBe('2026-09-08')
+    expect(parseDateKey('2026-02-31')).toBeNull()
+    expect(parseDateKey('2026-13-01')).toBeNull()
+    expect(parseDateKey('08/09/2026')).toBeNull()
+    expect(parseDateKey(undefined)).toBeNull()
+  })
+})
+
+describe('parseExportStatus', () => {
+  it('falls back to all', () => {
+    expect(parseExportStatus('open')).toBe('open')
+    expect(parseExportStatus('resolved')).toBe('resolved')
+    expect(parseExportStatus('VOIDED')).toBe('all')
+    expect(parseExportStatus(undefined)).toBe('all')
+  })
+})
+
+describe('defaultExportRange', () => {
+  it('is the prototype default: seven days back to today, all statuses', () => {
+    expect(defaultExportRange(new Date('2026-09-08T12:00:00Z'))).toEqual({
+      from: '2026-09-01',
+      to: '2026-09-08',
+      status: 'all',
+    })
+  })
+})
+
+describe('parseExportRange', () => {
+  const now = new Date('2026-09-08T12:00:00Z')
+
+  it('reads a good query string', () => {
+    expect(parseExportRange({ from: '2026-08-01', to: '2026-08-31', status: 'open' }, now)).toEqual({
+      from: '2026-08-01',
+      to: '2026-08-31',
+      status: 'open',
+    })
+  })
+
+  it('falls back per field, so a stale bookmark still renders', () => {
+    expect(parseExportRange({ from: 'yesterday' }, now)).toEqual({
+      from: '2026-09-01',
+      to: '2026-09-08',
+      status: 'all',
+    })
+  })
+})
+
+describe('exportFilename', () => {
+  it('is the prototype filename', () => {
+    expect(exportFilename({ from: '2026-09-01', to: '2026-09-08', status: 'all' })).toBe(
+      'ER_Navigator_2026-09-01_to_2026-09-08.xlsx',
+    )
+  })
+})
