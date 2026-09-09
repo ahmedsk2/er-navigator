@@ -67,9 +67,16 @@ export class UnauthorizedError extends Error {
   }
 }
 
+/**
+ * What was refused. Normally an action from the permission matrix; `role:ADMIN` when a screen
+ * has no action of its own and states the role instead (see `assertRole`). Keeping both in one
+ * error type is what lets `requireRole` mirror `requireAction` for route handlers.
+ */
+export type ForbiddenSubject = Action | `role:${string}`
+
 export class ForbiddenError extends Error {
-  readonly action: Action
-  constructor(action: Action) {
+  readonly action: ForbiddenSubject
+  constructor(action: ForbiddenSubject) {
     super(`forbidden: ${action}`)
     this.name = 'ForbiddenError'
     this.action = action
@@ -215,6 +222,27 @@ export async function assertCan(user: AuthUser, action: Action, ctx: AuditContex
   throw new ForbiddenError(action)
 }
 
+/**
+ * The same, for the two screens the locked matrix has no action for: `/admin` and
+ * `/admin/alerts`. Inventing `admin.view` would edit the permission matrix, and borrowing
+ * `admin.users` would enforce a different permission, so those screens state the role instead
+ * and the refusal is recorded exactly like an action refusal — entity `Role`, entityId the role
+ * that was required.
+ */
+export async function assertRole(
+  user: AuthUser,
+  roles: ReadonlyArray<Role>,
+  ctx: AuditContext,
+): Promise<void> {
+  if (roles.includes(user.role)) return
+  const required = roles.join(',')
+  await auditQuietly(
+    { action: 'auth.forbidden', entity: 'Role', entityId: required, after: { role: user.role } },
+    ctx,
+  )
+  throw new ForbiddenError(`role:${required}`)
+}
+
 // --- request-bound ------------------------------------------------------------------------
 
 export async function readSessionCookie(): Promise<string | null> {
@@ -290,6 +318,37 @@ export async function requireAction(action: Action, opts: { as?: 'page' | 'api' 
   }
   try {
     await assertCan(user, action, await auditContext(user.id))
+  } catch (error) {
+    if (isForbiddenError(error)) forbidden()
+    throw error
+  }
+  return user
+}
+
+/**
+ * requireUser + a role, for the screens the permission matrix has no action for.
+ *
+ * The same shape as `requireAction` — page by default (audit row, then Next's `forbidden()`,
+ * so the response is a real HTTP 403 carrying `app/forbidden.tsx`), `{ as: 'api' }` for a route
+ * handler, which gets the `ForbiddenError` to map to a status of its own.
+ *
+ * Phase 7 review C1: this is not only the admin layout's gate. Next skips ancestor layouts on an
+ * RSC request whose `next-router-state-tree` already contains the segment, so a layout is
+ * defence in depth and never the only check. Every page under `/admin` calls this or
+ * `requireAction` itself.
+ */
+export async function requireRole(
+  roles: Role | ReadonlyArray<Role>,
+  opts: { as?: 'page' | 'api' } = {},
+): Promise<AuthUser> {
+  const required = typeof roles === 'string' ? [roles] : roles
+  const user = await requireUser(opts)
+  if (opts.as === 'api') {
+    await assertRole(user, required, await auditContext(user.id))
+    return user
+  }
+  try {
+    await assertRole(user, required, await auditContext(user.id))
   } catch (error) {
     if (isForbiddenError(error)) forbidden()
     throw error

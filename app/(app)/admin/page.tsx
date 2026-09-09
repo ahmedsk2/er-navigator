@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { requireRole } from '@/src/lib/auth/session'
 import { prisma } from '@/src/lib/db'
 
 export const metadata: Metadata = { title: 'Admin · ER Navigator' }
@@ -8,9 +9,14 @@ export const dynamic = 'force-dynamic'
 /**
  * `/admin` — the landing card for the five sections, with the two counts that mean somebody has
  * something to do: descriptions waiting to be promoted, and alerts nobody has acknowledged.
- * The ADMIN gate is the layout's; this page only reads.
+ *
+ * The gate is here as well as in the layout, which Next skips on an RSC request that already
+ * carries the `admin` segment (review C1). This screen has no action of its own in the locked
+ * matrix, so it states the role rather than borrowing somebody else's permission.
  */
 export default async function AdminIndexPage() {
+  await requireRole('ADMIN')
+
   const [pendingReviews, unacknowledgedAlerts, activeUsers] = await Promise.all([
     prisma.otherReview.count({ where: { status: 'PENDING' } }),
     prisma.alert.count({ where: { acknowledgedAt: null } }),
