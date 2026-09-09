@@ -557,6 +557,31 @@ describe('resolve and reopen', () => {
     expect(await prisma.auditLog.count({ where: { entity: 'Case', entityId: id, action: 'case.reopen' } })).toBe(1)
   })
 
+  it('answers 409 with the last editor for a stale version on resolve, and resolves nothing', async () => {
+    const first = actorOf(await makeUser('NAVIGATOR'))
+    const second = actorOf(await makeUser('SUPERVISOR'))
+    const id = await openCase(first)
+
+    const winner = await saveCase(second, id, draft({ mrn: '111222', version: 1 }), ctxFor(second.id))
+    expect(winner).toMatchObject({ ok: true, version: 2 })
+
+    const loser = await resolveCase(
+      first,
+      id,
+      draft({ disposition: 'DISCHARGED_HOME', departedAt: new Date().toISOString(), version: 1 }),
+      ctxFor(first.id),
+    )
+    expect(loser).toMatchObject({ ok: false, error: 'conflict', changedBy: second.displayName })
+
+    const row = await prisma.case.findUniqueOrThrow({ where: { id } })
+    expect(row.status).toBe('OPEN')
+    expect(row.version).toBe(2)
+    expect(row.resolvedAt).toBeNull()
+    // The refused resolve left neither an audit row nor its "Resolved:" update behind.
+    expect(await prisma.auditLog.count({ where: { entity: 'Case', entityId: id, action: 'case.resolve' } })).toBe(0)
+    expect(await prisma.caseUpdate.count({ where: { caseId: id } })).toBe(0)
+  })
+
   it('answers 409 when the version is stale on reopen', async () => {
     const nurse = actorOf(await makeUser('NAVIGATOR'))
     const id = await openCase(nurse)
@@ -608,5 +633,24 @@ describe('voidCase', () => {
     const audits = await prisma.auditLog.findMany({ where: { entity: 'Case', entityId: id }, orderBy: { at: 'asc' } })
     expect(audits.map((a) => a.action)).toEqual(['case.create', 'case.void'])
     expect(audits[1]!.after).toMatchObject({ status: 'VOIDED' })
+  })
+
+  it('answers 409 with the last editor for a stale version, and voids nothing', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const supervisor = actorOf(await makeUser('SUPERVISOR'))
+    const id = await openCase(nurse)
+
+    const winner = await saveCase(nurse, id, draft({ mrn: '111333', version: 1 }), ctxFor(nurse.id))
+    expect(winner).toMatchObject({ ok: true, version: 2 })
+
+    const loser = await voidCase(supervisor, id, { version: 1, voidReason: 'opened twice' }, ctxFor(supervisor.id))
+    expect(loser).toMatchObject({ ok: false, error: 'conflict', changedBy: nurse.displayName })
+
+    const row = await prisma.case.findUniqueOrThrow({ where: { id } })
+    expect(row.status).toBe('OPEN')
+    expect(row.version).toBe(2)
+    expect(row.voidReason).toBeNull()
+    expect(await prisma.auditLog.count({ where: { entity: 'Case', entityId: id, action: 'case.void' } })).toBe(0)
+    expect(await prisma.caseUpdate.count({ where: { caseId: id } })).toBe(0)
   })
 })
