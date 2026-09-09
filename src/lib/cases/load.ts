@@ -271,6 +271,9 @@ export async function loadCaseForEditor(id: string, reference: ReferenceData): P
       transferRequestedAt: row.transferRequestedAt,
       transferAcceptedAt: row.transferAcceptedAt,
       transportArrivedAt: row.transportArrivedAt,
+      painkillerAt: row.painkillerAt,
+      caseMgmtCalledAt: row.caseMgmtCalledAt,
+      caseMgmtRepliedAt: row.caseMgmtRepliedAt,
       medAdminInformedAt: row.medAdminInformedAt,
       consults: row.consults.map((consult) => ({
         departmentName: departmentName.get(consult.departmentId) ?? consult.departmentId,

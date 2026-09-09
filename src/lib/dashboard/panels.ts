@@ -148,6 +148,8 @@ const ADAA_NAMES: Record<AdaaKpi, string> = {
   kpi3: 'KPI 3 · Decision to disposition, median',
   kpi4: 'KPI 4 · CTAS 4 or 5',
   kpi5: 'KPI 5 · Door to disposition within 4 h',
+  kpi7: 'KPI 7 · Mortality (deceased among tracked cases)',
+  kpi8: 'KPI 8 · Door to painkiller, median',
   kpi6: 'KPI 6 · Discharged DAMA',
 }
 

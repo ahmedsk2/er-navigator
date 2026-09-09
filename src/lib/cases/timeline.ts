@@ -33,6 +33,20 @@ const NOT_READ = {
   stageNames: [] as ReadonlyArray<string>,
   updatesCount: 0,
   lastUpdateAt: null,
+  // Phase 8b: the timeline reads painkillerAt and the two case-management times; not these.
+  painkillerPrescribed: null,
+  pethidinePrescribed: null,
+  pethidineDoseMg: null,
+  sickleCellTreatment: null,
+  instructionsGiven: null,
+  familyEngagement: null,
+  caseMgmtReferral: null,
+  caseMgmtCriteria: null,
+  caseMgmtAction: null,
+  reviewedAt: null,
+  reviewedByName: null,
+  updateActions: [] as ReadonlyArray<KpiCase['updateActions'][number]>,
+  untaggedUpdatesCount: 0,
 } satisfies Partial<KpiCase>
 
 /** Exactly the fields the time sequence is built from. */

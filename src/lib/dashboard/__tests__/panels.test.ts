@@ -129,6 +129,17 @@ describe('adaaRows', () => {
     resolvedN: 0,
     nonUrgentShare: null,
     withCtasN: 0,
+    deceasedShare: null,
+    deceasedN: 0,
+    uccN: 0,
+    kpi8TotalMin: null,
+    kpi8N: 0,
+    kpi8Med: null,
+    painkiller: [0, 0, 0, 0],
+    pethidine: [0, 0, 0],
+    painkillerYesN: 0,
+    pethidineYesN: 0,
+    sickleCellYesN: 0,
   }
 
   it('is the six rows in the spec order, KPI 5 before KPI 6 before KPI 4', () => {

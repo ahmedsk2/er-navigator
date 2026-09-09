@@ -53,6 +53,9 @@ const BOARD_ROW_SELECT = {
   transferRequestedAt: true,
   transferAcceptedAt: true,
   transportArrivedAt: true,
+  painkillerAt: true,
+  caseMgmtCalledAt: true,
+  caseMgmtRepliedAt: true,
   medAdminInformedAt: true,
   primaryReason: { select: { name: true } },
   ward: { select: { code: true } },
@@ -93,6 +96,9 @@ type Milestones = {
   transferAcceptedAt: Date | null
   transportArrivedAt: Date | null
   medAdminInformedAt: Date | null
+  painkillerAt: Date | null
+  caseMgmtCalledAt: Date | null
+  caseMgmtRepliedAt: Date | null
 }
 
 type SelectedRow = Milestones & {
@@ -162,6 +168,9 @@ function toBoardRow(row: SelectedRow): BoardRow {
       transferRequestedAt: row.transferRequestedAt,
       transferAcceptedAt: row.transferAcceptedAt,
       transportArrivedAt: row.transportArrivedAt,
+      painkillerAt: row.painkillerAt,
+      caseMgmtCalledAt: row.caseMgmtCalledAt,
+      caseMgmtRepliedAt: row.caseMgmtRepliedAt,
       medAdminInformedAt: row.medAdminInformedAt,
       consults: row.consults.map((consult) => ({
         departmentName: consult.department.name,
