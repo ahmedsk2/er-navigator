@@ -1,13 +1,16 @@
 import { expect, test, type Page } from '@playwright/test'
 import type { BoardPayload } from '../../src/lib/board/types'
 import { inRange, type CaseForStats, type Range } from '../../src/lib/domain/aggregates'
-import { MIN_N, elapsedHours, fmtHours, median } from '../../src/lib/domain/time'
+import { headline } from '../../src/lib/domain/kpi'
+import { MIN_N, fmtHours } from '../../src/lib/domain/time'
 import { fromClientIp, signIn } from './fixtures/case-flow'
 import {
   DASHBOARD_CASES,
   DASHBOARD_MRNS,
   DASHBOARD_OTHER_TEXT,
+  REPEAT_MRN,
   WITHIN_7_DAYS,
+  fixtureMrnsInBand,
   fixtureMrnsOver,
 } from './fixtures/dashboard-cases'
 import { E2E_USERS } from './fixtures/seed-users'
@@ -30,7 +33,7 @@ test.describe.configure({ mode: 'serial' })
 const rowFor = (page: Page, mrn: string) => page.locator(`a[data-mrn="${mrn}"]`)
 const tile = (page: Page, label: string) => page.locator(`[data-tile="${label}"]`)
 
-type Tiles = { openNow: number; openPast6: number; medianLos: string }
+type Tiles = { cases: number; episodes: number; medianStay: string }
 
 /** The board payload as `CaseForStats` clocks — every field the three tiles depend on. */
 function clocksOf(payload: BoardPayload): CaseForStats[] {
@@ -74,28 +77,31 @@ function clocksOf(payload: BoardPayload): CaseForStats[] {
   )
 }
 
-/** What the tiles must read, computed from the board API with the page's own pure functions. */
+/**
+ * What the tiles must read, computed from the board API with the page's own pure functions.
+ *
+ * Phase 8 replaced the three Phase 4 tiles with the weekly deck's headline, so the cross-check is
+ * now `headline()` from the KPI module over the same board snapshot: two independent server paths
+ * that must agree, and a check that cannot go stale.
+ */
 async function tilesFromApi(page: Page, range: Range): Promise<Tiles> {
   const response = await page.request.get('/api/board?f=all')
   expect(response.status()).toBe(200)
   const payload = (await response.json()) as BoardPayload
   const now = new Date(payload.now)
-  const cases = inRange(clocksOf(payload), range, now)
-  const open = cases.filter((c) => c.status === 'OPEN')
-  const resolved = cases.filter((c) => c.status === 'RESOLVED')
+  const head = headline(inRange(clocksOf(payload), range, now), now)
   return {
-    openNow: open.length,
-    openPast6: open.filter((c) => (elapsedHours(c, now) ?? -1) >= 6).length,
-    medianLos:
-      resolved.length < MIN_N ? `n<${MIN_N}` : fmtHours(median(resolved.map((c) => elapsedHours(c, now)))),
+    cases: head.cases,
+    episodes: head.episodes,
+    medianStay: head.med == null ? `n<${MIN_N}` : fmtHours(head.med),
   }
 }
 
 async function readTiles(page: Page): Promise<Tiles> {
   return {
-    openNow: Number(await tile(page, 'Open now').innerText()),
-    openPast6: Number(await tile(page, 'Open past 6h').innerText()),
-    medianLos: (await tile(page, 'Median LOS, resolved').innerText()).trim(),
+    cases: Number(await tile(page, 'Cases').innerText()),
+    episodes: Number(await tile(page, 'Episodes').innerText()),
+    medianStay: (await tile(page, 'Median stay').innerText()).trim(),
   }
 }
 
@@ -119,7 +125,7 @@ async function tilesAgreeWithBoard(page: Page, range: Range): Promise<void> {
   }
 }
 
-test('the dashboard tiles agree with the board, and the threshold table has the four bands', async ({
+test('the headline tiles agree with the board, and the threshold table has the four bands', async ({
   page,
 }, testInfo) => {
   await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.91' : '198.51.100.92')
@@ -244,14 +250,16 @@ test('every section the seeded data earns is on the page, charts included', asyn
     'Cases past each threshold',
     'By week: cases and median stay',
     'Primary delay reason',
-    'Journey stage where delays occur',
+    // Phase 8 renamed "Journey stage where delays occur" to the weekly deck's own word.
+    'Pathways',
     'Departments involved',
     'Consulted team response, median',
     'Investigation turnaround, median from order',
     'Admission chain, median',
     'By shift',
     'By day of week',
-    'Final disposition',
+    // …and replaced "Final disposition" with the outcome mix, which also counts the open cases.
+    'Outcomes',
   ]) {
     await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible()
   }
@@ -260,9 +268,12 @@ test('every section the seeded data earns is on the page, charts included', asyn
   await expect(page.locator('[data-chart-panel="cases"] svg[role="application"]')).toBeVisible()
   await expect(page.locator('[data-chart="hbar"] svg[role="application"]').first()).toBeVisible()
 
-  // MROD was consulted on four seeded cases, so its median is a number and not "n<3".
-  const mrod = page.getByRole('row', { name: /^MROD/ })
-  await expect(mrod).toContainText(/\dh \d\dm/)
+  // MROD was consulted on four seeded cases, so its median is a number and not "n<3". Scoped to
+  // this table: Phase 8's "Exam to consult, median" names the same teams a few sections down.
+  const consultTable = page
+    .getByRole('heading', { name: 'Consulted team response, median', exact: true })
+    .locator('xpath=../table')
+  await expect(consultTable.getByRole('row', { name: /^MROD/ })).toContainText(/\dh \d\dm/)
 
   // The shift table names the three shifts in sentence case, never the enum.
   await expect(page.getByRole('link', { name: 'Morning', exact: true })).toBeVisible()
@@ -273,6 +284,135 @@ test('every section the seeded data earns is on the page, charts included', asyn
   await expect(page).toHaveURL('/dashboard?drill=shift%3ANIGHT')
   await expect(page.locator('[data-drill-label]')).toHaveText('Night shift')
   await expect(rowFor(page, '3200009')).toHaveCount(1)
+})
+
+/**
+ * Phase 8. The seeded fixture now carries a CTAS, an ED area, the journey milestones, an imaging
+ * preliminary read, updates, an escalation, a transfer request and one repeat MRN, so every new
+ * section has something real to draw.
+ *
+ * Section headings are asserted whole-database (they render for anyone's data); every number-bearing
+ * claim is made through a drill-down on the `32000…` MRNs, which is the only set this file owns.
+ */
+test('every Phase 8 section renders, with its footnote and its chart', async ({ page }, testInfo) => {
+  await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.103' : '198.51.100.104')
+  await signIn(page, E2E_USERS.navigator)
+  await page.goto('/dashboard')
+
+  for (const heading of [
+    'Stay bands',
+    'Pathways',
+    'Adaa KPIs, tracked cases only',
+    'Working targets',
+    'Admission to unit',
+    'Turnaround: order to result',
+    'Exam to consult, median',
+    'Longest stays',
+    'Actions documented',
+    'Outcomes',
+    'By CTAS',
+    'By ED area',
+    'Repeat visits',
+    'Documentation',
+  ]) {
+    await expect(page.getByRole('heading', { name: heading, exact: true }), heading).toBeVisible()
+  }
+
+  // The Phase 4 tile row is gone, replaced by the seven headline tiles.
+  await expect(tile(page, 'Open past 6h')).toHaveCount(0)
+  for (const label of ['Cases', 'Episodes', 'Median stay', 'Mean stay', 'Range', '10 h or more', 'Longest stay']) {
+    await expect(tile(page, label), label).toBeVisible()
+  }
+  // The longest stay is the only tile that is a link, and it points at a case.
+  await expect(page.locator('[data-tile="Longest stay"]').locator('xpath=ancestor::a')).toHaveAttribute(
+    'href',
+    /^\/cases\/[a-z0-9]+$/,
+  )
+
+  // The quoted footnote, word for word (Phase 8 spec, Slice E, section 4).
+  await expect(
+    page.getByText('Tracked cases, not the whole ED. Benchmarks: Adaa ED KPI definitions.'),
+  ).toBeVisible()
+
+  // The six Adaa rows, and the stacked turnaround chart actually mounted.
+  for (const kpi of ['KPI 1 · Door to doctor, median', 'KPI 5 · Door to disposition within 4 h', 'KPI 4 · CTAS 4 or 5']) {
+    await expect(page.getByRole('cell', { name: kpi, exact: true }), kpi).toBeVisible()
+  }
+  await expect(page.locator('[data-chart="stacked"] svg[role="application"]')).toBeVisible()
+
+  // Every seeded case has a delay reason and a stay, so those two checks read zero; the seeded
+  // 13-hour open case with no update at all is what keeps the section on the page.
+  await expect(page.getByRole('link', { name: 'Open, no update for 12 h', exact: true })).toBeVisible()
+})
+
+test('each new drill-down lists exactly the seeded cases behind its row', async ({ page }, testInfo) => {
+  await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.105' : '198.51.100.106')
+  await signIn(page, E2E_USERS.navigator)
+
+  const drill = async (key: string) => {
+    await page.goto(`/dashboard?drill=${encodeURIComponent(key)}`)
+    await expect(page.locator('[data-drill-label]'), key).toHaveCount(1)
+  }
+  /** Present, and the named counter-example absent — the same shape the threshold test uses. */
+  const listsOnly = async (key: string, present: string[], absent: string[]) => {
+    await drill(key)
+    for (const mrn of present) await expect(rowFor(page, mrn), `${key} lists ${mrn}`).not.toHaveCount(0)
+    for (const mrn of absent) await expect(rowFor(page, mrn), `${key} omits ${mrn}`).toHaveCount(0)
+  }
+
+  // A stay band is the same arithmetic the threshold table does, sliced differently.
+  expect(fixtureMrnsInBand(24, null)).toEqual(['3200001', '3200007', '3200008'])
+  await listsOnly('stayband:24+ h', ['3200001', '3200007', '3200008'], ['3200002', '3200012'])
+  await expect(page.locator('[data-drill-label]')).toHaveText('Stay 24+ h')
+
+  // CTAS and the ED area, the two Slice D fields.
+  await listsOnly('ctas:5', ['3200006', REPEAT_MRN], ['3200001'])
+  await listsOnly('area:Resuscitation area', ['3200001', '3200007'], ['3200004'])
+
+  // A working target drills to the cases that MISSED it: 3200002 decided 11.6 h after the
+  // physician saw it, 3200001 after 1.5 h.
+  await listsOnly('target:decision150', ['3200002', '3200003', '3200007'], ['3200001'])
+  await expect(page.locator('[data-drill-label]')).toHaveText('Missed: Decision within 2 h 30 of physician contact')
+
+  // The deck's "no operational action documented": 3200012 has no update, no escalation, no fax
+  // and no transfer; 3200001 has all but the transfer.
+  await listsOnly('action:No action documented', ['3200012'], ['3200001'])
+  await listsOnly('action:Transfer requested', ['3200010'], ['3200001'])
+
+  // Adaa's treated-within bands, and an outcome.
+  await listsOnly('treated:Within 4 h', ['3200006'], ['3200001'])
+  await listsOnly('outcome:Discharged DAMA', ['3200005'], ['3200001'])
+
+  // The two grid sections: CT ordered at 2 h with a preliminary read at 6 h is a 4-hour
+  // turnaround; the ICU admission ordered at 3 h left the department 23 hours later.
+  await listsOnly('turnaround:CT|2–4 h', ['3200002'], ['3200009'])
+  await listsOnly('unitband:ICU|>4 h', ['3200001'], ['3200007'])
+
+  // One MRN, two cases in range.
+  await drill(`repeat:${REPEAT_MRN}`)
+  await expect(page.locator('[data-drill-label]')).toHaveText(`MRN ${REPEAT_MRN}, 2 visits`)
+  await expect(rowFor(page, REPEAT_MRN)).toHaveCount(2)
+})
+
+test('the longest stays table ranks the seeded 30-hour case and links to it', async ({ page }, testInfo) => {
+  await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.107' : '198.51.100.108')
+  await signIn(page, E2E_USERS.navigator)
+  await page.goto('/dashboard')
+
+  const table = page.getByRole('heading', { name: 'Longest stays', exact: true }).locator('xpath=../table')
+  const links = table.getByRole('link')
+  await expect(links.first()).toHaveAttribute('href', /^\/cases\/[a-z0-9]+$/)
+
+  // 3200007 stayed 30 h, which is longer than anything else this suite seeds bar one open board
+  // case, so it is always inside the ten. Its row carries its rank, its stay and its outcome.
+  const row = table.getByRole('row').filter({ hasText: '3200007' })
+  await expect(row).toHaveCount(1)
+  await expect(row).toContainText('30h 00m')
+  await expect(row).toContainText('Admitted')
+
+  // Ranked longest first: the numbers run 1, 2, 3, … down the first column.
+  const ranks = await links.evaluateAll((els) => els.map((e) => Number((e.textContent ?? '').split('.')[0])))
+  expect(ranks).toEqual(ranks.map((_, i) => i + 1))
 })
 
 test('an unknown drill key renders the dashboard rather than an error', async ({ page }, testInfo) => {

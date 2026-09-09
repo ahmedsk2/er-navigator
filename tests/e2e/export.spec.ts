@@ -4,7 +4,7 @@ import { countCasesForExport } from '../../src/lib/export/load'
 import { DEFAULT_REPORT_HEADER } from '../../src/lib/export/report-header'
 import { riyadhDateKey } from '../../src/lib/export/range'
 import { fromClientIp, signIn } from './fixtures/case-flow'
-import { DASHBOARD_MRNS } from './fixtures/dashboard-cases'
+import { DASHBOARD_CASES, DASHBOARD_MRNS } from './fixtures/dashboard-cases'
 import { E2E_USERS } from './fixtures/seed-users'
 
 /**
@@ -37,7 +37,9 @@ async function fixtureWindow(): Promise<{ from: string; to: string; mrns: string
     select: { mrn: true, registrationAt: true },
     orderBy: { registrationAt: 'asc' },
   })
-  expect(rows.length, 'the dashboard fixture is seeded').toBe(DASHBOARD_MRNS.length)
+  // Cases, not MRNs: Phase 8 gave one patient two visits, so the fixture writes one more case
+  // than it has distinct MRNs.
+  expect(rows.length, 'the dashboard fixture is seeded').toBe(DASHBOARD_CASES.length)
 
   // The oldest four: 700, 600, 500 and 400 hours back. The fifth is 300 hours back, so the window
   // has a real upper edge that must exclude something.

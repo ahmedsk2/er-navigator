@@ -32,7 +32,9 @@ test('phase 4 gate screenshots', async ({ page }, testInfo) => {
   // The charts are client components: wait for both to have drawn before the shutter.
   await expect(page.locator('[data-chart-panel="cases"] svg[role="application"]')).toBeVisible()
   await expect(page.locator('[data-chart="hbar"] svg[role="application"]').first()).toBeVisible()
-  await expect(page.locator('[data-chart="hbar"]')).toHaveCount(5)
+  // Phase 8 added two: the stay bands at the top and the outcome mix that replaced "Final
+  // disposition". Six horizontal-bar charts, in the order the page lists them.
+  await expect(page.locator('[data-chart="hbar"]')).toHaveCount(6)
   await shoot(page, 'dashboard', suffix)
 
   await page.getByRole('link', { name: 'Over 12h' }).click()
@@ -45,7 +47,7 @@ test('phase 4 gate screenshots', async ({ page }, testInfo) => {
   await expect(page.locator('[data-chart-panel="cases"] svg[role="application"]')).toBeVisible()
   await page.emulateMedia({ media: 'print' })
   await expect(page.getByRole('link', { name: '7 days' })).toBeHidden()
-  await expect(page.getByRole('heading', { name: 'Final disposition' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Outcomes' })).toBeVisible()
   await shoot(page, 'print', suffix)
   await page.emulateMedia({ media: 'screen' })
 })

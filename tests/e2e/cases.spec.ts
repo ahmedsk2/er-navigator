@@ -346,6 +346,66 @@ test('CTAS and the ED area reach the board row and the export', async ({ page })
   expect(cells, `the workbook has one row for MRN ${mrn}`).toEqual(['3', AREA_NAME])
 })
 
+/**
+ * Phase 8, Slice E. The case's time sequence, read-only, after the updates — the weekly deck's
+ * per-case slide generated — and the same sequence in one compact line under the case's row on
+ * the handover sheet.
+ *
+ * The two times are written in the browser's own zone, because that is what a `datetime-local`
+ * input reads and writes; the interval between them is therefore exact to the minute, while the
+ * one from the registration (which carries seconds) is only asserted in shape.
+ */
+test('the timeline lists the recorded steps in order with the interval between them', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.54')
+  const taps = await signIn(page, E2E_USERS.navigator)
+  const mrn = uniqueMrn()
+  const url = await openCase(page, mrn, STAGE, REASON, taps)
+
+  /** "YYYY-MM-DDTHH:mm" `hours` ago in the browser's zone, exactly as `toLocalInput` builds it. */
+  const localInput = (hours: number) =>
+    page.evaluate((h) => {
+      const d = new Date(Date.now() - h * 3_600_000)
+      const pad = (n: number) => String(n).padStart(2, '0')
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+    }, hours)
+
+  // A new case registers six hours ago, so five and four and a half hours ago are both after it.
+  await page.getByLabel('Triage', { exact: true }).fill(await localInput(5))
+  await page.getByLabel('First physician contact', { exact: true }).fill(await localInput(4.5))
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
+
+  await page.goto(url)
+  await expect(page.getByRole('heading', { name: 'Timeline', exact: true })).toBeVisible()
+
+  // Registration first, then the two times, in the order they happened and not the order typed.
+  const steps = page.locator('[data-timeline] [data-timeline-step]')
+  expect(await steps.evaluateAll((els) => els.map((e) => e.getAttribute('data-timeline-step')))).toEqual([
+    'registrationAt',
+    'triageAt',
+    'physicianAt',
+  ])
+  await expect(steps.nth(1)).toContainText('Triage')
+  await expect(steps.nth(2)).toContainText('First physician contact')
+
+  // The first step has no interval; the second's is measured from a registration that carries
+  // seconds, so only its shape is asserted; the third's is exactly the half hour that was typed.
+  await expect(steps.nth(0)).not.toContainText('+')
+  await expect(steps.nth(1)).toContainText(/\+\d+h \d\dm/)
+  await expect(steps.nth(2)).toContainText('+0h 30m')
+
+  // And the same sequence on the handover sheet, which is what a shift change actually carries.
+  await page.goto('/')
+  await expect(page.locator(`a[data-mrn="${mrn}"]`)).toBeVisible()
+  await page.emulateMedia({ media: 'print' })
+  const sheetRow = page.locator(`[data-timeline-row="${mrn}"]`)
+  await expect(sheetRow).toBeVisible()
+  await expect(sheetRow).toContainText('Registration')
+  await expect(sheetRow).toContainText('Triage')
+  await expect(sheetRow).toContainText('First physician contact (+0h 30m)')
+  await page.emulateMedia({ media: 'screen' })
+})
+
 test('out-of-order times warn but never block the save', async ({ page }) => {
   await fromClientIp(page, '198.51.100.49')
   const taps = await signIn(page, E2E_USERS.navigator)

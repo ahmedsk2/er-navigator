@@ -34,15 +34,39 @@ type Seed = {
   other?: { stage: string; text: string }
   /** Departments consulted, with hours after registration for consulted / seen / replied. */
   consults?: ReadonlyArray<{ name: string; consulted: number; seen?: number; replied?: number }>
-  investigation?: { type: 'LAB' | 'CT' | 'US' | 'XR'; ordered: number; mid: number; done: number }
+  investigation?: {
+    type: 'LAB' | 'CT' | 'US' | 'XR'
+    ordered: number
+    mid: number
+    done: number
+    /** Imaging only (Phase 8): the verbal read, hours after registration. */
+    preliminary?: number
+  }
   /** Admission chain, in hours after registration. */
   admission?: { order: number; requested: number; assigned: number }
   disposition?: 'ADMITTED' | 'DISCHARGED_HOME' | 'DISCHARGED_DAMA' | 'LEFT_WITHOUT_BEING_SEEN'
   ward?: string
+  // --- Phase 8 -------------------------------------------------------------------------------
+  /** Triage acuity, so the Adaa panel, "By CTAS" and KPI 4 have something to report. */
+  ctas?: 1 | 2 | 3 | 4 | 5
+  /** An ED area code from prisma/seed.ts (RESUS, ACUTE, RAZ, POOL, ISO, NEGP). */
+  area?: string
+  /** The journey milestones the Adaa KPIs are measured between, hours after registration. */
+  triage?: number
+  physician?: number
+  decision?: number
+  /** Medical admin informed / transfer requested, hours after registration: two action kinds. */
+  escalated?: number
+  transferRequested?: number
+  /** Update texts, hours after registration, newest last. Drives "Actions documented". */
+  updates?: ReadonlyArray<{ at: number; text: string }>
 }
 
 /** The Other text the queue must show. Distinctive enough that no other fixture can produce it. */
 export const DASHBOARD_OTHER_TEXT = 'Family travelling from Dammam to collect the patient'
+
+/** The MRN this fixture gives two cases, so "Repeat visits" has exactly one row of its own. */
+export const REPEAT_MRN = '3200011'
 
 export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
   {
@@ -55,6 +79,16 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
     admission: { order: 3, requested: 4, assigned: 20 },
     disposition: 'ADMITTED',
     ward: 'ICU',
+    ctas: 2,
+    area: 'RESUS',
+    triage: 0.25,
+    physician: 0.5,
+    decision: 2,
+    escalated: 5,
+    updates: [
+      { at: 6, text: 'Bed coordinator paged, no ICU bed yet' },
+      { at: 18, text: 'Medical admin on-call aware, chasing the unit' },
+    ],
   },
   {
     mrn: '3200002',
@@ -62,8 +96,13 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
     losHours: 14,
     shift: 'EVENING',
     reason: { stage: 'inv', name: 'Imaging: report delay' },
-    investigation: { type: 'CT', ordered: 2, mid: 5, done: 9 },
+    investigation: { type: 'CT', ordered: 2, mid: 5, done: 9, preliminary: 6 },
     disposition: 'DISCHARGED_HOME',
+    ctas: 3,
+    area: 'ACUTE',
+    triage: 0.2,
+    physician: 0.4,
+    decision: 12,
   },
   {
     mrn: '3200003',
@@ -77,6 +116,11 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
     ],
     disposition: 'ADMITTED',
     ward: 'FMW',
+    ctas: 3,
+    area: 'ACUTE',
+    triage: 0.2,
+    physician: 1,
+    decision: 6,
   },
   {
     mrn: '3200004',
@@ -85,6 +129,11 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
     shift: 'MORNING',
     reason: { stage: 'dc', name: 'Awaiting pharmacy' },
     disposition: 'DISCHARGED_HOME',
+    ctas: 4,
+    area: 'RAZ',
+    triage: 0.1,
+    physician: 0.3,
+    decision: 4,
   },
   {
     mrn: '3200005',
@@ -93,6 +142,9 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
     shift: 'EVENING',
     reason: { stage: 'triage', name: 'Waiting for triage nurse availability' },
     disposition: 'DISCHARGED_DAMA',
+    ctas: 4,
+    physician: 0.5,
+    decision: 2,
   },
   {
     mrn: '3200006',
@@ -101,6 +153,7 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
     shift: 'NIGHT',
     reason: { stage: 'reg', name: 'Registration desk/system delay' },
     disposition: 'LEFT_WITHOUT_BEING_SEEN',
+    ctas: 5,
   },
   {
     mrn: '3200007',
@@ -112,6 +165,12 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
     admission: { order: 4, requested: 5, assigned: 25 },
     disposition: 'ADMITTED',
     ward: 'MMW',
+    ctas: 2,
+    area: 'RESUS',
+    triage: 0.3,
+    physician: 0.6,
+    decision: 8,
+    updates: [{ at: 12, text: 'Ward says bed after the afternoon discharge round' }],
   },
   // The open half of the board, one per band.
   {
@@ -123,6 +182,11 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
       { name: 'MROD', consulted: 3, seen: 8 },
       { name: 'Internal Medicine', consulted: 4 },
     ],
+    ctas: 3,
+    area: 'ACUTE',
+    triage: 0.2,
+    physician: 0.5,
+    updates: [{ at: 20, text: 'Still waiting on the medical ward' }],
   },
   {
     mrn: '3200009',
@@ -130,6 +194,9 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
     shift: 'NIGHT',
     reason: { stage: 'inv', name: 'Lab: delay in processing' },
     investigation: { type: 'LAB', ordered: 1, mid: 2, done: 6 },
+    ctas: 3,
+    physician: 0.5,
+    decision: 3,
   },
   {
     mrn: '3200010',
@@ -137,12 +204,20 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
     shift: 'MORNING',
     reason: { stage: 'ref', name: 'Referral sent, awaiting acceptance' },
     consults: [{ name: 'ICU', consulted: 2 }],
+    ctas: 4,
+    area: 'RAZ',
+    physician: 1,
+    transferRequested: 3,
   },
   {
-    mrn: '3200011',
+    mrn: REPEAT_MRN,
     registeredHoursAgo: 5,
     shift: 'EVENING',
     reason: { stage: 'dispo', name: 'Awaiting senior/attending sign-off' },
+    ctas: 5,
+    area: 'POOL',
+    physician: 0.5,
+    decision: 1,
   },
   {
     mrn: '3200012',
@@ -151,19 +226,34 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
     reason: { stage: 'dc', name: 'Awaiting patient transport home' },
     other: { stage: 'dc', text: DASHBOARD_OTHER_TEXT },
   },
+  // The same patient back a second time, under six hours so that every existing threshold
+  // assertion above is untouched, and the only repeat-visit row on the dashboard.
+  {
+    mrn: REPEAT_MRN,
+    registeredHoursAgo: 3,
+    shift: 'NIGHT',
+    reason: { stage: 'triage', name: 'Re-triage required' },
+  },
 ]
 
-/** Every MRN this fixture writes. An assertion narrows to this list, never to a prefix. */
-export const DASHBOARD_MRNS: ReadonlyArray<string> = DASHBOARD_CASES.map((c) => c.mrn)
+/** Every MRN this fixture writes, once each. An assertion narrows to this list, never to a prefix. */
+export const DASHBOARD_MRNS: ReadonlyArray<string> = [...new Set(DASHBOARD_CASES.map((c) => c.mrn))]
 
 /** Elapsed hours the dashboard will compute for each seeded case, for the drill-down assertions. */
 export const elapsedOf = (seed: Seed): number => seed.losHours ?? seed.registeredHoursAgo
 
 /** The fixture MRNs the "Over {t}h" drill-down must list, and by omission the ones it must not. */
 export function fixtureMrnsOver(hours: number): string[] {
-  return DASHBOARD_CASES.filter((c) => elapsedOf(c) >= hours)
-    .map((c) => c.mrn)
-    .sort()
+  return [...new Set(DASHBOARD_CASES.filter((c) => elapsedOf(c) >= hours).map((c) => c.mrn))].sort()
+}
+
+/** The fixture MRNs whose stay falls in a given half-open band, for the "Stay bands" drill-down. */
+export function fixtureMrnsInBand(min: number, max: number | null): string[] {
+  return [
+    ...new Set(
+      DASHBOARD_CASES.filter((c) => elapsedOf(c) >= min && (max == null || elapsedOf(c) < max)).map((c) => c.mrn),
+    ),
+  ].sort()
 }
 
 /** Registered inside the last seven days: what the "7 days" chip must narrow the page down to. */
@@ -184,12 +274,13 @@ export async function seedDashboardCases(): Promise<void> {
     })
     if (!navigator) throw new Error('[e2e] seedE2EUsers() must run before seedDashboardCases()')
 
-    const [stages, departments, wards] = await Promise.all([
+    const [stages, departments, wards, areas] = await Promise.all([
       prisma.stage.findMany({
         select: { code: true, reasons: { select: { id: true, name: true, isOther: true } } },
       }),
       prisma.department.findMany({ select: { id: true, name: true } }),
       prisma.ward.findMany({ select: { id: true, code: true } }),
+      prisma.edArea.findMany({ select: { id: true, code: true } }),
     ])
     const reasonId = (stageCode: string, name: string): string => {
       const stage = stages.find((s) => s.code === stageCode)
@@ -211,6 +302,11 @@ export async function seedDashboardCases(): Promise<void> {
     const wardId = (code: string): string => {
       const found = wards.find((w) => w.code === code)
       if (!found) throw new Error(`[e2e] the seed has no "${code}" ward`)
+      return found.id
+    }
+    const areaId = (code: string): string => {
+      const found = areas.find((a) => a.code === code)
+      if (!found) throw new Error(`[e2e] the seed has no "${code}" ED area`)
       return found.id
     }
 
@@ -241,6 +337,22 @@ export async function seedDashboardCases(): Promise<void> {
           admOrderAt: seed.admission ? after(seed.admission.order) : null,
           bedRequestedAt: seed.admission ? after(seed.admission.requested) : null,
           bedAssignedAt: seed.admission ? after(seed.admission.assigned) : null,
+          // Phase 8: the acuity, the area and the journey milestones the Adaa KPIs, the working
+          // targets and the per-case timeline are all measured between.
+          ctas: seed.ctas ?? null,
+          areaId: seed.area ? areaId(seed.area) : null,
+          triageAt: seed.triage == null ? null : after(seed.triage),
+          physicianAt: seed.physician == null ? null : after(seed.physician),
+          decisionAt: seed.decision == null ? null : after(seed.decision),
+          medAdminInformedAt: seed.escalated == null ? null : after(seed.escalated),
+          transferRequestedAt: seed.transferRequested == null ? null : after(seed.transferRequested),
+          updates: {
+            create: (seed.updates ?? []).map((u) => ({
+              authorId: navigator.id,
+              createdAt: after(u.at),
+              text: u.text,
+            })),
+          },
           reasons: {
             create: [
               { reasonId: primary },
@@ -268,6 +380,8 @@ export async function seedDashboardCases(): Promise<void> {
                     receivedAt:
                       seed.investigation.type === 'LAB' ? after(seed.investigation.mid + 0.5) : null,
                     doneAt: seed.investigation.type === 'LAB' ? null : after(seed.investigation.mid),
+                    preliminaryAt:
+                      seed.investigation.preliminary == null ? null : after(seed.investigation.preliminary),
                     resultedAt: after(seed.investigation.done),
                   },
                 ]

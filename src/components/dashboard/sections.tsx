@@ -16,6 +16,7 @@ import type { ReactNode } from 'react'
 import { HBar, type HBarColor, type HBarRow } from '@/src/components/dashboard/charts/HBar'
 import { StackedBar, type StackRow } from '@/src/components/dashboard/charts/StackedBar'
 import {
+  BandLegend,
   BarLinks,
   DashSection,
   DataTable,
@@ -160,16 +161,17 @@ export function WorkingTargets({ kpi, range }: Props) {
   if (!kpi.targets.some((t) => t.n > 0)) return null
   return (
     <DashSection title="Working targets">
+      {/* "Within / n" is one column, not two: at 390 px two right-aligned numeric columns have no
+          air between them, and the pair is read as a fraction anyway. */}
       <DataTable
-        head={['Target', 'Within', 'n', 'Share']}
+        head={['Target', 'Within / n', 'Share']}
         rows={kpi.targets.map((row) => ({
           key: row.key,
           href: href(range, 'target', row.key),
           cells: [
             row.name,
-            row.within,
-            row.n,
-            <span key="s" className="inline-flex min-w-[64px] flex-col items-end gap-1">
+            `${row.within} / ${row.n}`,
+            <span key="s" className="inline-flex min-w-[56px] flex-col items-end gap-1">
               {fmtShare(row.share)}
               <ShareBar share={row.share} label={row.name} />
             </span>,
@@ -237,6 +239,7 @@ export function TurnaroundSection({ kpi, range }: Props) {
   return (
     <DashSection title="Turnaround: order to result">
       <StackedBar bands={bands} rows={rows} unit="tests" />
+      <BandLegend bands={bands} />
       <BarLinks caption="Turnaround: order to result" rows={links} unit="tests" />
       <Footnote>
         Imaging counts the earlier of the preliminary and the official report; lab counts the result. The unit is the

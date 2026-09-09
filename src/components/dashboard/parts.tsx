@@ -8,6 +8,7 @@
  */
 import Link from 'next/link'
 import type { ReactNode } from 'react'
+import { CHART_RAMP } from '@/src/components/dashboard/charts/theme'
 import { sharePercent } from '@/src/lib/dashboard/panels'
 import { MIN_N, band, fmtHours, type Band } from '@/src/lib/domain/time'
 
@@ -123,6 +124,31 @@ const BAND_TEXT: Record<Band, string> = {
 /** "Over 6h" in the colour of the band it opens — the prototype's `bandColor(t)` on the label. */
 export function ThresholdLabel({ hours }: { hours: number }) {
   return <span className={BAND_TEXT[band(hours)]}>Over {hours}h</span>
+}
+
+/**
+ * The turnaround chart's key: one swatch per band, in the bands' own order, fast to slow.
+ *
+ * Server-rendered rather than drawn by Recharts, for two reasons: the chart library orders its
+ * legend by the order it registered the series, which scrambles an ordered scale; and a key that
+ * is real HTML prints, and is readable with JavaScript off, exactly like every other row on this
+ * page.
+ */
+export function BandLegend({ bands }: { bands: ReadonlyArray<string> }) {
+  return (
+    <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1" data-band-legend>
+      {bands.map((band, i) => (
+        <li key={band} className="flex items-center gap-1 text-caption text-muted">
+          <span
+            aria-hidden
+            className="inline-block h-2 w-2 shrink-0 rounded-[2px]"
+            style={{ background: CHART_RAMP[i % CHART_RAMP.length] }}
+          />
+          {band}
+        </li>
+      ))}
+    </ul>
+  )
 }
 
 export type TableRow = {

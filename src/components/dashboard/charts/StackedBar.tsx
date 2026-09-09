@@ -5,17 +5,19 @@
  * order-to-result time bands.
  *
  * This is the one chart in the app with an ordered categorical scale rather than a single series,
- * so it is the one chart with a legend — and the segments wear the app's own severity ramp
- * (`CHART_RAMP`: ok, accent, 4 h, 6 h, 12 h, 24 h) so "slow" is the same colour here as an
- * overdue case is on the board. `dataviz` rules otherwise as elsewhere: one scale, hairline
- * chrome, no gridlines, counts direct-labelled through the tooltip rather than by an axis.
+ * so it is the one chart with a legend — `BandLegend` in `parts.tsx`, server-rendered beside it,
+ * because Recharts 3 draws its own legend in the order it registered the series, which put
+ * "≤30 min" last and made an ordered scale read as an unordered one. The segments wear the app's
+ * own severity ramp (`CHART_RAMP`: ok, accent, 4 h, 6 h, 12 h, 24 h) so "slow" is the same colour
+ * here as an overdue case is on the board. `dataviz` rules otherwise as elsewhere: one scale,
+ * hairline chrome, no gridlines, counts direct-labelled through the tooltip rather than by an axis.
  *
  * The segments are clickable, but the drill-downs do not depend on that: the section renders
  * every type-and-band pair as a real link beside the chart (`BarLinks`), which is what a keyboard,
  * a screen reader and a printed page use.
  */
 import { useRouter } from 'next/navigation'
-import { Bar, BarChart, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { CHART, CHART_CATEGORY_TICK, CHART_RAMP, TOOLTIP_LABEL_STYLE, TOOLTIP_STYLE } from './theme'
 
 /** One row: the bar's name, and one `{ value, href }` per band, in the bands' own order. */
@@ -36,7 +38,7 @@ export function StackedBar({ bands, rows, unit }: { bands: ReadonlyArray<string>
   })
 
   return (
-    <div style={{ height: Math.max(120, rows.length * ROW_HEIGHT + 48) }} data-chart="stacked">
+    <div style={{ height: Math.max(72, rows.length * ROW_HEIGHT + 12) }} data-chart="stacked">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} layout="vertical" margin={{ left: 4, right: 12, top: 4, bottom: 0 }} accessibilityLayer>
           <XAxis type="number" hide />
@@ -55,13 +57,6 @@ export function StackedBar({ bands, rows, unit }: { bands: ReadonlyArray<string>
             labelStyle={TOOLTIP_LABEL_STYLE}
             itemStyle={{ color: CHART.ink }}
             formatter={(value, name) => [`${String(value)} ${unit}`, String(name)]}
-          />
-          <Legend
-            verticalAlign="bottom"
-            height={36}
-            iconType="square"
-            iconSize={8}
-            wrapperStyle={{ fontSize: 11, color: CHART.muted }}
           />
           {bands.map((band, i) => (
             <Bar
