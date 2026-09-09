@@ -38,7 +38,14 @@ export type KpiConsult = {
   repliedAt: Date | null
 }
 
-export type KpiInvestigationType = 'LAB' | 'CT' | 'US' | 'XR'
+/**
+ * Phase 8b adds MRI (docs/specs/phase8b-decisions.md, "The KPI contract additions"). This one
+ * line is the whole of that contract that Slice G needs: the moment `InvestigationType` gains
+ * MRI in the schema, every loader, board row and export row that feeds this module carries the
+ * wider union, and none of them compiles against a narrower one. The functions below are
+ * unchanged — `turnaroundBands` still reports its four types, and Slice H adds the MRI row.
+ */
+export type KpiInvestigationType = 'LAB' | 'CT' | 'US' | 'XR' | 'MRI'
 
 export type KpiInvestigation = {
   type: KpiInvestigationType
@@ -374,7 +381,7 @@ const CONSULT_STEP_LABELS: Record<(typeof CONSULT_STEPS)[number][0], string> = {
   repliedAt: 'replied / plan given',
 }
 
-const INVESTIGATION_ORDER: Record<KpiInvestigationType, number> = { LAB: 0, CT: 1, US: 2, XR: 3 }
+const INVESTIGATION_ORDER: Record<KpiInvestigationType, number> = { LAB: 0, CT: 1, US: 2, XR: 3, MRI: 4 }
 
 /**
  * Every recorded instant on the case in time order, with the hours since the previous one: the

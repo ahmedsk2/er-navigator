@@ -148,7 +148,14 @@ export const ED_AREAS: ReadonlyArray<{ code: string; name: string }> = [
 export const CTAS_LEVELS = [1, 2, 3, 4, 5] as const
 export type CtasLevel = (typeof CTAS_LEVELS)[number]
 
-/** Display labels for enums. The enum values themselves live in prisma/schema.prisma. */
+/**
+ * Display labels for enums. The enum values themselves live in prisma/schema.prisma.
+ *
+ * Phase 8b (Ahmed's decision E): `DECEASED` and `REFERRED_UCC` are ADDED to the list Appendix A
+ * fixes. Nothing above them is renamed — the hard rule is about renaming the taxonomy, and the
+ * two outcomes the navigators were recording in the WhatsApp group had nowhere to go. LAMA was
+ * declined: "Discharged DAMA" already covers it.
+ */
 export const DISPOSITION_LABELS = {
   ADMITTED: 'Admitted',
   DISCHARGED_HOME: 'Discharged home',
@@ -156,11 +163,13 @@ export const DISPOSITION_LABELS = {
   TRANSFERRED: 'Transferred to another facility',
   LEFT_WITHOUT_BEING_SEEN: 'Left without being seen',
   OTHER: 'Other',
+  DECEASED: 'Deceased',
+  REFERRED_UCC: 'Referred to UCC',
 } as const
 
 export const SHIFT_LABELS = { MORNING: 'Morning', EVENING: 'Evening', NIGHT: 'Night' } as const
 
-export const INVESTIGATION_LABELS = { LAB: 'Lab', CT: 'CT', US: 'Ultrasound', XR: 'X-ray / KUB' } as const
+export const INVESTIGATION_LABELS = { LAB: 'Lab', CT: 'CT', US: 'Ultrasound', XR: 'X-ray / KUB', MRI: 'MRI' } as const
 
 export const INVESTIGATION_STEPS = {
   LAB: [
@@ -187,6 +196,14 @@ export const INVESTIGATION_STEPS = {
   XR: [
     ['orderedAt', 'Ordered'],
     ['doneAt', 'Done'],
+    ['preliminaryAt', 'Preliminary report'],
+    ['resultedAt', 'Reported'],
+  ],
+  // Phase 8b: the same four steps as CT. An MRI is ordered, done, read verbally and then
+  // reported, and the ED waits on the same two of those that a CT makes it wait on.
+  MRI: [
+    ['orderedAt', 'Ordered'],
+    ['doneAt', 'Scan done'],
     ['preliminaryAt', 'Preliminary report'],
     ['resultedAt', 'Reported'],
   ],
@@ -220,3 +237,38 @@ export const MILESTONES = [
 ] as const
 
 export const THRESHOLDS_H = [4, 6, 12, 24] as const
+
+// --- Phase 8b: the collection decisions' vocabularies ------------------------------------------
+//
+// None of these lists is in Appendix A. They come from Ahmed's answers to the eight decisions in
+// `docs/specs/phase8-brief.md` §5 (filed as `docs/specs/phase8b-decisions.md`), and the words are
+// the ones the weekly delayed-tickets deck and the QCH navigator log already use, so a navigator
+// reading a chip recognises it from the sheet they fill in by hand today.
+
+/**
+ * The six action categories the weekly deck counts, in the deck's own words (decision C). One is
+ * chosen when an update is written, and it is never changed afterwards — `CaseUpdate` is
+ * append-only.
+ */
+export const UPDATE_ACTION_LABELS = {
+  LEADERSHIP_ESCALATION: 'Leadership escalation',
+  BED_MANAGEMENT: 'Case / bed management',
+  FAX_RCC: 'External transfer / fax / RCC',
+  PRO_SOCIAL_WORK: 'PRO / social work',
+  FORCED_SAFETY_ADMISSION: 'Forced / safety admission',
+  DAMA_MANAGEMENT: 'DAMA management',
+} as const
+
+/** Yes / No / Not sure. The pain-management questions offer only the first two (decision F). */
+export const ANSWER_LABELS = { YES: 'Yes', NO: 'No', NOT_SURE: 'Not sure' } as const
+
+/** Case management (decision B): who it went to, what the coordinator found, what they did. */
+export const CASE_MANAGEMENT_LABELS = {
+  referral: { CASE_MANAGER: 'Case manager', COMPLEX_CARE: 'Complex-care coordinator' },
+  criteria: { MEETS: 'Meets criteria', NOT_MEETING: 'Not meeting criteria' },
+  action: { ENROLLED: 'Enrolled', FOR_ENROLLMENT: 'For enrollment' },
+} as const
+
+/** The three pethidine doses the ED gives, in milligrams (decision F, Adaa KPI 8's pain block). */
+export const PETHIDINE_DOSES = [50, 100, 150] as const
+export type PethidineDose = (typeof PETHIDINE_DOSES)[number]

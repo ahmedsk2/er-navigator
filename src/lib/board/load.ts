@@ -10,6 +10,7 @@
 import type { CaseStatus } from '@prisma/client'
 import { timelineOf } from '@/src/lib/cases/timeline'
 import { prisma } from '@/src/lib/db'
+import type { KpiInvestigationType } from '@/src/lib/domain/kpi'
 import type { BoardFilter, BoardPayload, BoardRow, BoardStatus } from './types'
 
 const STATUSES: Record<BoardFilter, ReadonlyArray<CaseStatus>> = {
@@ -112,7 +113,9 @@ type SelectedRow = Milestones & {
     repliedAt: Date | null
   }>
   investigations: ReadonlyArray<{
-    type: 'LAB' | 'CT' | 'US' | 'XR'
+    // Named rather than spelled out, so adding a type to the schema (Phase 8b's MRI) does not
+    // need this row rewritten — the timeline the board carries is built by `kpi.ts` either way.
+    type: KpiInvestigationType
     orderedAt: Date | null
     collectedAt: Date | null
     receivedAt: Date | null
