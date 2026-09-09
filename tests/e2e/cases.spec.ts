@@ -143,6 +143,31 @@ test('a second nurse saving first turns the stale save into "changed by", never 
   await second.close()
 })
 
+test('a department chip toggled off and on again keeps that team times', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.52')
+  const taps = await signIn(page, E2E_USERS.navigator)
+  await openCase(page, uniqueMrn(), STAGE, REASON, taps)
+
+  const chip = page.getByRole('group', { name: 'Departments' }).getByRole('button', { name: 'ICU', exact: true })
+  await chip.click()
+  await page.getByLabel('Consulted at', { exact: true }).fill('2026-09-09T14:10')
+  await page.getByLabel('Seen patient at', { exact: true }).fill('2026-09-09T15:40')
+
+  // A thumb catching the chip while scrolling, then putting it back (prototype: the consult map
+  // a deselect never touches).
+  await chip.click()
+  await expect(page.getByLabel('Consulted at', { exact: true })).toHaveCount(0)
+  await chip.click()
+  await expect(page.getByLabel('Consulted at', { exact: true })).toHaveValue('2026-09-09T14:10')
+  await expect(page.getByLabel('Seen patient at', { exact: true })).toHaveValue('2026-09-09T15:40')
+
+  // And what the round trip stores is the restored pair, not two nulls.
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
+  await page.reload()
+  await expect(page.getByLabel('Consulted at', { exact: true })).toHaveValue('2026-09-09T14:10')
+})
+
 test('a save that never reaches the server says so, and says nothing was saved', async ({ page }) => {
   await fromClientIp(page, '198.51.100.51')
   const taps = await signIn(page, E2E_USERS.navigator)

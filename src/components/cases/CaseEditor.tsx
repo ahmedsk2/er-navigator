@@ -121,6 +121,15 @@ export function CaseEditor(props: CaseEditorProps) {
   const [unreachable, setUnreachable] = useState(false)
   const [saved, setSaved] = useState(false)
   const [busy, setBusy] = useState(false)
+  /**
+   * The consults a chip deselect dropped this session, keyed by department (Phase 7, C18). The
+   * prototype keeps `departments` and a `consults` map as two independent fields, so a deselect
+   * never touches the recorded times and a re-select brings them back
+   * (`ERNavigatorTracker.jsx:338, 342`); the port rebuilds one array from the selected ids, so a
+   * thumb catching the chip while scrolling wiped the pair. Editor state only: nothing persisted
+   * changes, and a reload still shows exactly what the database holds.
+   */
+  const [removedConsults, setRemovedConsults] = useState<Record<string, DraftConsult>>({})
   const [voidReasonText, setVoidReasonText] = useState('')
   const [voidOpen, setVoidOpen] = useState(false)
   const [now, setNow] = useState(() => new Date(props.nowIso))
@@ -255,11 +264,20 @@ export function CaseEditor(props: CaseEditorProps) {
   const setOtherText = (reasonId: string, text: string): void =>
     set({ reasons: draft.reasons.map((r) => (r.reasonId === reasonId ? { ...r, otherText: text } : r)) })
 
-  const setDepartments = (ids: string[]): void =>
+  const setDepartments = (ids: string[]): void => {
+    const keep = new Set(ids)
+    const dropped = draft.consults.filter((c) => !keep.has(c.departmentId))
+    if (dropped.length > 0) {
+      setRemovedConsults((previous) => ({
+        ...previous,
+        ...Object.fromEntries(dropped.map((c) => [c.departmentId, c])),
+      }))
+    }
     set({
       consults: ids.map(
         (id) =>
-          draft.consults.find((c) => c.departmentId === id) ?? {
+          draft.consults.find((c) => c.departmentId === id) ??
+          removedConsults[id] ?? {
             departmentId: id,
             consultedAt: null,
             seenAt: null,
@@ -267,6 +285,7 @@ export function CaseEditor(props: CaseEditorProps) {
           },
       ),
     })
+  }
 
   const setConsult = (departmentId: string, patch: Partial<DraftConsult>): void =>
     set({
