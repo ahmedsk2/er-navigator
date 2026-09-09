@@ -53,6 +53,12 @@ export default function proxy(request: NextRequest): NextResponse {
     return response
   }
 
+  // A fetch cannot use a 307 to an HTML login page. Route handlers get the status instead, and
+  // the handler itself re-checks the session properly (this gate only sees the cookie).
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401, headers: { 'cache-control': 'no-store' } })
+  }
+
   const url = new URL('/login', request.url)
   url.searchParams.set('next', `${pathname}${search}`)
   return NextResponse.redirect(url)
