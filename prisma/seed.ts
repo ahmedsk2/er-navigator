@@ -96,7 +96,7 @@ async function seedSystemUser() {
 }
 
 async function seedFirstAdmin() {
-  const username = process.env.ADMIN_USERNAME?.trim()
+  const username = process.env.ADMIN_USERNAME?.trim().toLowerCase()
   const password = process.env.ADMIN_PASSWORD
   const displayName = process.env.ADMIN_DISPLAY_NAME?.trim() || 'Administrator'
   if (!username || !password) {

@@ -182,7 +182,7 @@ Gate 0 report, then wait for "confirm".
 
 Done (pulled forward, Section 1): schema, migrations including the privileges migration, seed, two DB roles, role reconciliation on deploy.
 
-To build: the session design decided at Gate 0 (Section 1, Sessions row) with bcrypt cost 12 credentials, httpOnly/secure/sameSite=lax cookie, 12 h sliding expiry, rotation on login, revocation on deactivation; login rate limit (5 per minute per IP via `CF-Connecting-IP`, socket address as fallback); lockout (15 min after 10 failures); role checks in a `proxy.ts` gate plus every server action; audit wrapper writing before/after JSON; `auth.login`/`auth.fail`/`auth.forbidden` events. Install `scripts/backup.sh` on the host timer at this gate, before any real case is entered, and record the first restore drill in the runbook.
+To build: the session design decided at Gate 0 (Section 1, Sessions row) with bcrypt cost 12 credentials, httpOnly/secure/sameSite=lax cookie, 12 h sliding expiry, rotation on login, revocation on deactivation; login rate limit (5 per minute per IP via `CF-Connecting-IP`; first hop of `X-Forwarded-For`, then one shared bucket, as fallbacks); lockout (15 min after 10 failures); role checks in a `proxy.ts` gate plus every server action; audit wrapper writing before/after JSON; `auth.login`/`auth.fail`/`auth.forbidden` events. Install `scripts/backup.sh` on the host timer at this gate, before any real case is entered, and record the first restore drill in the runbook.
 
 Tests: formula tests (done), PHI guard (done), role matrix test (every action x every role), lockout test, audit wrapper test, a DB privilege test that asserts `has_table_privilege('ernav_app','"AuditLog"','DELETE')` is false.
 
@@ -312,10 +312,10 @@ Fable is the most capable model available here and the most expensive per token.
 
 | Risk | Mitigation |
 | --- | --- |
-| Threshold alerts depend on the worker; if it dies, nobody is emailed | Worker has `restart: unless-stopped`, its own healthcheck, and an Uptime Kuma push monitor (Phase 6). The `Alert` unique index makes restarts idempotent |
+| Threshold alerts depend on the worker; if it dies, nobody is emailed | Worker has `restart: unless-stopped` (process exit only; Docker never restarts on an unhealthy probe), a healthcheck that goes unhealthy when no cycle has COMPLETED in 15 minutes, and a GET to an Uptime Kuma push monitor after every successful cycle (`ALERT_PUSH_URL`, final review 2026-09-09). The push monitor is what pages: until Ahmed creates it in Uptime Kuma and pastes its URL into Coolify, a dead worker is visible only in `docker ps`. The `Alert` unique index makes restarts idempotent |
 | A migration runs against production data with a mistake | `migrate` runs before `app`, so a failing migration never starts the new app, but the site is down until it is resolved (runbook procedure); nightly dump installed at Gate 1 with a drilled restore; schema PRs get Fable review and are merged outside shift change |
 | Optimistic-locking conflicts frustrate nurses on a busy shift | The 409 message names who changed the case and when; `CaseUpdate` rows never conflict, so the most common action (add an update) always succeeds |
-| Someone opens 80/443 to the world for another app | `CF-Connecting-IP` becomes spoofable. The runbook records the dependency; the rate limiter falls back to the socket address when the header is absent |
+| Someone opens 80/443 to the world for another app | `CF-Connecting-IP` becomes spoofable. The runbook records the dependency. When the header is absent the limiter keys on the first hop of `X-Forwarded-For`, and when that is absent too every such request shares one bucket (the app never sees a socket address behind Traefik); the same commit that opens the ports must change `clientIpFrom` in `src/lib/audit.ts` |
 | Envato template pushes the UI toward decorative dashboards | Section 4 rules: tokens only. Gate screenshots are reviewed against the prototype's information design |
 | Shared host under build load slows deploys | Accept; verify by fingerprint after five minutes rather than reacting early |
 | Public repository (if flipped) leaks hospital specifics | No PHI, no secrets, no hospital data in git by construction; the plan and prototype are the only hospital-specific text. Keep private unless there is a reason |

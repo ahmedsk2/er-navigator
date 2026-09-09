@@ -21,9 +21,14 @@
  */
 import { useRouter } from 'next/navigation'
 import { Bar, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { fmtHours } from '@/src/lib/domain/time'
+import { MIN_N, fmtHours } from '@/src/lib/domain/time'
 import { CHART, CHART_TICK, TOOLTIP_LABEL_STYLE, TOOLTIP_STYLE } from './theme'
 
+/**
+ * `med` is already null for a week with fewer than MIN_N cases (`weekPoint()` in
+ * src/lib/dashboard/weeks.ts applies the hard rule before the chart sees the data); the line
+ * breaks there and the tooltip says "n<3" instead of a number.
+ */
 export type WeekPoint = { name: string; cases: number; med: number | null; href: string }
 
 const PANEL_HEIGHT = 108
@@ -88,12 +93,13 @@ export function WeeklyChart({ weeks }: { weeks: WeekPoint[] }) {
               contentStyle={TOOLTIP_STYLE}
               labelStyle={TOOLTIP_LABEL_STYLE}
               itemStyle={{ color: CHART.ink }}
-              formatter={(value) => [fmtHours(typeof value === 'number' ? value : null), '']}
+              formatter={(value) => [typeof value === 'number' ? fmtHours(value) : `n<${MIN_N}`, '']}
               separator=""
             />
             <Line
               type="monotone"
               dataKey="med"
+              connectNulls={false}
               name="Median stay"
               stroke={CHART.danger}
               strokeWidth={2}

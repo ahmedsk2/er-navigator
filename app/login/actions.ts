@@ -4,6 +4,7 @@ import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { clientIpFrom, contextFrom } from '@/src/lib/audit'
 import { attemptLogin, auditRateLimited } from '@/src/lib/auth/login'
+import { safeNextPath } from '@/src/lib/auth/next-path'
 import { loginSchema } from '@/src/lib/auth/password'
 import { loginRateLimiter } from '@/src/lib/auth/rate-limit'
 import { deleteSessionByToken, readSessionCookie, setSessionCookie } from '@/src/lib/auth/session'
@@ -14,18 +15,6 @@ export type LoginState = {
   error?: LoginErrorCode
   /** Only set with `locked`, so the form can say how long the wait is. */
   lockedMinutes?: number
-}
-
-/**
- * Where to go after a successful sign-in. The gate puts the page the user was refused onto the
- * query string; anything that is not a plain in-app path (protocol-relative "//evil.example",
- * a backslash Windows path, an absolute URL) is thrown away and the board is used instead.
- */
-function safeNext(value: FormDataEntryValue | null): string {
-  if (typeof value !== 'string' || value.length === 0) return '/'
-  if (!value.startsWith('/')) return '/'
-  if (value.startsWith('//') || value.startsWith('/\\')) return '/'
-  return value
 }
 
 export async function login(_previous: LoginState, formData: FormData): Promise<LoginState> {
@@ -66,5 +55,6 @@ export async function login(_previous: LoginState, formData: FormData): Promise<
   }
 
   await setSessionCookie(outcome.token, parsed.data.remember)
-  redirect(safeNext(formData.get('next')))
+  // Resolved, not pattern-matched: see src/lib/auth/next-path.ts for why.
+  redirect(safeNextPath(formData.get('next')))
 }

@@ -92,18 +92,14 @@ services:
       # App role: CRUD only; UPDATE/DELETE on AuditLog and CaseUpdate revoked at the DB.
       DATABASE_URL: postgresql://${APP_DB_USER:-ernav_app}:${APP_DB_PASSWORD}@db:5432/${POSTGRES_DB:-ernav}?schema=public
       APP_URL: ${APP_URL:-https://nav.towardpcc.com}
-      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Riyadh}
       REPORT_HEADER: ${REPORT_HEADER:-Qatif Central Hospital, Emergency Department. ER Navigator}
       TZ: UTC
-      AUTH_SECRET: ${AUTH_SECRET:-}
-      AUTH_TRUST_HOST: "true"
       # Outgoing mail for threshold alerts (Phase 6). Empty host = alerts logged, not sent.
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-ER Navigator <no-reply@towardpcc.com>}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
     networks:
       - coolify
       - internal
@@ -143,9 +139,11 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgresql://${APP_DB_USER:-ernav_app}:${APP_DB_PASSWORD}@db:5432/${POSTGRES_DB:-ernav}?schema=public
       APP_URL: ${APP_URL:-https://nav.towardpcc.com}
-      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Riyadh}
       TZ: UTC
       ALERT_INTERVAL_MINUTES: ${ALERT_INTERVAL_MINUTES:-5}
+      # Uptime Kuma push monitor, called after every successful cycle (runbook, Monitoring).
+      # Empty = no external monitor; the worker says so in its start-up line.
+      ALERT_PUSH_URL: ${ALERT_PUSH_URL:-}
       # No recipient list here (Phase 7): the worker emails the active SUPERVISOR and ADMIN users
       # that have an email address on their user record, read from the database on every cycle.
       # Nobody with an address = alerts are still recorded and logged, just not emailed.
@@ -154,12 +152,13 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-ER Navigator <no-reply@towardpcc.com>}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
     networks:
       - internal
     healthcheck:
-      # The worker touches /tmp/heartbeat at the end of every cycle. Unhealthy means no cycle has
-      # finished for fifteen minutes, which at the default five-minute interval is three misses.
+      # The worker touches /tmp/heartbeat after every cycle that COMPLETED; a cycle that threw
+      # leaves it alone. Unhealthy means no successful cycle for fifteen minutes, which at the
+      # default five-minute interval is three misses. Docker does not restart on unhealthy: the
+      # Uptime Kuma push monitor (ALERT_PUSH_URL) is what pages.
       test: ["CMD", "sh", "-c", "test $(( $(date +%s) - $(stat -c %Y /tmp/heartbeat) )) -lt 900"]
       interval: 60s
       timeout: 5s

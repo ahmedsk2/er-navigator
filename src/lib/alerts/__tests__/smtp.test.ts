@@ -11,6 +11,9 @@ type TransportOptions = {
   secure: boolean
   requireTLS: boolean
   tls: { minVersion: string }
+  connectionTimeout: number
+  greetingTimeout: number
+  socketTimeout: number
   auth?: { user: string; pass: string }
 }
 
@@ -48,6 +51,14 @@ describe('smtpMailer transport options', () => {
     expect(opts.requireTLS).toBe(false)
     expect(opts.tls).toEqual({ minVersion: 'TLSv1.2' })
     expect(opts.auth).toEqual({ user: BASE.user, pass: BASE.password })
+  })
+
+  it('bounds a dead mail host to seconds, not nodemailer’s minutes (final review C17)', () => {
+    smtpMailer({ ...BASE, port: 587 })
+    const opts = lastOptions()
+    expect(opts.connectionTimeout).toBe(10_000)
+    expect(opts.greetingTimeout).toBe(10_000)
+    expect(opts.socketTimeout).toBe(20_000)
   })
 
   it('insists on STARTTLS on 587 instead of falling back to cleartext', () => {

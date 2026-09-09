@@ -55,11 +55,24 @@ export function median(xs: ReadonlyArray<number | null | undefined>): number | n
   return a.length % 2 ? a[m]! : (a[m - 1]! + a[m]!) / 2
 }
 
+/**
+ * Whole hours and rounded minutes, with the carry: 6.9944 h is 6 h 59.67 min, which rounds to
+ * 60 min, which is 7 h 00 min — not "6h 60m". Every clock in the app goes through this.
+ */
+export function splitHours(h: number): { hh: number; mm: number } {
+  let hh = Math.floor(h)
+  let mm = Math.round((h - hh) * 60)
+  if (mm === 60) {
+    hh += 1
+    mm = 0
+  }
+  return { hh, mm }
+}
+
 /** "6h 05m" style, tabular; a dash for null. */
 export function fmtHours(h: number | null): string {
   if (h == null || Number.isNaN(h)) return '–'
-  const hh = Math.floor(h)
-  const mm = Math.round((h - hh) * 60)
+  const { hh, mm } = splitHours(h)
   return `${hh}h ${String(mm).padStart(2, '0')}m`
 }
 
@@ -72,8 +85,7 @@ export function fmtHours(h: number | null): string {
  */
 export function spokenHours(h: number | null): string {
   if (h == null || Number.isNaN(h)) return 'not recorded'
-  const hh = Math.floor(h)
-  const mm = Math.round((h - hh) * 60)
+  const { hh, mm } = splitHours(h)
   const parts: string[] = []
   if (hh > 0) parts.push(`${hh} ${hh === 1 ? 'hour' : 'hours'}`)
   if (mm > 0) parts.push(`${mm} ${mm === 1 ? 'minute' : 'minutes'}`)

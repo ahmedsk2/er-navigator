@@ -46,6 +46,13 @@ export function smtpMailer(config: SmtpConfig): Mailer {
     // cleartext if a network attacker strips the capability; never below TLS 1.2 either way.
     requireTLS: !implicitTls,
     tls: { minVersion: 'TLSv1.2' },
+    // Final review C17: nodemailer's defaults are 2 min to connect, 30 s for the greeting and
+    // 10 min per socket. Sends are serial and a failure adds a 30 s retry sleep, so a black-holed
+    // port 587 would have stalled one cycle for most of an hour and every tick in between is
+    // skipped by the worker's overlap guard. These bound a dead host to seconds.
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
     auth: config.user ? { user: config.user, pass: config.password } : undefined,
   })
 

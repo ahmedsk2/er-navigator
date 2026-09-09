@@ -74,12 +74,14 @@ jobs:
         run: pnpm test
         env:
           DATABASE_URL: ${{ env.OWNER_URL }}
-      - name: privilege guard (app role cannot delete audit rows)
+      - name: privilege guard (every revoked privilege of the app role, hard rule 5)
         run: |
           set -e
           CID=$(docker compose -f docker-compose.dev.yml ps -q db)
-          R=$(docker exec "$CID" psql -U ernav_owner -d ernav -tAc "SELECT has_table_privilege('ernav_app','\"AuditLog\"','DELETE')")
-          test "$R" = "f"
+          Q="SELECT has_table_privilege('ernav_app','\"AuditLog\"','UPDATE'), has_table_privilege('ernav_app','\"AuditLog\"','DELETE'), has_table_privilege('ernav_app','\"CaseUpdate\"','UPDATE'), has_table_privilege('ernav_app','\"CaseUpdate\"','DELETE'), has_table_privilege('ernav_app','\"Case\"','DELETE'), has_table_privilege('ernav_app','\"User\"','DELETE'), has_table_privilege('ernav_app','\"Alert\"','DELETE'), (SELECT rolsuper FROM pg_roles WHERE rolname='ernav_app')"
+          R=$(docker exec "$CID" psql -U ernav_owner -d ernav -tAc "$Q")
+          echo "privileges (AuditLog U/D, CaseUpdate U/D, Case D, User D, Alert D, superuser): $R"
+          test "$R" = "f|f|f|f|f|f|f|f"
       - run: pnpm build
       - name: cache Playwright browsers
         uses: actions/cache@v4

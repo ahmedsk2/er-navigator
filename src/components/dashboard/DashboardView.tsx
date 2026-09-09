@@ -24,6 +24,7 @@ import {
 import { RANGE_LABELS, dashboardHref, drillKey, type DrillSection } from '@/src/lib/dashboard/drill'
 import { RANGES, type CountRow, type Range, type dashboard } from '@/src/lib/domain/aggregates'
 import { DISPOSITION_LABELS, SHIFT_LABELS } from '@/src/lib/domain/taxonomy'
+import { weekPoint } from '@/src/lib/dashboard/weeks'
 import { MIN_N, fmtHours } from '@/src/lib/domain/time'
 
 type DashboardData = ReturnType<typeof dashboard>
@@ -101,12 +102,7 @@ export function DashboardBody({ data, range }: { data: DashboardData; range: Ran
     cells: [<ThresholdLabel key="t" hours={row.threshold} />, row.openNow, row.allCases],
   }))
 
-  const weekPoints: WeekPoint[] = data.weeks.map((week) => ({
-    name: week.name,
-    cases: week.cases,
-    med: week.med,
-    href: href('week', week.weekStart),
-  }))
+  const weekPoints: WeekPoint[] = data.weeks.map((week) => weekPoint(week, href('week', week.weekStart)))
 
   const consultRows: TableRow[] = data.consults.map((row) => ({
     key: row.name,
@@ -183,7 +179,10 @@ export function DashboardBody({ data, range }: { data: DashboardData; range: Ran
                 rows={weekPoints.map((w) => ({ name: w.name, value: w.cases, href: w.href }))}
                 unit="cases"
               />
-              <Footnote>Bars: cases flagged that week. Line: median total ED stay.</Footnote>
+              <Footnote>
+                Bars: cases flagged that week. Line: median total ED stay; a week with fewer than {MIN_N} cases
+                shows no median.
+              </Footnote>
             </DashSection>
           )}
 

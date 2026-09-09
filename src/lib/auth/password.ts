@@ -41,7 +41,7 @@ export async function verifyPassword(
 }
 
 // Login: the password is whatever the user already has, so it is only bounded, never judged.
-export const loginUsernameSchema = z.string().trim().min(1).max(64)
+export const loginUsernameSchema = z.string().trim().min(1).max(64).toLowerCase()
 export const loginPasswordSchema = z.string().min(1).max(256)
 
 export const loginSchema = z.object({

@@ -19,7 +19,7 @@ The host also runs other live clinical applications. Every command below is scop
 | DNS | Cloudflare A `nav.towardpcc.com` → `145.241.105.239`, proxied, record id `3d0956409a57ac5f069bbc9736969e61` |
 | TLS | Let's Encrypt via Traefik HTTP-01 through Cloudflare; zone SSL mode Full (strict) |
 | Containers | `db` (postgres:16-alpine with the init script baked in; volume `jqcjqhmcmizxs1u51wnqlfwv_ernav-db`; networks `internal` and the Coolify per-app network `jqcjqhmcmizxs1u51wnqlfwv`, which only `coolify-proxy` also joins), `migrate` (one-shot, exits 0), `app` (:3000; networks `coolify`, `internal` and the per-app network), `worker` (threshold alerts, the same runner image as `app` running `node worker.js`; `internal` only, no port, no proxy label) |
-| Probes | `GET /api/health` (liveness + `x-build-fingerprint`), `GET /api/ready` (SELECT 1), and for `worker` the container healthcheck on `/tmp/heartbeat` (unhealthy = no cycle finished in 15 minutes) |
+| Probes | `GET /api/health` (liveness + `x-build-fingerprint`), `GET /api/ready` (SELECT 1), and for `worker` the container healthcheck on `/tmp/heartbeat` (unhealthy = no cycle completed successfully in 15 minutes; a failed cycle does not touch the file) plus the Uptime Kuma push monitor (`ALERT_PUSH_URL`), which is what actually pages when the worker stops |
 
 ## DNS rule
 
@@ -99,14 +99,15 @@ Every key the compose file passes through. Secrets are 48-character alphanumeric
 | --- | --- |
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | database name and OWNER role (migrations, role sync, seed). Do not rename the user: the privileges migration names `ernav_owner`/`ernav_app`. Rotate in the database first (below) |
 | `APP_DB_USER`, `APP_DB_PASSWORD` | limited runtime role, created on first boot and re-applied on every deploy by `prisma/sync-app-role.ts`. Rotate by redeploy |
-| `APP_URL`, `APP_TIMEZONE` | `https://nav.towardpcc.com`, `Asia/Riyadh` |
-| `AUTH_SECRET` | Auth.js session signing (Phase 1) |
+| `APP_URL` | `https://nav.towardpcc.com`; the case links in alert emails. The display timezone is not a variable: `Asia/Riyadh` is fixed in `src/lib/domain/time.ts` |
 | `ADMIN_USERNAME`, `ADMIN_DISPLAY_NAME`, `ADMIN_PASSWORD` | first ADMIN, created by the seed only if the username does not exist yet |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | threshold alert email (Phase 6): the `navigator@towardpcc.com` mailbox's own SMTP settings, as in a mail client (no relay). `SMTP_FROM` is set; Ahmed enters the other four in Coolify (both copies) and redeploys. Empty host = log only. Deliverability needs the provider's DKIM selector record in Cloudflare; SPF and DMARC stay unchanged |
 | `ALERT_INTERVAL_MINUTES` | how often the `worker` scans the open cases. Default 5. The healthcheck allows 15 minutes between cycles, so anything above ~7 needs the healthcheck widened too |
 | *(no recipient variable)* | who the 6 h+ alerts go to is **not** an environment variable. It is the active SUPERVISOR and ADMIN users that have an email address in **Admin → Users**, read from the database on every cycle — so adding or removing someone takes effect within one interval, with no redeploy. Someone on those roles with no address is skipped and logged at warn level, never guessed at; nobody with an address = alerts are still recorded, just not emailed. Phase 7 removed `ALERT_EMAIL_MAP`; delete it from both Coolify copies if it is still set |
-| `ALERT_HEARTBEAT_FILE` | the file the worker touches at the end of every cycle. Default and healthcheck path: `/tmp/heartbeat`. Leave unset |
-| `LOG_LEVEL` | `info` |
+| `ALERT_HEARTBEAT_FILE` | the file the worker touches after every SUCCESSFUL cycle. Default and healthcheck path: `/tmp/heartbeat`. Leave unset |
+| `ALERT_PUSH_URL` | the Uptime Kuma push monitor's URL (Monitoring, below). The worker GETs it after every successful cycle; empty = no external monitor, the worker logs `pushMonitor: none` at start |
+
+Removed on 2026-09-09 after the final review because no code read them: `AUTH_SECRET`, `AUTH_TRUST_HOST` (Auth.js leftovers; sessions are opaque database tokens), `APP_TIMEZONE`, `LOG_LEVEL`. They may still exist in Coolify's variable list; deleting them there is harmless, leaving them is too, since the entrypoint strips them.
 
 Every variable set here reaches every container of the app (Coolify's env file). The app image's entrypoint unsets everything except its allowlist (`docker/entrypoint.sh`); `migrate` keeps the full set for the seconds it runs; `db` ignores what it does not use.
 
@@ -124,7 +125,7 @@ Verify a rotation with a hash inside the container, never by printing the value:
 
 ```bash
 CID=$(sudo docker ps --format '{{.Names}}' | grep '^app-jqcjqhmcmizxs1u51wnqlfwv')
-sudo docker exec "$CID" sh -c 'printenv AUTH_SECRET | sha256sum | cut -c1-8'
+sudo docker exec "$CID" sh -c 'tr "\0" "\n" < /proc/1/environ | grep "^DATABASE_URL=" | sha256sum | cut -c1-8'
 ```
 
 ## Database access
@@ -143,7 +144,7 @@ sudo docker exec "$DB" psql -U ernav_owner -d ernav -tAc \
 
 Installed on the host: `/opt/ernav-backup/backup.sh` (a copy of `scripts/backup.sh`; re-copy after changing it), `ernav-backup.service` and `ernav-backup.timer` (daily 02:30 UTC, persistent, 5 min jitter). Dumps land in `/home/ubuntu/backups/ernav/` as root-owned, mode 600 files. First run 2026-09-09 06:38 UTC (37826 bytes); restore drill the same morning into a scratch database: 10 stages, 48 reasons, 16 departments, 8 wards, 1 user, 2 migrations. Off-host copy (2026-09-09 11:15 UTC): `/opt/ernav-backup/upload.sh` runs `rclone copy` to the OCI bucket `coolify-backups/ernav/` (S3-compatible endpoint; the rclone remote `oci` is configured in `/root/.config/rclone/rclone.conf`, mode 600, using the same S3 keys as Coolify's own backups). The unit passes it as `UPLOAD_CMD`. Verified the same day: the dump `ernav-2026-09-09-1115.dump` uploaded, was pulled back from the bucket and restored into a scratch database (10 stages, 1 user, 3 migrations, 1 session), then dropped. The laptop task `OracleBackupSync` mirrors the bucket daily, which is the third copy.
 
-`scripts/backup.sh` (in the repository) runs `pg_dump` in custom format from the `db` container to `/home/ubuntu/backups/ernav/ernav-YYYY-MM-DD-HHMM.dump`, keeps 30 days locally, and uploads through `UPLOAD_CMD` when one is configured (target: the OCI bucket `coolify-backups`, 14-day WORM, mirrored by the laptop task `OracleBackupSync`). Install it as `ernav-backup.timer` (daily, 02:30 UTC) the same way `towardpcc-canary.timer` is installed; record the install date and the first restore drill here.
+`scripts/backup.sh` (in the repository) runs `pg_dump` in custom format from the `db` container to `/home/ubuntu/backups/ernav/ernav-YYYY-MM-DD-HHMM.dump`, keeps 30 days locally, and uploads through `UPLOAD_CMD` when one is configured (target: the OCI bucket `coolify-backups`, 14-day WORM, mirrored by the laptop task `OracleBackupSync`). It is installed as `ernav-backup.timer` (above); every drill is recorded in History.
 
 Data-volume guard rails: the Coolify server setting "Delete unused volumes" must stay OFF (it is), and deleting the application in Coolify deletes `jqcjqhmcmizxs1u51wnqlfwv_ernav-db` unless the volumes box is unticked. Every deploy removes and recreates the db container; the volume persists.
 
@@ -156,6 +157,51 @@ sudo cat /home/ubuntu/backups/ernav/<file>.dump | sudo docker exec -i "$DB" pg_r
 sudo docker exec "$DB" psql -U ernav_owner -d ernav_restore_test -tAc 'SELECT count(*) FROM "Case"'
 sudo docker exec "$DB" dropdb -U ernav_owner ernav_restore_test
 ```
+
+### Restore into production
+
+For the case the backups exist for: a migration or an operator mistake has destroyed or
+corrupted case data. Everything runs on the host. The application must be STOPPED for the
+restore, so no client holds a connection while tables are dropped and recreated; the site
+answers 404 from the moment of the stop until Start finishes (about four minutes in the drill).
+
+```bash
+T=$(cat ~/.coolify-token); A=jqcjqhmcmizxs1u51wnqlfwv
+
+# 1. A fresh dump of what is there NOW, so the restore itself can be undone, then pick the file.
+sudo UPLOAD_CMD=/opt/ernav-backup/upload.sh /opt/ernav-backup/backup.sh
+ls -la /home/ubuntu/backups/ernav/
+FILE=/home/ubuntu/backups/ernav/<the dump to restore>.dump
+
+# 2. Note the db image, then stop the application (all containers go; the volume stays).
+IMG=$(sudo docker inspect --format '{{.Config.Image}}' "$(sudo docker ps --format '{{.Names}}' | grep "^db-$A")")
+curl -s -H "Authorization: Bearer $T" "http://localhost:8000/api/v1/applications/$A/stop"; echo
+until [ -z "$(sudo docker ps -q --filter "name=$A")" ]; do sleep 2; done
+
+# 3. A throwaway Postgres on the SAME volume and image, reachable by nothing else.
+sudo docker run -d --name ernav-restore -v "${A}_ernav-db:/var/lib/postgresql/data" -e POSTGRES_PASSWORD=unused "$IMG"
+until sudo docker exec ernav-restore pg_isready -q -U ernav_owner -d ernav; do sleep 2; done
+
+# 4. Restore over the live database: every object in the dump is dropped and recreated.
+#    pg_restore exits 1 when it ignored an error; read the "errors ignored" line and the
+#    messages above it before going on. "does not exist" lines are suppressed by --if-exists.
+sudo cat "$FILE" | sudo docker exec -i ernav-restore pg_restore -U ernav_owner -d ernav --clean --if-exists --no-owner --single-transaction
+sudo docker exec ernav-restore psql -U ernav_owner -d ernav -tAc 'SELECT count(*) FROM "Case"; SELECT count(*) FROM "AuditLog"; SELECT max(migration_name) FROM _prisma_migrations'
+
+# 5. Remove the throwaway container, then Start. migrate applies anything newer than the dump,
+#    sync-app-role re-grants the app role (the dump carries the grants too), the seed adds nothing.
+sudo docker rm -f ernav-restore
+curl -s -H "Authorization: Bearer $T" "http://localhost:8000/api/v1/applications/$A/start"; echo
+
+# 6. Verify, as after a deploy: ready, fingerprint, privileges, the counts from step 4.
+curl -s https://nav.towardpcc.com/api/ready
+DB=$(sudo docker ps --format '{{.Names}}' | grep "^db-$A")
+sudo docker exec "$DB" psql -U ernav_owner -d ernav -tAc "SELECT has_table_privilege('ernav_app','\"AuditLog\"','DELETE')"   # must be f
+```
+
+`--single-transaction` makes the restore all-or-nothing: a failure leaves the database as it
+was. Drop it only if a dump is too large for one transaction, and then restore into a scratch
+database first. Drilled on production on 2026-09-09 (see History).
 
 ## PHI scrub
 
@@ -191,7 +237,7 @@ U=jqcjqhmcmizxs1u51wnqlfwv
 W=$(sudo docker ps --format '{{.Names}}' | grep "^worker-$U")
 sudo docker logs "$W" --tail 50               # "[alerts] cycle done { ... }" every interval
 sudo docker inspect --format '{{.State.Health.Status}}' "$W"
-sudo docker exec "$W" sh -c 'cat /tmp/heartbeat'   # the last finished cycle, ISO 8601
+sudo docker exec "$W" sh -c 'cat /tmp/heartbeat'   # the last SUCCESSFUL cycle, ISO 8601; a failed cycle leaves it alone
 ```
 
 Before enabling mail in production, send one test message and check the headers of what arrives
@@ -222,12 +268,21 @@ ADMIN_PASSWORD that was in Coolify when the database was first seeded, then chan
 /account (at least 12 characters). Changing it signs out every other device and leaves a
 user.password audit row. The seeded password is never re-applied — the seed only creates the
 admin when the username is absent — so clearing ADMIN_PASSWORD in Coolify afterwards is safe.
-Ten failed sign-ins lock an account for 15 minutes; to clear a lock before then, as the owner
-role: UPDATE "User" SET "lockedUntil" = NULL, "failedLogins" = 0 WHERE username = '<name>';
+Ten failed sign-ins lock an account for 15 minutes. To clear a lock before then, an Admin uses
+Admin → Users → Reset password on that user: it clears the lock and the failure count, signs
+the user out everywhere and leaves a `user.password` audit row. Only when no Admin can sign in
+(every Admin locked at once) fall back to SQL as the owner role, and write an AuditLog row by
+hand as in "PHI scrub": `UPDATE "User" SET "lockedUntil" = NULL, "failedLogins" = 0 WHERE
+username = '<name>';`
 
 ## Monitoring
 
-Uptime Kuma (`uptime.towardpcc.com`): add an HTTP monitor on `https://nav.towardpcc.com/api/ready` expecting `ready` (Phase 7). OCI alarms already cover host down and CPU.
+Uptime Kuma (`uptime.towardpcc.com`), two monitors (Phase 7; both still to be created by Ahmed):
+
+1. HTTP monitor on `https://nav.towardpcc.com/api/ready`, keyword `"status":"ready"`, accepted status codes 200-299 (Kuma's default), interval 60 s. Covers the app and the database: a database outage answers 503 with `{"status":"database unreachable"}`, which fails both checks.
+2. Push monitor for the worker: type "Push", heartbeat interval 900 s (three five-minute cycles), retries 1. Kuma shows a URL of the form `https://uptime.towardpcc.com/api/push/<token>?status=up&msg=OK&ping=`. Paste that URL into Coolify → er-navigator → Environment Variables as `ALERT_PUSH_URL` (both copies) and redeploy. The worker GETs it after every successful cycle and logs `pushMonitor: set` at start; Kuma alerts when the pushes stop, which is the only thing that notices a worker that is hung, crash-looping or unable to reach the database (the container healthcheck goes unhealthy but Docker does not restart on that, and `/api/ready` stays green).
+
+OCI alarms already cover host down and CPU.
 
 ## Security headers
 

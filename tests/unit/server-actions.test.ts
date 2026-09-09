@@ -112,8 +112,21 @@ describe('every server action checks the caller server-side', () => {
       const { exported, helpers } = functionsIn(source)
       expect(exported.length, `${relative} exports no function`).toBeGreaterThan(0)
 
+      // A server action written as an arrow constant would be invisible to functionsIn() and
+      // therefore unchecked. Refuse the shape rather than parse it (final review, tests lens).
+      expect(
+        /^export const [A-Za-z_$][\w$]*\s*=\s*(async\s*)?(\(|[A-Za-z_$][\w$]*\s*=>)/m.test(source),
+        `${relative}: write server actions as function declarations so this guard sees them`,
+      ).toBe(false)
+
       const libs = importedLibSources(source)
-      const guardedServices = libs.filter((lib) => /\bassertCan\s*\(/.test(lib.text))
+      // A guarded service is one that CALLS assertCan on the actor it is handed. The module that
+      // DEFINES assertCan (src/lib/auth/session.ts) exports requireUser and friends too, and
+      // counting it would let `await requireUser()` alone satisfy this test (final review C12).
+      const guardedServices = libs.filter(
+        (lib) => /\bawait assertCan\s*\(/.test(lib.text) && !/^export async function assertCan\b/m.test(lib.text),
+      )
+      expect(guardedServices.map((lib) => lib.specifier)).not.toContain('@/src/lib/auth/session')
 
       for (const fn of exported) {
         const key = `${relative}:${fn.name}`

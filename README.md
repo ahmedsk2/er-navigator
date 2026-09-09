@@ -8,7 +8,7 @@ Mobile-first web app that replaces a WhatsApp group used by ER Navigator nurses 
 
 ## Stack
 
-Next.js 16 (App Router, TypeScript strict), Tailwind CSS 4, Prisma 7 on PostgreSQL 16, Auth.js v5 (Phase 1), Recharts, exceljs, Vitest, Playwright. Runs as a Coolify application (Docker Compose) behind Traefik on an Oracle Cloud ARM64 host.
+Next.js 16 (App Router, TypeScript strict), Tailwind CSS 4, Prisma 7 on PostgreSQL 16, opaque database-backed sessions (no auth library), Recharts, exceljs, Vitest, Playwright. Runs as a Coolify application (Docker Compose) behind Traefik on an Oracle Cloud ARM64 host.
 
 ## Local development
 
