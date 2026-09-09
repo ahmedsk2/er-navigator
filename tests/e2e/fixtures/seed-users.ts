@@ -17,7 +17,15 @@ export const E2E_USERS = {
   navigator: { username: 'e2e_navigator', password: 'e2e-navigator-password', displayName: 'Nadia Navigator', role: 'NAVIGATOR' },
   supervisor: { username: 'e2e_supervisor', password: 'e2e-supervisor-password', displayName: 'Sami Supervisor', role: 'SUPERVISOR' },
   viewer: { username: 'e2e_viewer', password: 'e2e-viewer-password', displayName: 'Vera Viewer', role: 'VIEWER' },
+  admin: { username: 'e2e_admin', password: 'e2e-admin-password', displayName: 'Amal Admin', role: 'ADMIN' },
 } as const satisfies Record<string, { username: string; password: string; displayName: string; role: Role }>
+
+/**
+ * The Phase 6 admin spec creates accounts through the UI, and nothing in this app deletes a user.
+ * Every account it makes carries this prefix so the owner role can clear the previous run's,
+ * which is also what lets the spec assert on "the account I just made".
+ */
+export const E2E_TEMP_USER_PREFIX = 'e2e_tmp_'
 
 export type E2EUser = (typeof E2E_USERS)[keyof typeof E2E_USERS]
 
@@ -41,6 +49,19 @@ async function clearCasesOf(prisma: PrismaClient, userIds: string[]): Promise<vo
   await prisma.caseInvestigation.deleteMany({ where: { caseId: { in: ids } } })
   await prisma.alert.deleteMany({ where: { caseId: { in: ids } } })
   await prisma.case.deleteMany({ where: { id: { in: ids } } })
+}
+
+/** The accounts the previous run's admin spec created through the UI. Owner role only. */
+async function clearTemporaryUsers(prisma: PrismaClient): Promise<void> {
+  const temporary = await prisma.user.findMany({
+    where: { username: { startsWith: E2E_TEMP_USER_PREFIX } },
+    select: { id: true },
+  })
+  if (temporary.length === 0) return
+  const ids = temporary.map((u) => u.id)
+  await prisma.session.deleteMany({ where: { userId: { in: ids } } })
+  await prisma.auditLog.deleteMany({ where: { OR: [{ actorId: { in: ids } }, { entityId: { in: ids } }] } })
+  await prisma.user.deleteMany({ where: { id: { in: ids } } })
 }
 
 export async function seedE2EUsers(): Promise<void> {
@@ -72,6 +93,7 @@ export async function seedE2EUsers(): Promise<void> {
     }
     try {
       await clearCasesOf(prisma, ids)
+      await clearTemporaryUsers(prisma)
     } catch (cause) {
       console.warn('[e2e] could not clear previous fixture cases (owner role needed):', String(cause))
     }

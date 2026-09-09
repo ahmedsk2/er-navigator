@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs'
 import { LOCKOUT_MS } from '../../src/lib/auth/lockout'
 import { prisma } from '../../src/lib/db'
+import { seedAdminCases } from './fixtures/admin-cases'
 import { seedBoardCases } from './fixtures/board-cases'
 import { seedDashboardCases } from './fixtures/dashboard-cases'
 import { seedE2EUsers } from './fixtures/seed-users'
@@ -45,4 +46,8 @@ export default async function globalSetup(): Promise<void> {
   // Phase 4: twenty-nine days of cases so the dashboard's ranges, weekly chart, consult and
   // investigation medians and Other queue all have something real to show.
   await seedDashboardCases()
+
+  // Phase 6: the two rows the admin screens act on and the UI cannot create — a queued "Other"
+  // description and a fired threshold alert, written the way the worker writes them.
+  await seedAdminCases()
 }
