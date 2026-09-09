@@ -177,18 +177,29 @@ test('the range chips change the subtitle and what the page counts', async ({ pa
   await expect(page).toHaveURL('/dashboard?r=7')
   const seven = await countOf()
 
-  // Seven of the twelve seeded cases registered more than a week ago, so the count must drop by
-  // at least that many while the total (every non-voided case) stays put.
-  expect(seven.total).toBe(thirty.total)
-  expect(thirty.inRange - seven.inRange).toBeGreaterThanOrEqual(
-    DASHBOARD_CASES.length - WITHIN_7_DAYS.length,
-  )
+  // Six of the twelve seeded cases registered more than a week ago, so a week counts strictly
+  // fewer. The totals are only compared for direction: another spec file may open a case between
+  // these two renders, and the whole-database total can grow but never shrink.
+  expect(DASHBOARD_CASES.length - WITHIN_7_DAYS.length).toBe(6)
+  expect(seven.inRange).toBeLessThan(thirty.inRange)
+  expect(seven.total).toBeGreaterThanOrEqual(thirty.total)
 
   await page.getByRole('link', { name: 'All time' }).click()
   await expect(page).toHaveURL('/dashboard?r=all')
   const all = await countOf()
   expect(all.inRange).toBe(all.total)
   expect(all.inRange).toBeGreaterThanOrEqual(thirty.inRange)
+
+  // What the range actually does, asserted on named cases rather than on a count another spec
+  // can move: 3200001 registered twenty-nine days ago and stayed 26 h, 3200007 four days ago and
+  // stayed 30 h. Both are past 24 h; only the second is inside a week.
+  await page.goto('/dashboard?drill=threshold%3A24')
+  await expect(rowFor(page, '3200001')).toHaveCount(1)
+  await expect(rowFor(page, '3200007')).toHaveCount(1)
+  await page.goto('/dashboard?r=7&drill=threshold%3A24')
+  await expect(rowFor(page, '3200001')).toHaveCount(0)
+  await expect(rowFor(page, '3200007')).toHaveCount(1)
+  await page.goto('/dashboard?r=all')
 
   // The chosen chip is the current one, and it survives a reload.
   await page.reload()
