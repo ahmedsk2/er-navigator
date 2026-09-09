@@ -69,13 +69,13 @@ test('an admin creates a user, that user signs in, and deactivating them locks t
     'data-email',
     `${username}@hospital.example`,
   )
-  await row.getByLabel(`Email for ${username}`).fill(`${username}.new@hospital.example`)
+  await row.getByRole('textbox', { name: `Email for ${username}` }).fill(`${username}.new@hospital.example`)
   await row.getByRole('button', { name: `Save the email for ${username}` }).click()
   await expect(row.locator('td[data-email]')).toHaveAttribute(
     'data-email',
     `${username}.new@hospital.example`,
   )
-  await row.getByLabel(`Email for ${username}`).fill('')
+  await row.getByRole('textbox', { name: `Email for ${username}` }).fill('')
   await row.getByRole('button', { name: `Save the email for ${username}` }).click()
   await expect(row.locator('td[data-email]')).toHaveAttribute('data-email', '')
 
