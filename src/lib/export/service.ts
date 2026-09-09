@@ -14,10 +14,11 @@
 import { type AuditContext } from '@/src/lib/audit'
 import { assertCan, isForbiddenError, type AuthUser } from '@/src/lib/auth/session'
 import { dashboard } from '@/src/lib/domain/aggregates'
+import { adaaWorkbook } from './adaa'
 import { countCasesForExport, loadCasesForExport } from './load'
 import { exportFilename, type ExportRange } from './range'
-import { dataSheets, summaryRows } from './rows'
-import { xlsxResponse } from './workbook'
+import { dataSheets, summaryRows, type CaseForExport } from './rows'
+import { freePart, tablePart, xlsxResponseOf, type WorkbookPart } from './workbook'
 
 const NO_STORE = { 'cache-control': 'no-store' } as const
 
@@ -66,12 +67,32 @@ export async function exportWorkbookResponse(
   if (await refused(user, range, ctx)) return FORBIDDEN()
 
   const cases = await loadCasesForExport(range)
-  // `dashboard()` does its own range filter; the rows are already the range, so 'all' is a no-op.
-  const data = dashboard(cases, 'all', now)
-  const summary = summaryRows({ data, range, generatedAt: now })
 
   console.info(
     `[export] xlsx actor=${user.id} format=${range.format} from=${range.from} to=${range.to} status=${range.status} cases=${cases.length}`,
   )
-  return xlsxResponse(summary, dataSheets(cases, now), exportFilename(range))
+  return xlsxResponseOf(workbookFor(cases, range, now), exportFilename(range))
+}
+
+/**
+ * One range, one read, three layouts. The rows are the same in all three — the format changes
+ * only which sheets are written from them, which is why the live count on `/export` is honest
+ * whichever format is selected.
+ */
+function workbookFor(
+  cases: ReadonlyArray<CaseForExport>,
+  range: ExportRange,
+  now: Date,
+): WorkbookPart[] {
+  if (range.format === 'adaa') return adaaWorkbook({ cases, range, generatedAt: now })
+  // `dashboard()` does its own range filter; the rows are already the range, so 'all' is a no-op.
+  const data = dashboard(cases, 'all', now)
+  return [
+    freePart({
+      name: 'Summary',
+      widths: [30, 26, 14],
+      rows: summaryRows({ data, range, generatedAt: now }),
+    }),
+    ...dataSheets(cases, now).map(tablePart),
+  ]
 }

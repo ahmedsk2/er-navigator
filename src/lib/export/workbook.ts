@@ -110,14 +110,6 @@ export function workbookStreamOf(parts: ReadonlyArray<WorkbookPart>): ReadableSt
   return Readable.toWeb(out) as ReadableStream<Uint8Array>
 }
 
-/** The ER Navigator workbook's own shape: the Summary sheet, then the four data sheets. */
-export function workbookStream(summary: SummaryRow[], sheets: ReadonlyArray<Sheet>): ReadableStream<Uint8Array> {
-  return workbookStreamOf([
-    freePart({ name: 'Summary', widths: [30, 26, 14], rows: summary }),
-    ...sheets.map(tablePart),
-  ])
-}
-
 export function xlsxResponseOf(parts: ReadonlyArray<WorkbookPart>, filename: string): Response {
   return new Response(workbookStreamOf(parts), {
     headers: {
@@ -128,13 +120,3 @@ export function xlsxResponseOf(parts: ReadonlyArray<WorkbookPart>, filename: str
   })
 }
 
-export function xlsxResponse(
-  summary: SummaryRow[],
-  sheets: ReadonlyArray<Sheet>,
-  filename: string,
-): Response {
-  return xlsxResponseOf(
-    [freePart({ name: 'Summary', widths: [30, 26, 14], rows: summary }), ...sheets.map(tablePart)],
-    filename,
-  )
-}
