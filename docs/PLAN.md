@@ -80,6 +80,8 @@ The locked plan wins on workflow, taxonomy, rules, screens and permissions. This
 | Repository | Not specified; Ahmed allowed an open repo for now | `github.com/ahmedsk2/er-navigator`, PUBLIC during the build by Ahmed's decision (9 September), read-only deploy key in Coolify; flipped private when the build finishes. Nothing hospital-specific beyond the plan and prototype, and never a secret or a patient identifier, may enter it | Ahmed's call; the deploy path does not care either way |
 | Model tiers for delegation | Not specified | Fable leads and reviews; Opus does the implementation slices; Sonnet and Haiku only for trivial mechanics (formatting, renames, doc sweeps). Ahmed asked for Opus over Sonnet and Haiku on 9 September | Fewer iterations per slice at a modest cost increase |
 | Design tokens | "the attached template" (missing) | Extracted from the Envato items in Section 4 once Ahmed downloads them. Until then the prototype palette is the baseline in `app/globals.css` | The threshold colours are information design and are not up for restyling |
+| Collection fields beyond the locked schema | Section 3 as written | Phase 8 (Ahmed's request, 9 September): `Case.ctas` (1–5, optional), `Case.areaId` to an Admin-editable `EdArea` list seeded with the six areas of the August sheet (not Appendix A), `CaseInvestigation.preliminaryAt` on imaging rows. All optional; nothing in the workflow or the taxonomy names changes | Every KPI in both ED decks and the Adaa form is per CTAS; the monthly deck splits everything by ED area; the report delay is the commonest imaging pathway and the August sheet records the preliminary read separately |
+| KPIs the app reports | Not specified | The Adaa KPIs, the weekly deck's figures and the August sheet's working thresholds, computed in `src/lib/domain/kpi.ts` over TRACKED cases only, with one door (earlier of registration and triage) and one leaving time (departed, else resolved) everywhere; labelled "tracked cases, not the whole ED" wherever shown | The whole-ED population (9,962 patients a month) is in the hospital system, not in this app; a KPI that pretended otherwise would mislead |
 | Timezone, week start, language | UTC storage, Asia/Riyadh display, Sunday, English | Unchanged | |
 
 ---
@@ -240,9 +242,13 @@ Recipe: Fable designs the worker's idempotency (unique on caseId+threshold does 
 
 Recipe: Fable runs the security review and the restore drill personally. Opus does the slop pass; Haiku the doc sweeps.
 
-### Phase 8: only if asked
+### Phase 8: reports and collection fields (asked for on 9 September)
 
-Historical xlsx import, server-sent events for the board, Arabic RTL (Tailwick ships RTL), WhatsApp Business notifications.
+Ahmed asked for the ideas in the monthly ER Journey deck, the weekly delayed-tickets deck, the Adaa ED KPI form and the navigators' August sheet to go into the dashboard, for the collection form to take what those sheets have and the app lacks, and for an export per sheet filled from a chosen date range. The analysis and the eight decisions that stay with Ahmed are in `docs/specs/phase8-brief.md`; the build is `docs/specs/phase8-reports.md`: the KPI module (lead, verified by three independent recomputations), Slice D (CTAS, ED area, imaging preliminary report, the stats loader), Slice E (the dashboard sections, the per-case timeline, the print report) and Slice F (the Adaa and QCH export formats). Every KPI the app shows is labelled "tracked cases, not the whole ED"; the whole-ED figures stay with the hospital system.
+
+Recipe: Fable writes the brief, the spec and the rules code and verifies the rules with a workflow; three Opus agents implement the slices in worktrees; Fable reviews, merges and deploys once.
+
+Still only if asked: historical xlsx import, server-sent events for the board, Arabic RTL (Tailwick ships RTL), WhatsApp Business notifications.
 
 **Effort estimate (Fable-led sessions, everything else delegated; treat as a planning aid, not a quote)**
 
