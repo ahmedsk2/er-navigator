@@ -212,8 +212,28 @@ role: UPDATE "User" SET "lockedUntil" = NULL, "failedLogins" = 0 WHERE username 
 
 Uptime Kuma (`uptime.towardpcc.com`): add an HTTP monitor on `https://nav.towardpcc.com/api/ready` expecting `ready` (Phase 7). OCI alarms already cover host down and CPU.
 
+## Security headers
+
+Every response carries HSTS, `X-Frame-Options: DENY`, `X-Content-Type-Options`, a strict
+Referrer-Policy and a minimal Permissions-Policy from `next.config.ts`, plus a
+Content-Security-Policy built per request in `proxy.ts` — the only place that can mint the
+nonce it carries. There is exactly one source for the CSP, and a unit test fails if a second
+one appears in the config.
+
+```bash
+curl -sI https://nav.towardpcc.com/login | grep -i 'content-security-policy'
+# script-src 'self' 'nonce-<16 random bytes, different every request>' 'strict-dynamic'
+```
+
+`script-src` has no `'unsafe-inline'` and no `'unsafe-eval'`. `style-src` keeps
+`'unsafe-inline'` because Recharts writes `style="…"` attributes on the dashboard's charts and
+a style attribute cannot carry a nonce; measured, removing it leaves the dashboard chartless
+and changes nothing anywhere else. If a page ever renders blank after a deploy, check the
+browser console for a CSP refusal before anything else.
+
 ## History
 
+- 2026-09-09 (Phase 7): `ALERT_EMAIL_MAP` removed — alert recipients are now the users with an email in Admin → Users. CSP moved into `proxy.ts` with a per-request nonce and no `'unsafe-inline'` for scripts. A refused page answers HTTP 403. Installable as a PWA (`/manifest.webmanifest`, `/icons/*`, `/apple-touch-icon.png`, all public). Lighthouse mobile: board 98/100, case editor 96/100 (performance/accessibility). `pnpm audit` clean at moderate and above, with three `pnpm.overrides` pins.
 - 2026-09-08: repository, deploy key, DNS record, Coolify application and GitHub push webhook (id 676338800) created. First deploy (commit ac3672f, fingerprint cf6c356bcc69ff4b) verified: migrations applied, seed counts 10/48/16/8/1, app role privileges AuditLog DELETE=f, CaseUpdate DELETE=f, Case DELETE=f, superuser=f; Traefik router Host(nav.towardpcc.com) → app:3000; db on `internal` plus the per-app network.
 - 2026-09-08 (later): adversarial review found that Coolify's env file put the owner and admin passwords in the app container (fixed by the entrypoint allowlist), that the seed would overwrite Admin edits (now insert-if-missing), that rotating the app role password would break the app (now reconciled on every deploy), that compose deploys are stop-then-start (documented), and that the Prisma client leaked a pool per query in production (fixed).
 - 2026-09-08 23:17 to 23:24 (Riyadh): OUTAGE, about 7 minutes. A scripted documentation edit wrote a NUL and a newline into a comment in `docker/entrypoint.sh`; `sh` then failed with an unterminated quote and the app container crash-looped after a deploy. Fixed by rewriting the file and pushing; CI now runs `sh -n` on every shell script and rejects NUL bytes. Lesson: never patch shell scripts with escape-bearing text through a scripted replace, and parse them before pushing.
