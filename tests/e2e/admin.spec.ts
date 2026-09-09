@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { expect, test } from '@playwright/test'
+import { expect, test, type APIResponse, type Page } from '@playwright/test'
 import { prisma } from '../../src/lib/db'
 import {
   ALERT_MRN,
@@ -251,8 +251,102 @@ test('nobody but an admin can reach /admin, and the tab is not offered', async (
     page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Admin' }),
   ).toHaveCount(0)
 
-  for (const path of ['/admin', '/admin/users', '/admin/lists', '/admin/other', '/admin/alerts', '/admin/audit']) {
+  for (const path of ADMIN_PATHS) {
     await page.goto(path)
     await expect(page.getByRole('heading', { name: 'Not allowed' })).toBeVisible()
   }
+})
+
+const ADMIN_PATHS = [
+  '/admin',
+  '/admin/users',
+  '/admin/lists',
+  '/admin/other',
+  '/admin/alerts',
+  '/admin/audit',
+] as const
+
+/**
+ * The client router tree a browser already holds once the `admin` segment is in it.
+ *
+ * Next matches this tree against the route's loader tree segment by segment and starts rendering
+ * at the FIRST MISMATCH (`walkTreeWithFlightRouterState`: `renderComponentsOnThisLevel` is false
+ * while the segments match), so every ancestor layout named here — including `admin/layout.tsx`,
+ * which used to be the only ADMIN check — is skipped. The tree therefore stops at `admin` and
+ * names a child the requested path does not have: `__PAGE__` for `/admin/<section>`, and `audit`
+ * for `/admin` itself, whose own child IS `__PAGE__`.
+ *
+ * The node shape is `[segment, parallelRoutes, url, refresh, flags]`, copied from a real Next
+ * 16.3.4 soft navigation (`next-url` is optional, the numeric flags are not: without them the
+ * state tree fails validation and the request 500s rather than reaching the page).
+ */
+function routerStateTree(path: string): string {
+  const child = path === '/admin' ? 'audit' : '__PAGE__'
+  const tail = [null, null, 4096]
+  const tree = [
+    '',
+    { children: ['(app)', { children: ['admin', { children: [child, {}, ...tail] }, ...tail] }, ...tail] },
+    null,
+    null,
+    4112,
+  ]
+  return encodeURIComponent(JSON.stringify(tree))
+}
+
+/** The soft-navigation request itself. `page.request` shares the page's signed-in cookie jar. */
+function rscRequest(page: Page, path: string): Promise<APIResponse> {
+  return page.request.get(path, {
+    headers: { rsc: '1', 'next-router-state-tree': routerStateTree(path) },
+  })
+}
+
+/**
+ * Review finding C1. A NAVIGATOR or a VIEWER who has the `admin` segment in their client router
+ * tree — a demoted admin with an open tab, or anyone who runs one `fetch` from the console —
+ * gets the page without the layout. Before Phase 7 that returned the audit log, the Other queue,
+ * the reference lists, the staff directory and every fired alert at HTTP 200.
+ *
+ * The ADMIN half is what stops this test passing because every request failed for some unrelated
+ * reason: the same handcrafted request, from the right role, still renders.
+ */
+test('the RSC request that skips the admin layout is refused by every admin page', async ({
+  browser,
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', DESKTOP_ONLY)
+
+  await fromClientIp(page, '198.51.100.110')
+  await signIn(page, E2E_USERS.navigator)
+  for (const path of ADMIN_PATHS) {
+    expect((await rscRequest(page, path)).status(), `NAVIGATOR on ${path}`).toBe(403)
+  }
+
+  const viewerContext = await browser.newContext()
+  const viewer = await viewerContext.newPage()
+  await fromClientIp(viewer, '198.51.100.111')
+  await signIn(viewer, E2E_USERS.viewer)
+  for (const path of ADMIN_PATHS) {
+    expect((await rscRequest(viewer, path)).status(), `VIEWER on ${path}`).toBe(403)
+  }
+  await viewerContext.close()
+
+  const adminContext = await browser.newContext()
+  const admin = await adminContext.newPage()
+  await fromClientIp(admin, '198.51.100.112')
+  await signIn(admin, E2E_USERS.admin)
+  for (const path of ADMIN_PATHS) {
+    const response = await rscRequest(admin, path)
+    expect(response.status(), `ADMIN on ${path}`).toBe(200)
+    // And the request really is the layout-skipping one: the flight payload is the page's
+    // subtree, without the "Administration" heading `admin/layout.tsx` renders. If Next ever
+    // stops skipping the layout, this fails and the 403s above stop meaning anything.
+    expect(await response.text(), `${path} rendered the admin layout`).not.toContain('Administration')
+  }
+  await adminContext.close()
+
+  // Every refusal is on the record, as `assertRole`/`assertCan` write it.
+  const refusals = await prisma.auditLog.count({
+    where: { action: 'auth.forbidden', entity: { in: ['Action', 'Role'] } },
+  })
+  expect(refusals).toBeGreaterThan(0)
 })

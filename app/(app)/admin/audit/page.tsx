@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { fmtStamp } from '@/src/lib/cases/local-time'
 import { loadAuditPage, parseFilters } from '@/src/lib/admin/audit-view'
+import { requireAction } from '@/src/lib/auth/session'
 
 export const metadata: Metadata = { title: 'Audit log · Admin · ER Navigator' }
 export const dynamic = 'force-dynamic'
@@ -12,12 +13,17 @@ export const dynamic = 'force-dynamic'
  *
  * `before`/`after` are shown as the keys that changed, not as raw JSON: "status: OPEN →
  * RESOLVED" is what someone reading at 03:10 needs. Nothing on this page can write.
+ *
+ * The page checks `admin.audit.view` itself and does not lean on the admin layout: Next skips
+ * ancestor layouts on an RSC request that already carries the `admin` segment (review C1), so
+ * before this line the whole log was readable by any signed-in role.
  */
 export default async function AdminAuditPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
+  await requireAction('admin.audit.view')
   const params = await searchParams
   const filters = parseFilters(params)
   const page = await loadAuditPage(filters)
