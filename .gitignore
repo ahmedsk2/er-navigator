@@ -14,3 +14,5 @@ Thumbs.db
 
 # nested agent worktrees created by the Claude Code harness
 .claude/worktrees/
+tsconfig.tsbuildinfo
+*.tsbuildinfo
