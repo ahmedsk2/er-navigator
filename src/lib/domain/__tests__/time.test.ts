@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { band, duration, elapsedHours, endAt, fmtHours, median, MIN_N } from '../time'
+import { band, duration, elapsedHours, endAt, fmtHours, median, MIN_N, spokenHours } from '../time'
 
 const t = (h: number) => new Date(Date.UTC(2026, 8, 8, 0, 0, 0) + h * 36e5)
 
@@ -59,4 +59,27 @@ describe('median', () => {
 describe('fmtHours', () => {
   it('formats hours and zero-padded minutes', () => expect(fmtHours(6.0833)).toBe('6h 05m'))
   it('renders a dash for null', () => expect(fmtHours(null)).toBe('–'))
+})
+
+/**
+ * The same duration for a screen reader (Phase 7). "6h 05m" is read as "six h zero five m" and
+ * the dash for a missing value as nothing at all, so every elapsed clock carries this instead.
+ */
+describe('spokenHours', () => {
+  it('says the units in words', () => expect(spokenHours(6.0833)).toBe('6 hours 5 minutes'))
+  it('uses the singular where it should', () => {
+    expect(spokenHours(1.0167)).toBe('1 hour 1 minute')
+  })
+  it('drops a part that is zero', () => {
+    expect(spokenHours(3)).toBe('3 hours')
+    expect(spokenHours(0.5)).toBe('30 minutes')
+  })
+  it('says "under a minute" rather than nothing at all', () => {
+    expect(spokenHours(0)).toBe('under a minute')
+    expect(spokenHours(0.004)).toBe('under a minute')
+  })
+  it('says "not recorded" where fmtHours renders a dash', () => {
+    expect(spokenHours(null)).toBe('not recorded')
+    expect(spokenHours(Number.NaN)).toBe('not recorded')
+  })
 })

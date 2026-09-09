@@ -1,0 +1,36 @@
+{
+  "note": "Phase 7 Lighthouse runs. Mobile emulation (Lighthouse's default form factor), Chrome 141 headless, simulated throttling, signed in as the e2e navigator through a session cookie in --extra-headers, against `pnpm start` on the production build at http://localhost:3000. The gate (locked plan section 8, Phase 7) is performance and accessibility >= 90 on the Board and the Case editor.",
+  "tool": "lighthouse 13.4.1 via npx, --preset default (mobile)",
+  "date": "2026-09-09",
+  "gate": { "performance": 90, "accessibility": 90 },
+  "runs": {
+    "/cases/new": {
+      "before": { "performance": 96, "accessibility": 98, "best-practices": 96, "seo": 63 },
+      "after": { "performance": 96, "accessibility": 100, "best-practices": 100, "seo": 63 }
+    },
+    "/cases/[id] (an open case)": {
+      "before": { "performance": 96, "accessibility": 98, "best-practices": 96, "seo": 63 },
+      "after": { "performance": 96, "accessibility": 100, "best-practices": 100, "seo": 63 }
+    },
+    "/ (board)": {
+      "before": { "performance": 94, "accessibility": 100, "best-practices": 100, "seo": 63 },
+      "after": { "performance": 98, "accessibility": 100, "best-practices": 100, "seo": 63 }
+    }
+  },
+  "fixed": [
+    "landmark-one-main: the case editor had no <main>. /cases/* sits outside the (app) shell, which has its own. Accessibility 98 -> 100.",
+    "inspector-issues (CSP kEvalViolation): zod 4 probes for its JIT compiler with Function(\"\") inside a try/catch the first time a schema is used, and the Phase 7 CSP has no 'unsafe-eval'. `z.config({ jitless: true })` in src/lib/domain/validation.ts removes the probe. Best practices 96 -> 100.",
+    "layout-shifts / cumulative-layout-shift on the board: the new install banner rendered above the rows only after hydration, pushing every patient row down (CLS 0.121). Moved below the list, where it displaces nothing. Board performance 94 -> 98, CLS 0.121 -> 0.",
+    "label-content-name-mismatch on the board: the install banner's \"Not now\" button had an aria-label that did not contain its visible text (WCAG 2.5.3).",
+    "Screen-reader text for every elapsed clock: spokenHours() says \"6 hours 5 minutes\" where the tabular text reads \"6h 05m\", which a reader pronounces \"six h zero five m\".",
+    "One visible focus ring for every link, button and chip, stated once in app/globals.css rather than per component."
+  ],
+  "not-fixed": {
+    "unused-javascript (94 KiB on the case editor, 28 KiB on the board)": "The React/Next runtime plus zod in the first client chunk. Splitting the editor's validation out is a design change, not a hardening change, and performance is already 96 against a gate of 90. Recorded for a later phase.",
+    "legacy-javascript-insight (13 KiB)": "Next's own polyfills, chosen by the default browserslist. Narrowing the browser target would drop support for whatever the hospital's older devices run; not a call to make silently in a hardening pass.",
+    "render-blocking-insight (30-70 ms)": "The single Tailwind stylesheet. Next's experimental inlineCss would remove it; experimental, applies to every page, and worth 50 ms against a passing score.",
+    "bf-cache": "Every page sets Cache-Control: no-store, which is deliberate: a clinical board must never be restored from the back/forward cache with stale rows. Lighthouse itself marks both failure reasons \"Not actionable\".",
+    "seo 63 / is-crawlable / llms-txt": "The app sets robots noindex on purpose (locked plan: a hospital tool behind a login). SEO is not a Phase 7 gate.",
+    "forced-reflow-insight, network-dependency-tree-insight, agentic-browsing": "Lighthouse 13 insights outside the plan's gate; none names a change this app controls."
+  }
+}

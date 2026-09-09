@@ -62,3 +62,20 @@ export function fmtHours(h: number | null): string {
   const mm = Math.round((h - hh) * 60)
   return `${hh}h ${String(mm).padStart(2, '0')}m`
 }
+
+/**
+ * The same duration in words, for an `aria-label` (Phase 7 accessibility).
+ *
+ * A screen reader given "6h 05m" says "six h zero five m", and the dash `fmtHours` uses for a
+ * missing value is read as a punctuation mark or skipped entirely. Every elapsed clock in the app
+ * therefore carries the visible text for the eye and this for the ear.
+ */
+export function spokenHours(h: number | null): string {
+  if (h == null || Number.isNaN(h)) return 'not recorded'
+  const hh = Math.floor(h)
+  const mm = Math.round((h - hh) * 60)
+  const parts: string[] = []
+  if (hh > 0) parts.push(`${hh} ${hh === 1 ? 'hour' : 'hours'}`)
+  if (mm > 0) parts.push(`${mm} ${mm === 1 ? 'minute' : 'minutes'}`)
+  return parts.length > 0 ? parts.join(' ') : 'under a minute'
+}

@@ -124,10 +124,6 @@ export function Board({ initial, initialQuery, printedBy }: { initial: BoardPayl
         </div>
       </div>
 
-      {/* Below the filters, above the rows: seen on arrival, never in the way of the list, and
-          gone for good once dismissed or installed (Phase 7). */}
-      <InstallPrompt />
-
       <HandoverSheet rows={visible} now={now} printedBy={printedBy} />
 
       {visible.length === 0 ? (
@@ -139,6 +135,14 @@ export function Board({ initial, initialQuery, printedBy }: { initial: BoardPayl
           ))}
         </ul>
       )}
+
+      {/* After the rows, not before them (Phase 7). The banner can only appear once the browser
+          has hydrated — the server cannot know whether this phone has already dismissed it — and
+          anything inserted above the list would push the patient rows down half a second after
+          the board paints. On a board a nurse taps at a glance, that is a wrong-patient tap
+          waiting to happen; measured, it also cost 0.12 of cumulative layout shift. Here it
+          displaces nothing. */}
+      <InstallPrompt />
     </div>
   )
 }

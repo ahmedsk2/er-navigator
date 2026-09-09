@@ -117,7 +117,7 @@ export function InstallPrompt() {
     <section
       data-install-banner={event ? 'prompt' : 'ios'}
       aria-label="Install ER Navigator"
-      className="no-print mx-4 mb-2.5 flex items-start gap-3 rounded-card border border-accent bg-accent-soft p-3"
+      className="no-print mx-4 mt-3 mb-2.5 flex items-start gap-3 rounded-card border border-accent bg-accent-soft p-3"
     >
       <div className="min-w-0 flex-1">
         <p className="text-section">Add ER Navigator to this phone</p>
@@ -140,10 +140,12 @@ export function InstallPrompt() {
           </button>
         ) : null}
       </div>
+      {/* The label starts with the visible words: an accessible name that does not contain the
+          text on the button is a WCAG 2.5.3 failure, and axe flags it. */}
       <button
         type="button"
         onClick={dismiss}
-        aria-label="Dismiss the install suggestion"
+        aria-label="Not now — dismiss the install suggestion"
         className="min-h-11 min-w-11 shrink-0 rounded-button border border-line bg-panel px-3 text-body font-semibold text-ink"
       >
         Not now

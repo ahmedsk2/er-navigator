@@ -12,6 +12,19 @@
  */
 import { z } from 'zod'
 
+/**
+ * Turn zod 4's JIT compiler off, process-wide (Phase 7).
+ *
+ * Zod probes for it with `Function("")` inside a try/catch the first time a schema is used. The
+ * probe is harmless — it catches its own failure — but under the Phase 7 CSP, which has no
+ * `'unsafe-eval'`, the browser refuses it and logs a `kEvalViolation` to Chrome's Issues panel,
+ * which is what cost the case editor its Lighthouse best-practices point. This module is the one
+ * zod-touching file that reaches the browser bundle (the case editor imports it), so the setting
+ * belongs here. Interpreted validation is slower per parse and completely invisible at the size
+ * of one case form.
+ */
+z.config({ jitless: true })
+
 export const MRN_RE = /^\d+$/
 export const mrnSchema = z.string().trim().regex(MRN_RE, 'Enter the MRN as digits only.')
 
