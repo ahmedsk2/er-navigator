@@ -151,6 +151,19 @@ export function CaseEditor(props: CaseEditorProps) {
     () => new Map(reference.departments.map((d) => [d.id, d.name])),
     [reference],
   )
+  /**
+   * The rows an Admin deactivated while this case already carried them (Phase 7, C4/C10). They
+   * come from `loadReferenceForCase`, are only ever present on an existing case, and render as
+   * greyed "(retired)" chips the nurse can turn off but never back on.
+   */
+  const retiredDepartments = useMemo(
+    () => new Set(reference.departments.filter((d) => d.retired).map((d) => d.id)),
+    [reference],
+  )
+  const retiredWards = useMemo(
+    () => new Set(reference.wards.filter((w) => w.retired).map((w) => w.id)),
+    [reference],
+  )
 
   const selectedStages = draft.stages.map((id) => stageById.get(id)).filter((s) => s !== undefined)
   const stageCodes = new Set(selectedStages.map((s) => s.code))
@@ -521,6 +534,7 @@ export function CaseEditor(props: CaseEditorProps) {
                 primary={draft.primaryReasonId}
                 onPrimary={(id) => set({ primaryReasonId: id })}
                 labelOf={(id) => reasonById.get(id)?.name ?? id}
+                retiredOf={(id) => reasonById.get(id)?.retired === true}
                 disabled={disabled}
               />
               {otherSelected && other ? (
@@ -563,6 +577,7 @@ export function CaseEditor(props: CaseEditorProps) {
             value={draft.consults.map((c) => c.departmentId)}
             onChange={setDepartments}
             labelOf={(id) => departmentName.get(id) ?? id}
+            retiredOf={(id) => retiredDepartments.has(id)}
             disabled={disabled}
           />
           {draft.consults.map((consult) => (
@@ -742,6 +757,7 @@ export function CaseEditor(props: CaseEditorProps) {
                   value={draft.wardId ? [draft.wardId] : []}
                   onChange={(ids) => set({ wardId: ids[ids.length - 1] ?? null })}
                   labelOf={(id) => reference.wards.find((w) => w.id === id)?.code ?? id}
+                  retiredOf={(id) => retiredWards.has(id)}
                   disabled={disabled}
                 />
               </FieldGroup>

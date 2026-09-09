@@ -5,7 +5,7 @@ import { loadUnacknowledgedAlert } from '@/src/lib/alerts/service'
 import { requireUser } from '@/src/lib/auth/session'
 import { can } from '@/src/lib/authz/policy'
 import { loadCaseForEditor } from '@/src/lib/cases/load'
-import { loadReference } from '@/src/lib/cases/reference'
+import { loadReferenceForCase } from '@/src/lib/cases/reference'
 
 export const metadata: Metadata = { title: 'Case · ER Navigator' }
 export const dynamic = 'force-dynamic'
@@ -18,7 +18,10 @@ export const dynamic = 'force-dynamic'
 export default async function CasePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const user = await requireUser()
-  const reference = await loadReference()
+  // The case-aware reference: active rows plus anything this case already carries that an Admin
+  // has since deactivated, so a retired chip stays visible and removable (Phase 7, C4/C10). It
+  // feeds the editor's chips and the validation metadata alike, exactly as the actions do.
+  const reference = await loadReferenceForCase(id)
   const loaded = await loadCaseForEditor(id, reference)
   if (!loaded) notFound()
 

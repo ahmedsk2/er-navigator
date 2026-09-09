@@ -26,7 +26,7 @@ import {
 } from '@/src/lib/domain/validation'
 import { conflictInfoFrom } from './conflict'
 import { diffRows } from './diff'
-import { caseSchemas, loadReference, reasonMetaOf, stageOfReason } from './reference'
+import { caseSchemas, loadReference, loadReferenceForCase, reasonMetaOf, stageOfReason } from './reference'
 import { caseSnapshot } from './snapshot'
 import type {
   ActionFailure,
@@ -86,6 +86,11 @@ function updateView(row: { id: string; createdAt: Date; text: string; author: { 
 /**
  * Reference ids the zod factory does not police: a stale editor could post a department or ward
  * that an Admin has since deactivated, and a raw foreign-key violation would surface as a 500.
+ *
+ * On an existing case `reference` is the case-aware one (`loadReferenceForCase`), so a row this
+ * case already carries passes even after it is deactivated; a retired row it does NOT carry is
+ * absent from that reference and is still refused. `createCase` passes the strict active-only
+ * list, so a new case can never be opened on a retired row.
  */
 function checkReferenceIds(d: ValidatedDraft, reference: ReferenceData): ValidationIssue[] {
   const issues: ValidationIssue[] = []
@@ -351,7 +356,7 @@ export async function saveCase(
   ctx: AuditContext,
 ): Promise<SaveCaseResult> {
   await assertCan(actor, 'case.edit', ctx)
-  const reference = await loadReference()
+  const reference = await loadReferenceForCase(caseId)
   const parsed = caseSchemas(reference).draft.safeParse(input)
   if (!parsed.success) return fail(issuesOf(parsed.error))
   const d = parsed.data
@@ -445,7 +450,7 @@ export async function resolveCase(
   ctx: AuditContext,
 ): Promise<ResolveCaseResult> {
   await assertCan(actor, 'case.resolve', ctx)
-  const reference = await loadReference()
+  const reference = await loadReferenceForCase(caseId)
   const parsed = caseSchemas(reference).resolve.safeParse(input)
   if (!parsed.success) return fail(issuesOf(parsed.error))
   const d: ValidatedResolve = parsed.data
