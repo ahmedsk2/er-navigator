@@ -3,7 +3,7 @@ import { parseExportRange } from '@/src/lib/export/range'
 import { exportWorkbookResponse } from '@/src/lib/export/service'
 
 /**
- * `GET /api/export.xlsx?from&to&status` — the workbook, streamed.
+ * `GET /api/export.xlsx?from&to&status&format` — the workbook, streamed.
  *
  * The path really does carry the extension: the browser hits it with a plain link, and Excel and
  * Windows both go by the name in the Content-Disposition, so an `.xlsx` in the URL is what makes
@@ -26,7 +26,12 @@ export async function GET(request: Request): Promise<Response> {
   const now = new Date()
   const params = new URL(request.url).searchParams
   const range = parseExportRange(
-    { from: params.get('from') ?? undefined, to: params.get('to') ?? undefined, status: params.get('status') ?? undefined },
+    {
+      from: params.get('from') ?? undefined,
+      to: params.get('to') ?? undefined,
+      status: params.get('status') ?? undefined,
+      format: params.get('format') ?? undefined,
+    },
     now,
   )
   return exportWorkbookResponse(user, range, await auditContext(user.id), now)

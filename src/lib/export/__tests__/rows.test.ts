@@ -28,8 +28,12 @@ import {
 const asExport = (c: CaseForStats, extra: Partial<CaseForExport> = {}): CaseForExport => ({
   ...c,
   navigatorName: 'Nadia Navigator',
+  navigatorUsername: 'nadia',
   primaryReasonLabel: c.primaryReasonName ? `${c.stageNames[0] ?? 'Registration'}: ${c.primaryReasonName}` : null,
   reasonLabels: c.primaryReasonName ? [`${c.stageNames[0] ?? 'Registration'}: ${c.primaryReasonName}`] : [],
+  reasonRows: c.primaryReasonName
+    ? [{ stageName: c.stageNames[0] ?? 'Registration', reasonName: c.primaryReasonName }]
+    : [],
   medAdminInformedAt: null,
   triageAt: null,
   roomAt: null,
@@ -73,7 +77,7 @@ const CASES: CaseForExport[] = FIXTURE.map((c) => {
 })
 
 /** The default range for the fixture's NOW: 2026-09-01 to 2026-09-08, every status. */
-const RANGE: ExportRange = { from: '2026-09-01', to: '2026-09-08', status: 'all' }
+const RANGE: ExportRange = { from: '2026-09-01', to: '2026-09-08', status: 'all', format: 'navigator' }
 
 /** What the query returns for that range: non-voided, registered on one of those Riyadh days. */
 const filtered = CASES.filter((c) => {

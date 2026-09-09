@@ -24,7 +24,7 @@ export const CASE_EXPORT_SELECT = {
       reason: { select: { name: true, stage: { select: { name: true, sortOrder: true } } } },
     },
   },
-  openedBy: { select: { displayName: true } },
+  openedBy: { select: { displayName: true, username: true } },
   referralTrackingNo: true,
   transferFacility: true,
   isolation: true,
@@ -43,14 +43,17 @@ export type CaseExportRow = Prisma.CaseGetPayload<{ select: typeof CASE_EXPORT_S
 const label = (r: { name: string; stage: { name: string } }): string => `${r.stage.name}: ${r.name}`
 
 export function toCaseForExport(row: CaseExportRow): CaseForExport {
+  // Taxonomy order, the same order `stageNames` is built in, so the two columns read together.
+  const reasons = [...row.reasons].sort(
+    (a, b) => a.reason.stage.sortOrder - b.reason.stage.sortOrder || a.reason.name.localeCompare(b.reason.name),
+  )
   return {
     ...toCaseForStats(row),
     navigatorName: row.openedBy.displayName,
+    navigatorUsername: row.openedBy.username,
     primaryReasonLabel: row.primaryReason ? label(row.primaryReason) : null,
-    // Taxonomy order, the same order `stageNames` is built in, so the two columns read together.
-    reasonLabels: [...row.reasons]
-      .sort((a, b) => a.reason.stage.sortOrder - b.reason.stage.sortOrder || a.reason.name.localeCompare(b.reason.name))
-      .map((r) => label(r.reason)),
+    reasonLabels: reasons.map((r) => label(r.reason)),
+    reasonRows: reasons.map((r) => ({ stageName: r.reason.stage.name, reasonName: r.reason.name })),
     referralTrackingNo: row.referralTrackingNo,
     transferFacility: row.transferFacility,
     isolation: row.isolation,

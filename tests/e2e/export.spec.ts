@@ -58,7 +58,12 @@ test('the export page counts exactly the cases the workbook would hold', async (
   await signIn(page, E2E_USERS.supervisor)
 
   const window = await fixtureWindow()
-  const expected = await countCasesForExport({ from: window.from, to: window.to, status: 'all' })
+  const expected = await countCasesForExport({
+    from: window.from,
+    to: window.to,
+    status: 'all',
+    format: 'navigator',
+  })
   // Nothing but the four fixture cases registers on those days, so the count is exact.
   expect(expected, 'only the four oldest fixture cases are in the window').toBe(window.mrns.length)
 
@@ -70,10 +75,10 @@ test('the export page counts exactly the cases the workbook would hold', async (
   await setRange(page, window.from, window.to)
   await expect(page.locator('[data-export-count]')).toHaveText(`${expected} cases in range`)
 
-  // The download link carries the range the page is showing.
+  // The download link carries the range and the format the page is showing.
   await expect(page.locator('[data-download]')).toHaveAttribute(
     'href',
-    `/api/export.xlsx?from=${window.from}&to=${window.to}&status=all`,
+    `/api/export.xlsx?from=${window.from}&to=${window.to}&status=all&format=navigator`,
   )
 
   // Narrowing must change the answer: all four of these cases were resolved long ago.

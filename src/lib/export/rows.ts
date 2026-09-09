@@ -44,9 +44,17 @@ export type ExportUpdate = { at: Date; text: string; authorName: string }
  */
 export type CaseForExport = CaseForStats & {
   navigatorName: string
+  /** The navigator's login, which the QCH sheet's "ID Number" column carries beside the name. */
+  navigatorUsername: string
   /** "Stage: reason", the prototype's `${stageOf(c.primary).name}: ${reasonLabel(c.primary)}`. */
   primaryReasonLabel: string | null
   reasonLabels: ReadonlyArray<string>
+  /**
+   * The same reasons unjoined, in the same taxonomy order. The QCH sheet has one delay-reason
+   * column per stage (lab, imaging, decision, consult, admission), so it needs the stage each
+   * reason was recorded under, not the rendered "Stage: reason" label.
+   */
+  reasonRows: ReadonlyArray<{ stageName: string; reasonName: string }>
   referralTrackingNo: string | null
   transferFacility: string | null
   isolation: boolean
@@ -54,7 +62,15 @@ export type CaseForExport = CaseForStats & {
   updates: ReadonlyArray<ExportUpdate>
 }
 
-export type Sheet = { name: string; header: string[]; rows: string[][] }
+/**
+ * A tabular sheet: one bold, frozen header row and string cells under it.
+ *
+ * `groupHeader` is the QCH sheet's second dimension (Phase 8): the August collection sheet writes
+ * its image and consultation groups on one row and their sub-columns on the next, and the
+ * receiving side matches on both, so a sheet may declare a row above `header`. Everything else
+ * leaves it undefined and gets the single header row it always had.
+ */
+export type Sheet = { name: string; header: string[]; rows: string[][]; groupHeader?: string[] }
 
 const STATUS_LABELS = { OPEN: 'Open', RESOLVED: 'Resolved', VOIDED: 'Voided' } as const
 
@@ -212,8 +228,14 @@ export function updatesSheet(cases: ReadonlyArray<CaseForExport>): Sheet {
 
 // --- Summary ----------------------------------------------------------------------------------
 
-/** A free-form sheet: label rows, small tables, and the headings that separate them. */
-export type SummaryRow = { cells: string[]; bold?: boolean }
+/**
+ * A free-form sheet: label rows, small tables, and the headings that separate them.
+ *
+ * `fills` is per cell and is an ARGB string exceljs writes as a solid pattern (Phase 8: the Adaa
+ * `KPI summary` sheet colours a figure by its benchmark band). A shorter list, or a null entry,
+ * leaves that cell unfilled.
+ */
+export type SummaryRow = { cells: string[]; bold?: boolean; fills?: ReadonlyArray<string | null> }
 
 /** Exactly the shape of `dashboard()` this sheet reads. */
 type SummaryData = {

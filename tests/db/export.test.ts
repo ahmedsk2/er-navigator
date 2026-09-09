@@ -43,7 +43,7 @@ const DAY_BEFORE = addDays(DAY_ONE, -1)
 /** An instant `hours` into that Riyadh calendar day. */
 const at = (day: string, hours: number): Date => new Date(riyadhDayStart(day).getTime() + hours * HOUR)
 
-const RANGE: ExportRange = { from: DAY_ONE, to: DAY_TWO, status: 'all' }
+const RANGE: ExportRange = { from: DAY_ONE, to: DAY_TWO, status: 'all', format: 'navigator' }
 
 async function makeUser(role: Role): Promise<AuthUser> {
   const user: User = await prisma.user.create({
@@ -277,7 +277,8 @@ describe('GET /api/export.xlsx as a NAVIGATOR', () => {
     })
     expect(rows).toHaveLength(before + 1)
     expect(rows[0]?.entity).toBe('Action')
-    expect(rows[0]?.after).toEqual({ role: 'NAVIGATOR' })
+    // Phase 8: the row says which workbook was attempted, not only who attempted one.
+    expect(rows[0]?.after).toEqual({ role: 'NAVIGATOR', format: 'navigator' })
   })
 
   it('is refused the count as well, so the number is not readable either', async () => {
@@ -386,6 +387,12 @@ describe('GET /api/export.xlsx as a SUPERVISOR', () => {
   it('gets the same count the page shows', async () => {
     const response = await exportCountResponse(supervisor, RANGE, ctxFor(supervisor.id))
     expect(response.status).toBe(200)
-    expect(await response.json()).toEqual({ from: DAY_ONE, to: DAY_TWO, status: 'all', count: 3 })
+    expect(await response.json()).toEqual({
+      from: DAY_ONE,
+      to: DAY_TWO,
+      status: 'all',
+      format: 'navigator',
+      count: 3,
+    })
   })
 })

@@ -27,10 +27,13 @@ const FORBIDDEN = (): Response =>
     headers: { 'content-type': 'application/json', ...NO_STORE },
   })
 
-/** null means "refused, and `assertCan` has already written the audit row". */
-async function refused(user: AuthUser, ctx: AuditContext): Promise<boolean> {
+/**
+ * True means "refused, and `assertCan` has already written the audit row". The row's `after`
+ * carries the format as well as the role, so the record says which workbook was attempted.
+ */
+async function refused(user: AuthUser, range: ExportRange, ctx: AuditContext): Promise<boolean> {
   try {
-    await assertCan(user, 'export.xlsx', ctx)
+    await assertCan(user, 'export.xlsx', ctx, { format: range.format })
     return false
   } catch (error) {
     if (isForbiddenError(error)) return true
@@ -46,7 +49,7 @@ export async function exportCountResponse(
   range: ExportRange,
   ctx: AuditContext,
 ): Promise<Response> {
-  if (await refused(user, ctx)) return FORBIDDEN()
+  if (await refused(user, range, ctx)) return FORBIDDEN()
   const count = await countCasesForExport(range)
   const payload: ExportCountPayload = { ...range, count }
   return new Response(JSON.stringify(payload), {
@@ -60,7 +63,7 @@ export async function exportWorkbookResponse(
   ctx: AuditContext,
   now: Date,
 ): Promise<Response> {
-  if (await refused(user, ctx)) return FORBIDDEN()
+  if (await refused(user, range, ctx)) return FORBIDDEN()
 
   const cases = await loadCasesForExport(range)
   // `dashboard()` does its own range filter; the rows are already the range, so 'all' is a no-op.
@@ -68,7 +71,7 @@ export async function exportWorkbookResponse(
   const summary = summaryRows({ data, range, generatedAt: now })
 
   console.info(
-    `[export] xlsx actor=${user.id} from=${range.from} to=${range.to} status=${range.status} cases=${cases.length}`,
+    `[export] xlsx actor=${user.id} format=${range.format} from=${range.from} to=${range.to} status=${range.status} cases=${cases.length}`,
   )
   return xlsxResponse(summary, dataSheets(cases, now), exportFilename(range))
 }

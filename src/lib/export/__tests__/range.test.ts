@@ -3,13 +3,17 @@ import {
   addDays,
   defaultExportRange,
   exportFilename,
+  exportRangeQuery,
   parseDateKey,
+  parseExportFormat,
   parseExportRange,
   parseExportStatus,
+  reportQuery,
   riyadhDateKey,
   riyadhDayBounds,
   riyadhDayStart,
   riyadhWeekday,
+  type ExportRange,
 } from '../range'
 
 /**
@@ -103,7 +107,23 @@ describe('defaultExportRange', () => {
       from: '2026-09-01',
       to: '2026-09-08',
       status: 'all',
+      format: 'navigator',
     })
+  })
+})
+
+describe('parseExportFormat', () => {
+  it('reads the three formats and nothing else', () => {
+    expect(parseExportFormat('navigator')).toBe('navigator')
+    expect(parseExportFormat('adaa')).toBe('adaa')
+    expect(parseExportFormat('qch')).toBe('qch')
+  })
+
+  it('falls back to the ER Navigator workbook for anything else', () => {
+    expect(parseExportFormat('ADAA')).toBe('navigator')
+    expect(parseExportFormat('csv')).toBe('navigator')
+    expect(parseExportFormat(undefined)).toBe('navigator')
+    expect(parseExportFormat(null)).toBe('navigator')
   })
 })
 
@@ -111,10 +131,13 @@ describe('parseExportRange', () => {
   const now = new Date('2026-09-08T12:00:00Z')
 
   it('reads a good query string', () => {
-    expect(parseExportRange({ from: '2026-08-01', to: '2026-08-31', status: 'open' }, now)).toEqual({
+    expect(
+      parseExportRange({ from: '2026-08-01', to: '2026-08-31', status: 'open', format: 'adaa' }, now),
+    ).toEqual({
       from: '2026-08-01',
       to: '2026-08-31',
       status: 'open',
+      format: 'adaa',
     })
   })
 
@@ -123,14 +146,36 @@ describe('parseExportRange', () => {
       from: '2026-09-01',
       to: '2026-09-08',
       status: 'all',
+      format: 'navigator',
     })
   })
 })
 
+describe('exportRangeQuery', () => {
+  const range: ExportRange = { from: '2026-09-01', to: '2026-09-08', status: 'all', format: 'qch' }
+
+  it('carries the format, so the download link is the whole request', () => {
+    expect(exportRangeQuery(range)).toBe('from=2026-09-01&to=2026-09-08&status=all&format=qch')
+  })
+
+  it('leaves it out of the report link, which has no formats', () => {
+    expect(reportQuery(range)).toBe('from=2026-09-01&to=2026-09-08&status=all')
+  })
+})
+
 describe('exportFilename', () => {
-  it('is the prototype filename', () => {
-    expect(exportFilename({ from: '2026-09-01', to: '2026-09-08', status: 'all' })).toBe(
-      'ER_Navigator_2026-09-01_to_2026-09-08.xlsx',
+  const range: ExportRange = { from: '2026-09-01', to: '2026-09-08', status: 'all', format: 'navigator' }
+
+  it('is the prototype filename for the ER Navigator workbook', () => {
+    expect(exportFilename(range)).toBe('ER_Navigator_2026-09-01_to_2026-09-08.xlsx')
+  })
+
+  it('gives each new format its own stem, so three downloads of one range coexist', () => {
+    expect(exportFilename({ ...range, format: 'adaa' })).toBe(
+      'adaa-ed-kpis_2026-09-01_to_2026-09-08.xlsx',
+    )
+    expect(exportFilename({ ...range, format: 'qch' })).toBe(
+      'qch-navigator-sheet_2026-09-01_to_2026-09-08.xlsx',
     )
   })
 })

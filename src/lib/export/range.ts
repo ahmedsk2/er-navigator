@@ -32,10 +32,37 @@ export const EXPORT_STATUS_VALUES: Record<ExportStatus, ReadonlyArray<'OPEN' | '
   all: ['OPEN', 'RESOLVED'],
 }
 
+/**
+ * Which workbook the same range is written into (Phase 8).
+ *
+ * One range, one count, one streaming writer, three layouts: the department's own file, the
+ * national Adaa form's input columns, and the navigators' own QCH collection sheet. The format
+ * travels with the range because it is part of the same request the nurse composes on `/export`
+ * and because the filename, which is all the receiving side sees, is derived from both.
+ */
+export const EXPORT_FORMATS = ['navigator', 'adaa', 'qch'] as const
+export type ExportFormat = (typeof EXPORT_FORMATS)[number]
+
+export const DEFAULT_EXPORT_FORMAT: ExportFormat = 'navigator'
+
+export const EXPORT_FORMAT_LABELS: Record<ExportFormat, string> = {
+  navigator: 'ER Navigator workbook',
+  adaa: 'Adaa ED KPIs',
+  qch: 'QCH navigator sheet',
+}
+
+/** One line under the select, so the choice is made without opening the file first. */
+export const EXPORT_FORMAT_HELP: Record<ExportFormat, string> = {
+  navigator:
+    'Summary, Cases, Consults, Investigations and Updates — the department’s own file, one row per case.',
+  adaa: 'The national form’s input columns A–T plus a computed KPI summary, ready to paste into ED KPIs 1-6 - manual.',
+  qch: 'The navigators’ own collection sheet in its own column order, without the patient name column.',
+}
+
 /** The prototype's default: `now - 7 days` to today, both as Riyadh calendar dates. */
 export const DEFAULT_RANGE_DAYS = 7
 
-export type ExportRange = { from: string; to: string; status: ExportStatus }
+export type ExportRange = { from: string; to: string; status: ExportStatus; format: ExportFormat }
 
 const DATE_KEY = /^(\d{4})-(\d{2})-(\d{2})$/
 const pad = (n: number): string => String(n).padStart(2, '0')
@@ -109,17 +136,30 @@ export function parseExportStatus(value: string | string[] | null | undefined): 
     : DEFAULT_EXPORT_STATUS
 }
 
+export function parseExportFormat(value: string | string[] | null | undefined): ExportFormat {
+  const raw = Array.isArray(value) ? value[0] : value
+  return (EXPORT_FORMATS as ReadonlyArray<string>).includes(raw ?? '')
+    ? (raw as ExportFormat)
+    : DEFAULT_EXPORT_FORMAT
+}
+
 export function defaultExportRange(now: Date): ExportRange {
   return {
     from: riyadhDateKey(new Date(now.getTime() - DEFAULT_RANGE_DAYS * 864e5)),
     to: riyadhDateKey(now),
     status: DEFAULT_EXPORT_STATUS,
+    format: DEFAULT_EXPORT_FORMAT,
   }
 }
 
 /** Anything missing or malformed falls back to the default range: a bad link is not an error. */
 export function parseExportRange(
-  params: { from?: string | string[]; to?: string | string[]; status?: string | string[] },
+  params: {
+    from?: string | string[]
+    to?: string | string[]
+    status?: string | string[]
+    format?: string | string[]
+  },
   now: Date,
 ): ExportRange {
   const fallback = defaultExportRange(now)
@@ -127,14 +167,35 @@ export function parseExportRange(
     from: parseDateKey(params.from) ?? fallback.from,
     to: parseDateKey(params.to) ?? fallback.to,
     status: parseExportStatus(params.status),
+    format: parseExportFormat(params.format),
   }
 }
 
 export function exportRangeQuery(range: ExportRange): string {
+  return new URLSearchParams({
+    from: range.from,
+    to: range.to,
+    status: range.status,
+    format: range.format,
+  }).toString()
+}
+
+/** The range's own query, without the format: what `/report` reads. */
+export function reportQuery(range: ExportRange): string {
   return new URLSearchParams({ from: range.from, to: range.to, status: range.status }).toString()
 }
 
-/** The prototype's filename, unchanged. */
+/**
+ * The name the browser saves the file under, per format. The ER Navigator workbook keeps the
+ * prototype's name exactly (Phase 8 brief §4: "unchanged"); the two new formats carry their own
+ * stem so three downloads of one range do not overwrite each other in a Downloads folder.
+ */
+const FILENAME_STEMS: Record<ExportFormat, string> = {
+  navigator: 'ER_Navigator',
+  adaa: 'adaa-ed-kpis',
+  qch: 'qch-navigator-sheet',
+}
+
 export function exportFilename(range: ExportRange): string {
-  return `ER_Navigator_${range.from}_to_${range.to}.xlsx`
+  return `${FILENAME_STEMS[range.format]}_${range.from}_to_${range.to}.xlsx`
 }

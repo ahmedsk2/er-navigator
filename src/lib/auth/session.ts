@@ -213,10 +213,19 @@ export async function resolveSessionToken(token: string, now = new Date()): Prom
  * a real database. A refusal is an audit row, not just a 403: the plan wants VIEWER attempts on
  * mutations on the record.
  */
-export async function assertCan(user: AuthUser, action: Action, ctx: AuditContext): Promise<void> {
+export async function assertCan(
+  user: AuthUser,
+  action: Action,
+  ctx: AuditContext,
+  /**
+   * Extra facts about the attempt, merged into the row's `after`. Phase 8 uses it for the
+   * export's `format`, so "who tried to pull what" is on the record and not only "who tried".
+   */
+  detail?: Record<string, string>,
+): Promise<void> {
   if (can(user.role, action)) return
   await auditQuietly(
-    { action: 'auth.forbidden', entity: 'Action', entityId: action, after: { role: user.role } },
+    { action: 'auth.forbidden', entity: 'Action', entityId: action, after: { role: user.role, ...detail } },
     ctx,
   )
   throw new ForbiddenError(action)

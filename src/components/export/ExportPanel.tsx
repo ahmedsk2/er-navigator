@@ -17,9 +17,14 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { Field, Select } from '@/src/components/ui'
 import {
+  EXPORT_FORMATS,
+  EXPORT_FORMAT_HELP,
+  EXPORT_FORMAT_LABELS,
   EXPORT_STATUSES,
   EXPORT_STATUS_LABELS,
   exportRangeQuery,
+  reportQuery,
+  type ExportFormat,
   type ExportRange,
   type ExportStatus,
 } from '@/src/lib/export/range'
@@ -72,6 +77,28 @@ export function ExportPanel({
       </div>
 
       <section className="mb-2.5 border-y border-line bg-panel p-4">
+        {/*
+          Above the range, because it changes what the two buttons below mean: the same cases,
+          three different files. The one-line help under it is the whole of the choice — the
+          columns themselves are documented on each workbook's own "Read me" sheet.
+        */}
+        <Field label="Format">
+          <Select
+            aria-label="Format"
+            value={range.format}
+            onChange={(e) => setRange((r) => ({ ...r, format: e.target.value as ExportFormat }))}
+          >
+            {EXPORT_FORMATS.map((format) => (
+              <option key={format} value={format}>
+                {EXPORT_FORMAT_LABELS[format]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <p className="mt-0 mb-3 text-caption text-muted" data-format-help>
+          {EXPORT_FORMAT_HELP[range.format]}
+        </p>
+
         <div className="flex gap-2.5">
           <div className="min-w-0 flex-1">
             <Field label="From (registration date)">
@@ -139,7 +166,7 @@ export function ExportPanel({
         )}
 
         <Link
-          href={`/report?${query}`}
+          href={`/report?${reportQuery(range)}`}
           target="_blank"
           rel="noreferrer"
           className={`${LINK_BASE} border border-line bg-panel text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent`}
@@ -149,9 +176,9 @@ export function ExportPanel({
         </Link>
 
         <p className="mt-2.5 mb-0 text-caption text-muted">
-          The Excel file has a Summary, Cases (one row per case), Consults (one row per team per
-          case), Investigations (one row per test per case) and Updates. Voided cases are never
-          exported. Print report opens the department report for this range in a new tab.
+          All three formats cover the same cases: the range is the registration date, and voided
+          cases are never exported. Print report opens the department report for this range in a
+          new tab.
         </p>
       </section>
     </div>
