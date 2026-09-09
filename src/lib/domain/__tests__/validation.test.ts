@@ -95,6 +95,40 @@ describe('resolve rules', () => {
     const r = resolve.safeParse({ ...resolved(), reasons: [{ reasonId: 'r-refout' }], disposition: 'DISCHARGED_HOME' })
     expect(issues(r)).toContain('referralTrackingNo: Enter the referral tracking number.')
   })
+
+  // Phase 7 C5: resolve used to be built from the unrefined object, so "Mark resolved" was a
+  // one-tap route past every rule "Save changes" enforces. It now carries the same refinements.
+  it('rejects an empty Other text, as the draft does', () => {
+    const r = resolve.safeParse({ ...resolved(), reasons: [{ reasonId: 'r-other' }], disposition: 'DISCHARGED_HOME' })
+    expect(issues(r)).toContain('reasons.0.otherText: Describe the other reason.')
+    const ok = resolve.safeParse({
+      ...resolved(),
+      reasons: [{ reasonId: 'r-other', otherText: 'Family not answering' }],
+      disposition: 'DISCHARGED_HOME',
+    })
+    expect(ok.success).toBe(true)
+  })
+
+  it('rejects a reason that requires a department with no consult row, as the draft does', () => {
+    const r = resolve.safeParse({ ...resolved(), reasons: [{ reasonId: 'r-consult' }], disposition: 'DISCHARGED_HOME' })
+    expect(issues(r)).toContain('consults: Add the consulted team for this reason.')
+    const ok = resolve.safeParse({
+      ...resolved(),
+      reasons: [{ reasonId: 'r-consult' }],
+      consults: [{ departmentId: 'd-icu' }],
+      disposition: 'DISCHARGED_HOME',
+    })
+    expect(ok.success).toBe(true)
+  })
+
+  it('rejects a registration time in the future, as the draft does', () => {
+    const r = resolve.safeParse({
+      ...resolved(),
+      registrationAt: new Date('2026-09-08T13:00:00Z'),
+      disposition: 'DISCHARGED_HOME',
+    })
+    expect(issues(r)).toContain('registrationAt: Registration time cannot be in the future.')
+  })
 })
 
 describe('free text and identifiers', () => {
