@@ -314,8 +314,18 @@ writes the `auth.forbidden` row with the format.
 
 New collection fields since Phase 8: CTAS (1 to 5), ED area (Admin → Reference lists → ED
 areas, seeded with the six areas of the August sheet) and the imaging preliminary report time.
-All optional. The per-case timeline on the case page and the handover sheet is computed from
-what is recorded; it never asks for anything new.
+Since Phase 8b (Ahmed's collection decisions, 9 September): a pain-management block (painkiller
+prescribed, pethidine and its dose, time given, sickle-cell treatment) that feeds Adaa KPI 8; a
+case-management block (referred to a case manager or the complex-care coordinator, criteria,
+action, call and reply times); "instructions given" and "family engaged" at resolution; an
+optional action tag on each update in the weekly deck's six categories; the dispositions
+Deceased and Referred to UCC; MRI as an investigation type; and a supervisor "reviewed" mark.
+All optional. A supervisor or an admin marks a case reviewed under the resolve block; the mark is
+audited (`case.review`), cleared by any later save or resolve, and shown as a chip on resolved
+board rows. The dashboard's Documentation section lists resolved cases not yet reviewed and pain
+records that cannot enter a KPI (a painkiller with no time, a pethidine with no on-list dose).
+The per-case timeline on the case page and the handover sheet is computed from what is recorded;
+it never asks for anything new.
 
 ## Monitoring
 
