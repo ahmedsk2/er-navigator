@@ -4,7 +4,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { runAlertCycle } from '@/src/lib/alerts/cycle'
 import { acknowledgeAlert, loadAlerts, loadUnacknowledgedAlert } from '@/src/lib/alerts/service'
 import { isUniqueViolation, prismaAlertStore, requireSystemUserId } from '@/src/lib/alerts/store'
-import { addListItem, moveListItem, renameListItem, setListItemActive } from '@/src/lib/admin/lists'
+import {
+  addListItem,
+  loadReferenceLists,
+  moveListItem,
+  renameListItem,
+  setListItemActive,
+} from '@/src/lib/admin/lists'
 import { dismissOther, loadOtherReviews, promoteOther } from '@/src/lib/admin/other'
 import {
   createUser,
@@ -32,6 +38,7 @@ const users: string[] = []
 const cases: string[] = []
 const reasons: string[] = []
 const departments: string[] = []
+const areas: string[] = []
 let reference: ReferenceData
 
 async function makeUser(role: Role): Promise<User> {
@@ -156,6 +163,10 @@ afterAll(async () => {
   if (departments.length > 0) {
     await prisma.auditLog.deleteMany({ where: { entityId: { in: departments } } })
     await prisma.department.deleteMany({ where: { id: { in: departments } } })
+  }
+  if (areas.length > 0) {
+    await prisma.auditLog.deleteMany({ where: { entityId: { in: areas } } })
+    await prisma.edArea.deleteMany({ where: { id: { in: areas } } })
   }
   if (users.length > 0) {
     await prisma.session.deleteMany({ where: { userId: { in: users } } })
@@ -470,6 +481,71 @@ describe('admin reference lists', () => {
       ok: false,
       error: 'nothing',
     })
+  })
+
+  /**
+   * Phase 8: `EdArea` joins the same three operations wards have, under the `area` kind, with its
+   * own `EdArea` audit entity. A deactivated area is what `loadReferenceForCase` then has to keep
+   * visible on a case that already carries it (tests/db/cases.test.ts).
+   */
+  it('adds, renames, reorders and deactivates an ED area, auditing each change against EdArea', async () => {
+    const admin = actorOf(await makeUser('ADMIN'))
+    const suffix = randomBytes(3).toString('hex')
+    const name = `P8 Area ${suffix}`
+    const code = `P8${suffix.toUpperCase()}`
+
+    // The code is mandatory, exactly as it is for a ward.
+    expect(await addListItem(admin, { kind: 'area', name }, ctxFor(admin.id))).toMatchObject({
+      ok: false,
+      error: 'validation',
+    })
+
+    const added = await addListItem(admin, { kind: 'area', name, code }, ctxFor(admin.id))
+    expect(added.ok).toBe(true)
+    if (!added.ok) throw new Error('unreachable')
+    areas.push(added.id)
+    expect((await prisma.edArea.findUniqueOrThrow({ where: { id: added.id } })).code).toBe(code)
+
+    const renamed = `${name} renamed`
+    expect(await renameListItem(admin, { kind: 'area', id: added.id, name: renamed }, ctxFor(admin.id))).toMatchObject({ ok: true })
+    const afterRename = await prisma.edArea.findUniqueOrThrow({ where: { id: added.id } })
+    // The id and the code survive a rename, so every case already assigned to it stays assigned.
+    expect(afterRename.name).toBe(renamed)
+    expect(afterRename.code).toBe(code)
+
+    const beforeMove = afterRename.sortOrder
+    expect(await moveListItem(admin, { kind: 'area', id: added.id, direction: 'up' }, ctxFor(admin.id))).toMatchObject({ ok: true })
+    expect((await prisma.edArea.findUniqueOrThrow({ where: { id: added.id } })).sortOrder).toBeLessThan(beforeMove)
+
+    expect(await setListItemActive(admin, { kind: 'area', id: added.id, active: false }, ctxFor(admin.id))).toMatchObject({ ok: true })
+    expect((await prisma.edArea.findUniqueOrThrow({ where: { id: added.id } })).active).toBe(false)
+    // Nothing is deleted: the row is still there for the cases that carry it.
+    expect(await prisma.edArea.count({ where: { id: added.id } })).toBe(1)
+
+    const audits = await prisma.auditLog.findMany({
+      where: { entity: 'EdArea', entityId: added.id },
+      orderBy: { at: 'asc' },
+    })
+    expect(audits).toHaveLength(4)
+    expect(new Set(audits.map((a) => a.action))).toEqual(new Set(['list.update']))
+    expect(audits[1]!.before).toMatchObject({ name })
+    expect(audits[1]!.after).toMatchObject({ name: renamed })
+    expect(audits[3]!.after).toMatchObject({ name: renamed, active: false })
+
+    // The seeded areas are on the panel's list, alongside the departments and the wards.
+    const lists = await loadReferenceLists()
+    expect(lists.areas.some((a) => a.code === 'RESUS' && a.name === 'Resuscitation area')).toBe(true)
+    expect(lists.areas.find((a) => a.id === added.id)).toMatchObject({ active: false, code })
+  })
+
+  it('refuses a duplicate ED area name and a duplicate code', async () => {
+    const admin = actorOf(await makeUser('ADMIN'))
+    expect(
+      await addListItem(admin, { kind: 'area', name: 'Resuscitation area', code: 'RESUS2' }, ctxFor(admin.id)),
+    ).toMatchObject({ ok: false, error: 'duplicate' })
+    expect(
+      await addListItem(admin, { kind: 'area', name: 'Somewhere else entirely', code: 'RESUS' }, ctxFor(admin.id)),
+    ).toMatchObject({ ok: false, error: 'duplicate' })
   })
 
   it('will not rename or retire a stage’s "Other" entry', async () => {

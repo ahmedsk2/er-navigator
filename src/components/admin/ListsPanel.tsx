@@ -1,8 +1,9 @@
 'use client'
 
 /**
- * Admin → Reference lists. Three lists in one screen: departments, wards, and the reasons of the
- * stage picked from the selector (ten stages of reasons at once would be a wall of rows).
+ * Admin → Reference lists. Four lists in one screen: departments, wards, ED areas, and the
+ * reasons of the stage picked from the selector (ten stages of reasons at once would be a wall
+ * of rows).
  *
  * Every row offers Rename, Deactivate/Reactivate and two arrows. There is no Delete and there
  * never will be: a retired entry is deactivated, so the cases that already carry it still render.
@@ -27,8 +28,14 @@ export function ListsPanel({ lists }: { lists: ReferenceLists }) {
   const [message, setMessage] = useState<string | null>(null)
   const [editing, setEditing] = useState<Editing | null>(null)
   const [stageId, setStageId] = useState(lists.stages[0]?.id ?? '')
-  const [newName, setNewName] = useState<Record<ListKind, string>>({ department: '', ward: '', reason: '' })
-  const [newWardCode, setNewWardCode] = useState('')
+  const [newName, setNewName] = useState<Record<ListKind, string>>({
+    department: '',
+    ward: '',
+    area: '',
+    reason: '',
+  })
+  /** Wards and ED areas are the two lists whose new row needs a short code as well as a name. */
+  const [newCode, setNewCode] = useState<{ ward: string; area: string }>({ ward: '', area: '' })
 
   const stage = lists.stages.find((s) => s.id === stageId) ?? lists.stages[0]
 
@@ -50,15 +57,16 @@ export function ListsPanel({ lists }: { lists: ReferenceLists }) {
 
   const onAdd = (kind: ListKind): Promise<void> =>
     run(async () => {
+      const coded = kind === 'ward' || kind === 'area'
       const result = await addListItemAction({
         kind,
         name: newName[kind],
         stageId: kind === 'reason' ? stageId : null,
-        code: kind === 'ward' ? newWardCode : null,
+        code: coded ? newCode[kind] : null,
       })
       if (!result.ok) return result.message
       setNewName((prev) => ({ ...prev, [kind]: '' }))
-      if (kind === 'ward') setNewWardCode('')
+      if (coded) setNewCode((prev) => ({ ...prev, [kind]: '' }))
       return null
     })
 
@@ -150,6 +158,49 @@ export function ListsPanel({ lists }: { lists: ReferenceLists }) {
     )
   }
 
+  /**
+   * Wards and ED areas are the same card: a code, a name and an Add. `Field` gives each input its
+   * own label, so the two "Code" boxes are told apart by the section heading above them and by
+   * the placeholder — the same shape the Departments card has.
+   */
+  function codedSection(kind: 'ward' | 'area', title: string, addLabel: string, items: ListItem[]) {
+    return (
+      <section className="rounded-card border border-line bg-panel p-4">
+        <h3 className="mb-2.5 text-section">{title}</h3>
+        {rows(kind, items)}
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <div className="w-[140px]">
+            <Field label={`Code for ${addLabel.replace('New ', '')}`}>
+              <Input
+                className="num"
+                value={newCode[kind]}
+                disabled={busy}
+                onChange={(e) => setNewCode((p) => ({ ...p, [kind]: e.target.value }))}
+              />
+            </Field>
+          </div>
+          <div className="min-w-[200px] flex-1">
+            <Field label={addLabel}>
+              <Input
+                value={newName[kind]}
+                disabled={busy}
+                onChange={(e) => setNewName((p) => ({ ...p, [kind]: e.target.value }))}
+              />
+            </Field>
+          </div>
+          <Button
+            tone="main"
+            className="mb-3.5"
+            disabled={busy || !newName[kind] || !newCode[kind]}
+            onClick={() => void onAdd(kind)}
+          >
+            Add
+          </Button>
+        </div>
+      </section>
+    )
+  }
+
   return (
     <div>
       {message ? (
@@ -183,39 +234,8 @@ export function ListsPanel({ lists }: { lists: ReferenceLists }) {
           </div>
         </section>
 
-        <section className="rounded-card border border-line bg-panel p-4">
-          <h3 className="mb-2.5 text-section">Wards</h3>
-          {rows('ward', lists.wards)}
-          <div className="mt-3 flex flex-wrap items-end gap-2">
-            <div className="w-[140px]">
-              <Field label="Code">
-                <Input
-                  className="num"
-                  value={newWardCode}
-                  disabled={busy}
-                  onChange={(e) => setNewWardCode(e.target.value)}
-                />
-              </Field>
-            </div>
-            <div className="min-w-[200px] flex-1">
-              <Field label="New ward">
-                <Input
-                  value={newName.ward}
-                  disabled={busy}
-                  onChange={(e) => setNewName((p) => ({ ...p, ward: e.target.value }))}
-                />
-              </Field>
-            </div>
-            <Button
-              tone="main"
-              className="mb-3.5"
-              disabled={busy || !newName.ward || !newWardCode}
-              onClick={() => void onAdd('ward')}
-            >
-              Add
-            </Button>
-          </div>
-        </section>
+        {codedSection('ward', 'Wards', 'New ward', lists.wards)}
+        {codedSection('area', 'ED areas', 'New ED area', lists.areas)}
       </div>
 
       <section className="mt-2.5 rounded-card border border-line bg-panel p-4">
