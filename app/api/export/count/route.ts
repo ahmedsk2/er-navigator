@@ -3,10 +3,14 @@ import { parseExportRange } from '@/src/lib/export/range'
 import { exportCountResponse } from '@/src/lib/export/service'
 
 /**
- * `GET /api/export/count?from&to&status` — "{n} cases in range", live as the nurse moves the
- * dates. A count, not a page of rows: the export page must not download the workbook to say how
- * big it is. Same permission as the workbook itself, so the number cannot be read by a role that
- * may not read the file.
+ * `GET /api/export/count?from&to&status&format` — "{n} cases in range", live as the nurse moves
+ * the dates. A count, not a page of rows: the export page must not download the workbook to say
+ * how big it is. Same permission as the workbook itself, so the number cannot be read by a role
+ * that may not read the file.
+ *
+ * The format does not change the count — all three workbooks are written from the same rows —
+ * but it is parsed and echoed so the page can key its cache on the whole request and so a refusal
+ * records which workbook was being sized up.
  */
 export const dynamic = 'force-dynamic'
 
@@ -23,7 +27,12 @@ export async function GET(request: Request): Promise<Response> {
 
   const params = new URL(request.url).searchParams
   const range = parseExportRange(
-    { from: params.get('from') ?? undefined, to: params.get('to') ?? undefined, status: params.get('status') ?? undefined },
+    {
+      from: params.get('from') ?? undefined,
+      to: params.get('to') ?? undefined,
+      status: params.get('status') ?? undefined,
+      format: params.get('format') ?? undefined,
+    },
     new Date(),
   )
   return exportCountResponse(user, range, await auditContext(user.id))

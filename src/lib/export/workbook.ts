@@ -36,33 +36,58 @@ export function columnWidth(header: string, sample: ReadonlyArray<string>): numb
 
 function widthsFor(sheet: Sheet): number[] {
   const sample = sheet.rows.slice(0, WIDTH_SAMPLE_ROWS)
-  return sheet.header.map((header, i) => columnWidth(header, sample.map((row) => row[i] ?? '')))
+  return sheet.header.map((header, i) => {
+    // A grouped sheet keeps the column's own name on the second row, so the longer of the two
+    // header cells is what the column has to hold.
+    const group = sheet.groupHeader?.[i] ?? ''
+    const longest = group.length > header.length ? group : header
+    return columnWidth(longest, sample.map((row) => row[i] ?? ''))
+  })
 }
 
 /**
- * A frozen header row is the one view every sheet gets: scroll the cases, keep the column names.
- * Built fresh per worksheet — exceljs normalises the view object in place, so a shared literal
- * would be handed to the second sheet already mutated.
+ * A frozen header block is the one view every tabular sheet gets: scroll the cases, keep the
+ * column names. Built fresh per worksheet — exceljs normalises the view object in place, so a
+ * shared literal would be handed to the second sheet already mutated.
  */
-const frozenHeader = () => ({ views: [{ state: 'frozen' as const, ySplit: 1 }] })
+const frozenHeader = (rows: number) => ({ views: [{ state: 'frozen' as const, ySplit: rows }] })
 
-function writeSummary(workbook: ExcelJS.stream.xlsx.WorkbookWriter, rows: SummaryRow[]): void {
-  const sheet = workbook.addWorksheet('Summary')
-  sheet.columns = [{ width: 30 }, { width: 26 }, { width: 14 }]
-  for (const row of rows) {
-    const written = sheet.addRow(row.cells)
+/**
+ * A sheet of labels and small tables rather than one table: the ER Navigator Summary, and the
+ * Adaa `KPI summary` and `Read me` sheets. Column widths are declared rather than measured,
+ * because there is no one column to measure.
+ */
+export type FreeSheet = { name: string; widths: number[]; rows: ReadonlyArray<SummaryRow> }
+
+/** One worksheet of a workbook, in the order it is written. */
+export type WorkbookPart = { kind: 'free'; sheet: FreeSheet } | { kind: 'table'; sheet: Sheet }
+
+export const freePart = (sheet: FreeSheet): WorkbookPart => ({ kind: 'free', sheet })
+export const tablePart = (sheet: Sheet): WorkbookPart => ({ kind: 'table', sheet })
+
+function writeFree(workbook: ExcelJS.stream.xlsx.WorkbookWriter, sheet: FreeSheet): void {
+  const worksheet = workbook.addWorksheet(sheet.name)
+  worksheet.columns = sheet.widths.map((width) => ({ width }))
+  for (const row of sheet.rows) {
+    const written = worksheet.addRow([...row.cells])
     if (row.bold) written.font = { bold: true }
+    row.fills?.forEach((argb, index) => {
+      if (argb) written.getCell(index + 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } }
+    })
     written.commit()
   }
-  sheet.commit()
+  worksheet.commit()
 }
 
 function writeSheet(workbook: ExcelJS.stream.xlsx.WorkbookWriter, sheet: Sheet): void {
-  const worksheet = workbook.addWorksheet(sheet.name, frozenHeader())
+  const headerRows = sheet.groupHeader ? 2 : 1
+  const worksheet = workbook.addWorksheet(sheet.name, frozenHeader(headerRows))
   worksheet.columns = widthsFor(sheet).map((width) => ({ width }))
-  const header = worksheet.addRow(sheet.header)
-  header.font = { bold: true }
-  header.commit()
+  for (const cells of sheet.groupHeader ? [sheet.groupHeader, sheet.header] : [sheet.header]) {
+    const header = worksheet.addRow(cells)
+    header.font = { bold: true }
+    header.commit()
+  }
   for (const row of sheet.rows) worksheet.addRow(row).commit()
   worksheet.commit()
 }
@@ -71,14 +96,16 @@ function writeSheet(workbook: ExcelJS.stream.xlsx.WorkbookWriter, sheet: Sheet):
  * Start writing and hand back the body. The build runs alongside the response: a failure destroys
  * the stream, which the client sees as a truncated download rather than a half-valid workbook.
  */
-export function workbookStream(summary: SummaryRow[], sheets: ReadonlyArray<Sheet>): ReadableStream<Uint8Array> {
+export function workbookStreamOf(parts: ReadonlyArray<WorkbookPart>): ReadableStream<Uint8Array> {
   const out = new PassThrough()
   const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: out, useStyles: true })
 
   void (async () => {
     try {
-      writeSummary(workbook, summary)
-      for (const sheet of sheets) writeSheet(workbook, sheet)
+      for (const part of parts) {
+        if (part.kind === 'free') writeFree(workbook, part.sheet)
+        else writeSheet(workbook, part.sheet)
+      }
       await workbook.commit()
     } catch (cause) {
       console.error('[export] failed while writing the workbook', cause)
@@ -89,12 +116,8 @@ export function workbookStream(summary: SummaryRow[], sheets: ReadonlyArray<Shee
   return Readable.toWeb(out) as ReadableStream<Uint8Array>
 }
 
-export function xlsxResponse(
-  summary: SummaryRow[],
-  sheets: ReadonlyArray<Sheet>,
-  filename: string,
-): Response {
-  return new Response(workbookStream(summary, sheets), {
+export function xlsxResponseOf(parts: ReadonlyArray<WorkbookPart>, filename: string): Response {
+  return new Response(workbookStreamOf(parts), {
     headers: {
       'content-type': XLSX_CONTENT_TYPE,
       'content-disposition': `attachment; filename="${filename}"`,
@@ -102,3 +125,4 @@ export function xlsxResponse(
     },
   })
 }
+

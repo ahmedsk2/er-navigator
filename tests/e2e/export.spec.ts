@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import ExcelJS from 'exceljs'
 import { prisma } from '../../src/lib/db'
 import { countCasesForExport } from '../../src/lib/export/load'
 import { DEFAULT_REPORT_HEADER } from '../../src/lib/export/report-header'
@@ -58,7 +59,12 @@ test('the export page counts exactly the cases the workbook would hold', async (
   await signIn(page, E2E_USERS.supervisor)
 
   const window = await fixtureWindow()
-  const expected = await countCasesForExport({ from: window.from, to: window.to, status: 'all' })
+  const expected = await countCasesForExport({
+    from: window.from,
+    to: window.to,
+    status: 'all',
+    format: 'navigator',
+  })
   // Nothing but the four fixture cases registers on those days, so the count is exact.
   expect(expected, 'only the four oldest fixture cases are in the window').toBe(window.mrns.length)
 
@@ -70,10 +76,10 @@ test('the export page counts exactly the cases the workbook would hold', async (
   await setRange(page, window.from, window.to)
   await expect(page.locator('[data-export-count]')).toHaveText(`${expected} cases in range`)
 
-  // The download link carries the range the page is showing.
+  // The download link carries the range and the format the page is showing.
   await expect(page.locator('[data-download]')).toHaveAttribute(
     'href',
-    `/api/export.xlsx?from=${window.from}&to=${window.to}&status=all`,
+    `/api/export.xlsx?from=${window.from}&to=${window.to}&status=all&format=navigator`,
   )
 
   // Narrowing must change the answer: all four of these cases were resolved long ago.
@@ -99,6 +105,60 @@ test('the workbook route serves an xlsx named for the range', async ({ page }, t
   const body = await response.body()
   expect(body.subarray(0, 4).toString('latin1')).toBe(ZIP_MAGIC)
   expect(body.byteLength).toBeGreaterThan(2_000)
+})
+
+/** Every string in a worksheet, so a value can be looked for without knowing its column. */
+function sheetText(sheet: ExcelJS.Worksheet): string {
+  const out: string[] = []
+  sheet.eachRow((row) => {
+    for (const value of (row.values as ExcelJS.CellValue[]).slice(1)) out.push(String(value ?? ''))
+  })
+  return out.join('\n')
+}
+
+test('each format downloads its own workbook, which opens with its own header row', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', DESKTOP_ONLY)
+  await fromClientIp(page, '198.51.100.95')
+  await signIn(page, E2E_USERS.supervisor)
+
+  const window = await fixtureWindow()
+  await page.goto('/export')
+  await setRange(page, window.from, window.to)
+  await expect(page.locator('[data-export-count]')).toHaveText(`${window.mrns.length} cases in range`)
+
+  const formats = [
+    { format: 'navigator', file: `ER_Navigator_${window.from}_to_${window.to}.xlsx`, sheet: 'Cases', header: 1, first: 'MRN', help: 'Summary, Cases, Consults' },
+    { format: 'adaa', file: `adaa-ed-kpis_${window.from}_to_${window.to}.xlsx`, sheet: 'ED KPIs manual', header: 1, first: 'Patient ID / Mandatory', help: 'columns A–T' },
+    // The QCH sheet's own column names are on the second row: the first carries the groups.
+    { format: 'qch', file: `qch-navigator-sheet_${window.from}_to_${window.to}.xlsx`, sheet: 'Navigator sheet', header: 1, first: 'Date', help: 'without the patient name' },
+  ] as const
+
+  for (const want of formats) {
+    await page.getByLabel('Format', { exact: true }).selectOption(want.format)
+    await expect(page.locator('[data-format-help]')).toContainText(want.help)
+    await expect(page.locator('[data-download]')).toHaveAttribute(
+      'href',
+      `/api/export.xlsx?from=${window.from}&to=${window.to}&status=all&format=${want.format}`,
+    )
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.locator('[data-download]').click(),
+    ])
+    expect(download.suggestedFilename(), `${want.format} is named for its format`).toBe(want.file)
+
+    const workbook = new ExcelJS.Workbook()
+    await workbook.xlsx.readFile(await download.path())
+    const sheet = workbook.getWorksheet(want.sheet)
+    expect(sheet, `${want.format} has a "${want.sheet}" sheet`).toBeTruthy()
+
+    const header = (sheet!.getRow(want.header).values as ExcelJS.CellValue[]).slice(1).map((v) => String(v ?? ''))
+    expect(header[0], `${want.format} header starts with ${want.first}`).toBe(want.first)
+
+    // One value per format: every case in the window is on the sheet, and none of them by name.
+    const text = sheetText(sheet!)
+    for (const mrn of window.mrns) expect(text, `${want.format} holds ${mrn}`).toContain(mrn)
+  }
 })
 
 test('a navigator may not export, and is told so rather than shown an empty page', async ({ page }, testInfo) => {
