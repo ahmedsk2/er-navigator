@@ -1,5 +1,6 @@
 /**
- * Seed: reference lists from Appendix A (verbatim) + the first ADMIN user from env.
+ * Seed: reference lists from Appendix A (verbatim), the `system` account and the first ADMIN
+ * user from env.
  *
  * Contract: INSERT-IF-MISSING ONLY. The seed runs on every deploy (scripts/migrate-and-seed.sh),
  * and from Phase 6 Admin renames, reorders and deactivates these rows in the database. So the
@@ -11,8 +12,10 @@
  *
  * Idempotent, never touches Case data. Runs as the OWNER role inside the `migrate` service.
  */
+import { randomBytes } from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import { prisma } from '../src/lib/db'
+import { SYSTEM_DISPLAY_NAME, SYSTEM_USERNAME } from '../src/lib/auth/system-user'
 import { DEPARTMENTS, OTHER, STAGES, WARDS } from '../src/lib/domain/taxonomy'
 
 async function seedTaxonomy() {
@@ -64,6 +67,34 @@ async function seedTaxonomy() {
   }
 }
 
+/**
+ * The `system` account: the author of the alerts worker's "Reached {t}h threshold" updates and
+ * the actor on its `alert.fire` audit rows (Phase 6 spec, precondition 1). Insert-if-missing like
+ * everything else here.
+ *
+ * `active = false` and a random password nobody ever sees, so it cannot sign in even if the
+ * hash leaked: `getSession()` rejects an inactive user. NAVIGATOR is the least a CaseUpdate
+ * author can be; the role is never consulted, because nothing signs in as this account.
+ */
+async function seedSystemUser() {
+  const existing = await prisma.user.findUnique({ where: { username: SYSTEM_USERNAME } })
+  if (existing) {
+    console.log(`[seed] "${SYSTEM_USERNAME}" user already exists — left untouched`)
+    return
+  }
+  const passwordHash = await bcrypt.hash(randomBytes(48).toString('base64'), 12)
+  await prisma.user.create({
+    data: {
+      username: SYSTEM_USERNAME,
+      passwordHash,
+      displayName: SYSTEM_DISPLAY_NAME,
+      role: 'NAVIGATOR',
+      active: false,
+    },
+  })
+  console.log(`[seed] created the "${SYSTEM_USERNAME}" user (inactive, unusable password)`)
+}
+
 async function seedFirstAdmin() {
   const username = process.env.ADMIN_USERNAME?.trim()
   const password = process.env.ADMIN_PASSWORD
@@ -84,6 +115,7 @@ async function seedFirstAdmin() {
 
 async function main() {
   await seedTaxonomy()
+  await seedSystemUser()
   await seedFirstAdmin()
   const counts = await Promise.all([
     prisma.stage.count(),
