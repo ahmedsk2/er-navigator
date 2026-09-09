@@ -289,6 +289,34 @@ the user out everywhere and leaves a `user.password` audit row. Only when no Adm
 hand as in "PHI scrub": `UPDATE "User" SET "lockedUntil" = NULL, "failedLogins" = 0 WHERE
 username = '<name>';`
 
+## Reports and exports (Phase 8)
+
+Everything the dashboard, the print report and the three workbooks show is computed over the
+cases ER Navigator tracks, never the whole ED; every KPI panel and every Read me sheet says so.
+The whole-ED figures (all attendances, % non-urgent, mortality) stay with the hospital system.
+
+`/export` offers three formats over one date range (registration date, Asia/Riyadh) and one
+status filter:
+
+| Format | File | For |
+| --- | --- | --- |
+| ER Navigator workbook | `ER_Navigator_{from}_to_{to}.xlsx` | the app's own five sheets (Cases, Consults, Investigations, Updates, Summary) |
+| Adaa ED KPIs | `adaa-ed-kpis_{from}_to_{to}.xlsx` | the national form's twenty input columns (paste `A2:T…` into the official file's `ED KPIs 1-6 - manual` sheet), a KPI summary per CTAS coloured by the Adaa benchmarks, and a Read me |
+| QCH navigator sheet | `qch-navigator-sheet_{from}_to_{to}.xlsx` | the navigators' August collection log, seventy columns in its order and spelling, without the patient name; columns the app does not record are present and blank, and the Read me lists them |
+
+Definitions that a reader of the sheets will ask about are on each workbook's Read me: the
+door is the earlier of registration and triage (KPI 1 and KPI 5 alike); the time of
+disposition is when the patient left the ED (departure, else resolution); KPI 6 is DAMA only
+until LAMA exists as a disposition; a triage on the Riyadh day before the registration cannot be
+written into the Adaa form and is counted for hand entry; a ward left on a patient who was then
+discharged is not reported as an admission. A read is logged, not audited; a refused download
+writes the `auth.forbidden` row with the format.
+
+New collection fields since Phase 8: CTAS (1 to 5), ED area (Admin → Reference lists → ED
+areas, seeded with the six areas of the August sheet) and the imaging preliminary report time.
+All optional. The per-case timeline on the case page and the handover sheet is computed from
+what is recorded; it never asks for anything new.
+
 ## Monitoring
 
 Uptime Kuma (`uptime.towardpcc.com`), two monitors (Phase 7; both still to be created by Ahmed):

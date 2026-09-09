@@ -49,6 +49,11 @@ Read order for any session: `CLAUDE.md` (short), then the section of this plan f
 - A final adversarial review of the whole repository (eight lenses, one skeptic per finding, 44 agents; `docs/specs/phase7-review-findings.md`): 36 findings examined, 19 confirmed, all 19 fixed (`docs/specs/phase7-review-fixes.md`), plus the cheap true halves of the refuted ones.
 - Still with Ahmed (Section 9 and the runbook): the `navigator@towardpcc.com` mailbox's SMTP settings and DKIM record; the two Uptime Kuma monitors; the Cloudflare TLS settings; the first admin login and password change; staff email addresses in Admin → Users; making the repository private.
 
+**Delivered in Phase 8 (9 September, evening; Ahmed's request of the same day)**
+
+- The dashboard and the print report carry the weekly delayed-tickets deck (headline tiles with the previous period, stay bands, pathways, longest stays, actions documented, outcomes, repeat visits, documentation checks), the monthly deck's and the Adaa form's figures on tracked cases (KPI 1 to 6 with benchmarks, treated-within and admission-to-unit bands, the five QCH working targets, turnaround, exam-to-consult, by CTAS, by ED area), and each case has a generated time sequence. Three collection fields: CTAS, ED area, imaging preliminary report. Two new export formats: the Adaa ED KPIs workbook and the QCH navigator sheet. The KPI module was verified by three independent recomputations; the finished code by a five-lens adversarial review (4 confirmed findings, all fixed).
+- Waiting on Ahmed's decisions A to H (`docs/specs/phase8-brief.md`, Section 5): the treating physician, the case-management block, action chips on updates, instructions and family engagement, the Deceased / LAMA / UCC dispositions, the painkiller items, MRI, and a reviewed mark. The blank columns in the QCH sheet correspond to them.
+
 ---
 
 ## 1. Decisions: what this plan fixes relative to the locked plan
