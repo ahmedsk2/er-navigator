@@ -7,6 +7,16 @@
  * below it, and every count row carries the case ids for a drill-down. Every duration is
  * end minus start and is null when either end is missing or the order is impossible (a result
  * before its order), so a typo never becomes a negative KPI.
+ *
+ * Three definitions used throughout, so that every figure agrees with every other:
+ *  - the DOOR is the earlier of registration and triage (the Adaa definitions sheet defines it
+ *    once, for KPI 1 and KPI 5 alike);
+ *  - LEAVING the ED is `endAt()` from time.ts: departed, else resolved, and only for a RESOLVED
+ *    case, so a reopened case (which keeps its old departure time) is open again everywhere;
+ *  - a VOIDED case is in no figure at all.
+ *
+ * Verified 2026-09-09 by three independent recomputations of the fixture and an adjudication
+ * (workflow `ern-kpi-verify`); the rulings are in the comments where they apply.
  */
 import { MIN_N, elapsedHours, endAt, median, type CaseClock } from './time'
 import {
@@ -44,7 +54,7 @@ export type KpiCase = CaseClock & {
   id: string
   mrn: string
   triageAt: Date | null
-  roomAt?: Date | null
+  roomAt: Date | null
   physicianAt: Date | null
   decisionAt: Date | null
   admOrderAt: Date | null
@@ -52,8 +62,8 @@ export type KpiCase = CaseClock & {
   bedAssignedAt: Date | null
   handoverAt: Date | null
   transferRequestedAt: Date | null
-  transferAcceptedAt?: Date | null
-  transportArrivedAt?: Date | null
+  transferAcceptedAt: Date | null
+  transportArrivedAt: Date | null
   medAdminInformedAt: Date | null
   disposition: string | null
   wardCode: string | null
@@ -66,8 +76,11 @@ export type KpiCase = CaseClock & {
   investigations: ReadonlyArray<KpiInvestigation>
 }
 
+/** A count with a drill-down. `ids` are case ids, deduplicated; `value` may exceed `ids.length` where the unit is a row, and the function says so. */
 export type IdRow = { name: string; value: number; ids: string[] }
+/** `share` = within / n, null when n < MIN_N. `ids` are the cases with any unit, `withinIds` those whose every unit met the target. */
 export type ShareRow = { name: string; n: number; within: number; ids: string[]; withinIds: string[]; share: number | null }
+/** `n` is the unit of analysis (cases, or consults where the function says so); `ids` the cases behind it; `med` in hours, null below MIN_N. */
 export type StatRow = { name: string; n: number; ids: string[]; med: number | null }
 
 // --- durations -------------------------------------------------------------------------------
@@ -91,6 +104,16 @@ function earliest(a: Date | null | undefined, b: Date | null | undefined): Date 
   return a.getTime() <= b.getTime() ? a : b
 }
 
+/** The Adaa door: registration or triage, whichever is earlier. Used by KPI 1 and KPI 5 alike. */
+export function doorAt(c: KpiCase): Date {
+  return earliest(c.registrationAt, c.triageAt) ?? c.registrationAt
+}
+
+/** When the patient left the ED, for a resolved case: departed, else resolved. Open: null. */
+export function leftAt(c: KpiCase): Date | null {
+  return endAt(c)
+}
+
 function guardedMedian(xs: ReadonlyArray<number>): number | null {
   return xs.length >= MIN_N ? median(xs) : null
 }
@@ -107,19 +130,19 @@ function unique(ids: ReadonlyArray<string>): string[] {
   return [...new Set(ids)]
 }
 
-type Band = { name: string; min: number; max: number | null }
+export type BandDef = { name: string; min: number; max: number | null }
 
-/** Half-open bands [min, max); `max: null` is open-ended. `min: 0` catches everything below. */
-function bandRows(bands: ReadonlyArray<Band>, values: ReadonlyArray<{ id: string; v: number }>): IdRow[] {
+/** Half-open bands [min, max); `max: null` is open-ended. A zero-width first band never matches. */
+function bandRows(bands: ReadonlyArray<BandDef>, values: ReadonlyArray<{ id: string; v: number }>): IdRow[] {
   return bands.map((b) => {
-    const ids = values.filter(({ v }) => v >= b.min && (b.max == null || v < b.max)).map(({ id }) => id)
-    return { name: b.name, value: ids.length, ids }
+    const hits = values.filter(({ v }) => v >= b.min && (b.max == null || v < b.max))
+    return { name: b.name, value: hits.length, ids: unique(hits.map(({ id }) => id)) }
   })
 }
 
 // --- the weekly deck -------------------------------------------------------------------------
 
-export const STAY_BANDS: ReadonlyArray<Band> = [
+export const STAY_BANDS: ReadonlyArray<BandDef> = [
   { name: '<6 h', min: 0, max: 6 },
   { name: '6–<8 h', min: 6, max: 8 },
   { name: '8–<10 h', min: 8, max: 10 },
@@ -137,13 +160,18 @@ function stayValues(cases: ReadonlyArray<KpiCase>, now: Date): Array<{ id: strin
   return out
 }
 
+/** One case per band; a case whose stay cannot be computed (registration in the future) is in none. */
 export function stayBands(cases: ReadonlyArray<KpiCase>, now: Date): IdRow[] {
   return bandRows(STAY_BANDS, stayValues(cases, now))
 }
 
 export type Headline = {
+  /** Live cases in the range. */
   cases: number
+  /** Of those, the ones with a computable stay: what every stay-based figure below counts. */
+  measured: number
   episodes: number
+  /** Median and mean: null below MIN_N. Min and max are facts, shown whenever there is one. */
   med: number | null
   mean: number | null
   min: number | null
@@ -157,15 +185,15 @@ export function headline(cases: ReadonlyArray<KpiCase>, now: Date): Headline {
   const alive = live(cases)
   const values = stayValues(alive, now)
   const hours = values.map((x) => x.v)
-  const enough = hours.length >= MIN_N
   const longest = values.reduce<(typeof values)[number] | null>((best, x) => (best == null || x.v > best.v ? x : best), null)
   return {
     cases: alive.length,
+    measured: values.length,
     episodes: new Set(alive.map((c) => c.mrn)).size,
     med: guardedMedian(hours),
-    mean: enough ? hours.reduce((a, b) => a + b, 0) / hours.length : null,
-    min: enough ? Math.min(...hours) : null,
-    max: enough ? Math.max(...hours) : null,
+    mean: hours.length >= MIN_N ? hours.reduce((a, b) => a + b, 0) / hours.length : null,
+    min: hours.length > 0 ? Math.min(...hours) : null,
+    max: hours.length > 0 ? Math.max(...hours) : null,
     atLeast10: hours.filter((h) => h >= 10).length,
     atLeast12: hours.filter((h) => h >= 12).length,
     longest: longest ? { id: longest.id, mrn: longest.mrn, hours: longest.v } : null,
@@ -176,16 +204,20 @@ export type KpiRange = '7' | '30' | '90' | 'all'
 
 /**
  * The period of the same length immediately before `inRange`'s window (registration within the
- * last N days of `now`): registrations older than N days and at most 2N days old. Empty for
- * 'all', which has no "before".
+ * last N days of `now`): registrations older than N days and at most 2N days old, together with
+ * `asOf`, the instant that window ended. Compute the previous period's headline with
+ * `headline(cases, asOf)`, never with `now`: a case still open then must be measured to the end
+ * of its own period, not to today. Empty for 'all', which has no "before".
  */
-export function previousRange(all: ReadonlyArray<KpiCase>, range: KpiRange, now: Date): KpiCase[] {
-  if (range === 'all') return []
+export function previousRange(all: ReadonlyArray<KpiCase>, range: KpiRange, now: Date): { cases: KpiCase[]; asOf: Date } {
+  if (range === 'all') return { cases: [], asOf: now }
   const ms = Number(range) * 864e5
-  return live(all).filter((c) => {
+  const asOf = new Date(now.getTime() - ms)
+  const cases = live(all).filter((c) => {
     const age = now.getTime() - c.registrationAt.getTime()
     return age > ms && age <= 2 * ms
   })
+  return { cases, asOf }
 }
 
 export type LongestStay = {
@@ -265,7 +297,16 @@ export function outcomes(cases: ReadonlyArray<KpiCase>): IdRow[] {
   return rows
 }
 
-export type Completeness = { noReason: IdRow; openQuiet12h: IdRow; resolvedNoDisposition: IdRow; outOfOrder: IdRow }
+export type Completeness = {
+  noReason: IdRow
+  openQuiet12h: IdRow
+  /** Open for 24 h with no disposition decision recorded (the brief's "no disposition after 24 h"). */
+  noDecision24h: IdRow
+  resolvedNoDisposition: IdRow
+  outOfOrder: IdRow
+  /** Registration in the future: no stay can be computed, so the case is in no stay-based figure. */
+  noStay: IdRow
+}
 
 /** True when every recorded instant in the sequence is at or after the one before it. */
 function inOrder(seq: ReadonlyArray<Date | null | undefined>): boolean {
@@ -279,7 +320,7 @@ function inOrder(seq: ReadonlyArray<Date | null | undefined>): boolean {
 }
 
 export function isOutOfOrder(c: KpiCase): boolean {
-  if (!inOrder([c.registrationAt, c.triageAt, c.roomAt, c.physicianAt, c.decisionAt, endAt(c)])) return true
+  if (!inOrder([c.registrationAt, c.triageAt, c.roomAt, c.physicianAt, c.decisionAt, leftAt(c)])) return true
   if (!inOrder([c.admOrderAt, c.bedRequestedAt, c.bedAssignedAt, c.handoverAt])) return true
   if (!inOrder([c.transferRequestedAt, c.transferAcceptedAt, c.transportArrivedAt])) return true
   for (const k of c.consults) if (!inOrder([k.consultedAt, k.seenAt, k.repliedAt])) return true
@@ -299,16 +340,18 @@ export function completeness(cases: ReadonlyArray<KpiCase>, now: Date): Complete
     const ids = alive.filter(keep).map((c) => c.id)
     return { name, value: ids.length, ids }
   }
-  const twelveHours = 12 * 3_600_000
+  const hours = (h: number) => h * 3_600_000
   return {
     noReason: row('No delay reason recorded', (c) => c.stageNames.length === 0),
     openQuiet12h: row('Open, no update for 12 h', (c) => {
       if (c.status !== 'OPEN') return false
       const since = c.lastUpdateAt ?? c.registrationAt
-      return now.getTime() - since.getTime() >= twelveHours
+      return now.getTime() - since.getTime() >= hours(12)
     }),
+    noDecision24h: row('Open 24 h with no disposition decided', (c) => c.status === 'OPEN' && !c.decisionAt && now.getTime() - c.registrationAt.getTime() >= hours(24)),
     resolvedNoDisposition: row('Resolved without a disposition', (c) => c.status === 'RESOLVED' && !c.disposition),
     outOfOrder: row('Times out of order', isOutOfOrder),
+    noStay: row('Registration in the future', (c) => elapsedHours(c, now) == null),
   }
 }
 
@@ -331,11 +374,16 @@ const CONSULT_STEP_LABELS: Record<(typeof CONSULT_STEPS)[number][0], string> = {
   repliedAt: 'replied / plan given',
 }
 
+const INVESTIGATION_ORDER: Record<KpiInvestigationType, number> = { LAB: 0, CT: 1, US: 2, XR: 3 }
+
 /**
  * Every recorded instant on the case in time order, with the hours since the previous one: the
- * deck's per-case slide, generated. Ties keep insertion order (registration, milestones,
- * investigations, consults, admission, transfer, escalation), so two steps at the same minute
- * read in the order the pathway happens.
+ * deck's per-case slide, generated. Ties are broken by a fixed pathway order that does not
+ * depend on how the rows were loaded: registration, milestones, investigations (lab, CT,
+ * ultrasound, X-ray, and within a type in the order given), consults (by department name),
+ * the admission chain, the transfer chain, the escalation, and "Resolved" when a resolved case
+ * has no departure time. Keys are unique even with two rows of one type or two consults to one
+ * department.
  */
 export function timeline(c: KpiCase): TimelineStep[] {
   const steps: Array<{ key: string; label: string; at: Date }> = []
@@ -351,7 +399,8 @@ export function timeline(c: KpiCase): TimelineStep[] {
     departedAt: c.departedAt,
   }
   for (const [field, label] of MILESTONES) push(field, label, milestone[field])
-  for (const i of c.investigations) {
+  const investigations = [...c.investigations].sort((a, b) => INVESTIGATION_ORDER[a.type] - INVESTIGATION_ORDER[b.type])
+  investigations.forEach((i, index) => {
     const prefix = INVESTIGATION_LABELS[i.type]
     const values: Record<string, Date | null> = {
       orderedAt: i.orderedAt,
@@ -361,18 +410,19 @@ export function timeline(c: KpiCase): TimelineStep[] {
       resultedAt: i.resultedAt,
     }
     for (const [field, label] of INVESTIGATION_STEPS[i.type]) {
-      if (i.type !== 'LAB' && field === 'resultedAt') push(`${i.type}.preliminaryAt`, `${prefix}: preliminary report`, i.preliminaryAt)
-      push(`${i.type}.${field}`, `${prefix}: ${label.toLowerCase()}`, values[field])
+      if (i.type !== 'LAB' && field === 'resultedAt') push(`investigation.${index}.preliminaryAt`, `${prefix}: preliminary report`, i.preliminaryAt)
+      push(`investigation.${index}.${field}`, `${prefix}: ${label.toLowerCase()}`, values[field])
     }
-  }
-  for (const k of c.consults) {
+  })
+  const consults = [...c.consults].sort((a, b) => a.departmentName.localeCompare(b.departmentName))
+  consults.forEach((k, index) => {
     const values: Record<(typeof CONSULT_STEPS)[number][0], Date | null> = {
       consultedAt: k.consultedAt,
       seenAt: k.seenAt,
       repliedAt: k.repliedAt,
     }
-    for (const [field] of CONSULT_STEPS) push(`consult.${k.departmentName}.${field}`, `${k.departmentName}: ${CONSULT_STEP_LABELS[field]}`, values[field])
-  }
+    for (const [field] of CONSULT_STEPS) push(`consult.${index}.${field}`, `${k.departmentName}: ${CONSULT_STEP_LABELS[field]}`, values[field])
+  })
   const admission: Record<(typeof ADMISSION_STEPS)[number][0], Date | null> = {
     admOrderAt: c.admOrderAt,
     bedRequestedAt: c.bedRequestedAt,
@@ -380,13 +430,14 @@ export function timeline(c: KpiCase): TimelineStep[] {
     handoverAt: c.handoverAt,
   }
   for (const [field, label] of ADMISSION_STEPS) push(field, label, admission[field])
-  const transfer: Record<(typeof TRANSFER_STEPS)[number][0], Date | null | undefined> = {
+  const transfer: Record<(typeof TRANSFER_STEPS)[number][0], Date | null> = {
     transferRequestedAt: c.transferRequestedAt,
     transferAcceptedAt: c.transferAcceptedAt,
     transportArrivedAt: c.transportArrivedAt,
   }
   for (const [field, label] of TRANSFER_STEPS) push(field, label, transfer[field])
   push('medAdminInformedAt', 'Medical admin on-call informed', c.medAdminInformedAt)
+  if (c.status === 'RESOLVED' && !c.departedAt) push('resolvedAt', 'Resolved (no departure time recorded)', c.resolvedAt)
 
   const ordered = steps
     .map((s, index) => ({ ...s, index }))
@@ -406,21 +457,22 @@ export type Benchmark = 'world' | 'acceptable' | 'improve' | 'unacceptable'
 
 /**
  * The form's "ED KPIs Definitions" sheet. KPI 1–3 are minutes and lower is better; KPI 4 is a
- * share and lower is better; KPI 5 is a share and higher is better; KPI 6 has no benchmark.
- * Boundaries are read as the sheet writes them: "10-20 mins" is acceptable, so 20.0 is still
- * acceptable and 20.1 needs improvement.
+ * share and lower is better; KPI 5 is a share and higher is better; KPI 6 has no benchmark and
+ * is `null` here, as `benchmark()` returns for it. Boundaries are read as the sheet writes
+ * them: "10-20 mins" is acceptable, so 20.0 is still acceptable and 20.1 needs improvement.
  */
-export const ADAA_BENCHMARKS: Record<Exclude<AdaaKpi, 'kpi6'>, { unit: 'minutes' | 'share'; world: number; acceptable: number; improve: number; higherIsBetter: boolean }> = {
+export const ADAA_BENCHMARKS: Record<AdaaKpi, { unit: 'minutes' | 'share'; world: number; acceptable: number; improve: number; higherIsBetter: boolean } | null> = {
   kpi1: { unit: 'minutes', world: 10, acceptable: 20, improve: 40, higherIsBetter: false },
   kpi2: { unit: 'minutes', world: 30, acceptable: 60, improve: 90, higherIsBetter: false },
   kpi3: { unit: 'minutes', world: 30, acceptable: 90, improve: 130, higherIsBetter: false },
   kpi4: { unit: 'share', world: 0.33, acceptable: 0.5, improve: 0.75, higherIsBetter: false },
   kpi5: { unit: 'share', world: 0.95, acceptable: 0.75, improve: 0.6, higherIsBetter: true },
+  kpi6: null,
 }
 
 export function benchmark(kpi: AdaaKpi, value: number): Benchmark | null {
-  if (kpi === 'kpi6') return null
   const b = ADAA_BENCHMARKS[kpi]
+  if (!b) return null
   if (b.higherIsBetter) {
     if (value > b.world) return 'world'
     if (value >= b.acceptable) return 'acceptable'
@@ -433,9 +485,9 @@ export function benchmark(kpi: AdaaKpi, value: number): Benchmark | null {
   return 'unacceptable'
 }
 
-/** KPI 1: door (registration or triage, whichever is earlier) to physician exam, minutes. */
+/** KPI 1: door to physician exam, minutes. */
 export function kpi1Minutes(c: KpiCase): number | null {
-  return minutesBetween(earliest(c.registrationAt, c.triageAt), c.physicianAt)
+  return minutesBetween(doorAt(c), c.physicianAt)
 }
 
 /** KPI 2: physician exam to decision, minutes. */
@@ -443,18 +495,18 @@ export function kpi2Minutes(c: KpiCase): number | null {
   return minutesBetween(c.physicianAt, c.decisionAt)
 }
 
-/** KPI 3: decision to disposition (left ED), minutes; resolved cases only. */
+/** KPI 3: decision to leaving the ED, minutes; resolved cases only. */
 export function kpi3Minutes(c: KpiCase): number | null {
-  return c.status === 'RESOLVED' ? minutesBetween(c.decisionAt, endAt(c)) : null
+  return minutesBetween(c.decisionAt, leftAt(c))
 }
 
-/** KPI 5's input: door to disposition in hours; resolved cases only. */
+/** KPI 5's input: door to leaving the ED in hours; resolved cases only. */
 export function doorToDispositionHours(c: KpiCase): number | null {
-  return c.status === 'RESOLVED' ? hoursBetween(c.registrationAt, endAt(c)) : null
+  return hoursBetween(doorAt(c), leftAt(c))
 }
 
 /** The form's "treated within" columns AH–AN, as (min, max] hours with the first closed at 4. */
-export const TREATED_BANDS: ReadonlyArray<Band> = [
+export const TREATED_BANDS: ReadonlyArray<BandDef> = [
   { name: 'Within 4 h', min: 0, max: 4 },
   { name: '4–6 h', min: 4, max: 6 },
   { name: '6–12 h', min: 6, max: 12 },
@@ -465,7 +517,7 @@ export const TREATED_BANDS: ReadonlyArray<Band> = [
 ]
 
 /** Adaa counts "within 4 hours" as <= 4.0 exactly; every later band is (min, max]. */
-function treatedBandIndex(hours: number): number {
+export function treatedBandIndex(hours: number): number {
   for (let i = 0; i < TREATED_BANDS.length; i += 1) {
     const b = TREATED_BANDS[i]!
     if (b.max == null || hours <= b.max) return i
@@ -504,6 +556,11 @@ export type AdaaSummaryRow = {
   treated: number[]
   treatedN: number
   withinFourShare: number | null
+  /**
+   * KPI 6 as the app can measure it: DAMA among resolved cases. The form defines KPI 6 as LAMA
+   * or DAMA; LAMA is not a disposition here (brief, Section 5, decision E), so this is a lower
+   * bound until it is. The Adaa export's Read me says so.
+   */
   damaShare: number | null
   resolvedN: number
   /** Only on the 'overall' row: CTAS 4–5 among cases with a CTAS. */
@@ -548,7 +605,7 @@ function summaryRow(ctas: AdaaCtasKey, cases: ReadonlyArray<KpiCase>, all: Reado
   }
 }
 
-/** One row per CTAS level present, an 'unknown' row when some cases have none, then 'overall'. */
+/** One row per CTAS level 1..5 (always), an 'unknown' row when some cases have none, then 'overall'. */
 export function adaaSummary(cases: ReadonlyArray<KpiCase>): AdaaSummaryRow[] {
   const alive = live(cases)
   const rows: AdaaSummaryRow[] = []
@@ -573,19 +630,29 @@ export function unitTypeOf(wardCode: string | null | undefined): UnitType | null
   return ICU_TYPE_CODES.has(code) ? 'ICU' : 'Ward'
 }
 
-/** The form's "Admission to" block: admission order to leaving the ED. */
-export const ADMISSION_BANDS: ReadonlyArray<Band> = [
+/**
+ * The form's "Admission to" block: admission order to leaving the ED, hours. The form's own
+ * "within 1 hour" column reaches 0.04208333 days, which is 1 h 0.6 min; this module stops at
+ * 1.00 h exactly. A row within those 36 seconds lands one column later here than in the
+ * official file; the Adaa export's Read me records the difference.
+ */
+export const ADMISSION_BANDS: ReadonlyArray<BandDef> = [
   { name: '≤30 min', min: 0, max: 0.5 + 1e-9 },
   { name: '≤1 h', min: 0.5 + 1e-9, max: 1 + 1e-9 },
   { name: '1–4 h', min: 1 + 1e-9, max: 4 + 1e-9 },
   { name: '>4 h', min: 4 + 1e-9, max: null },
 ]
 
+/** Admission order to leaving the ED (or the nursing handover when the departure was not recorded). */
+function orderToLeaveHours(c: KpiCase): number | null {
+  return hoursBetween(c.admOrderAt, leftAt(c) ?? c.handoverAt)
+}
+
 export function admissionToUnitBands(cases: ReadonlyArray<KpiCase>): Array<{ unit: UnitType; bands: IdRow[] }> {
   const values: Record<UnitType, Array<{ id: string; v: number }>> = { ICU: [], Ward: [] }
   for (const c of live(cases)) {
     const unit = unitTypeOf(c.wardCode)
-    const h = hoursBetween(c.admOrderAt, c.departedAt ?? c.handoverAt)
+    const h = orderToLeaveHours(c)
     if (!unit || h == null) continue
     values[unit].push({ id: c.id, v: h })
   }
@@ -596,7 +663,7 @@ export function admissionToUnitBands(cases: ReadonlyArray<KpiCase>): Array<{ uni
 
 export const TARGETS = [
   { key: 'lab60', name: 'Lab resulted within 1 h of order', minutes: 60 },
-  { key: 'imaging90', name: 'Imaging reported within 90 min of order', minutes: 90 },
+  { key: 'imaging90', name: 'Imaging official report within 90 min of order', minutes: 90 },
   { key: 'consult60', name: 'Consulted team responded within 1 h', minutes: 60 },
   { key: 'decision150', name: 'Decision within 2 h 30 of physician contact', minutes: 150 },
   { key: 'toWard30', name: 'Left ED within 30 min of admission order', minutes: 30 },
@@ -612,15 +679,17 @@ function unitsFor(key: TargetKey, c: KpiCase): Unit[] {
     case 'lab60':
       return c.investigations.filter((i) => i.type === 'LAB').flatMap((i) => one(minutesBetween(i.orderedAt, i.resultedAt)))
     case 'imaging90':
-      return c.investigations
-        .filter((i) => i.type !== 'LAB')
-        .flatMap((i) => one(minutesBetween(i.orderedAt, earliest(i.preliminaryAt, i.resultedAt))))
+      // The official report, as the brief defines the target; the preliminary read is a
+      // turnaround figure (turnaroundBands), not a compliance one.
+      return c.investigations.filter((i) => i.type !== 'LAB').flatMap((i) => one(minutesBetween(i.orderedAt, i.resultedAt)))
     case 'consult60':
       return c.consults.flatMap((k) => one(minutesBetween(k.consultedAt, earliest(k.seenAt, k.repliedAt))))
     case 'decision150':
       return one(kpi2Minutes(c))
-    case 'toWard30':
-      return one(minutesBetween(c.admOrderAt, c.departedAt ?? c.handoverAt))
+    case 'toWard30': {
+      const h = orderToLeaveHours(c)
+      return one(h == null ? null : h * 60)
+    }
   }
 }
 
@@ -628,7 +697,7 @@ function unitsFor(key: TargetKey, c: KpiCase): Unit[] {
  * One row per target. The unit of analysis is the investigation row, the consult row or the
  * case as the target implies; `n` and `within` count units, `ids` the cases that have any unit,
  * `withinIds` the cases whose every unit met the target. The drill-down for "missed" is
- * `ids` minus `withinIds`.
+ * `ids` minus `withinIds`. "Within" is at or under the threshold.
  */
 export function targets(cases: ReadonlyArray<KpiCase>): ShareRow[] {
   const alive = live(cases)
@@ -650,7 +719,10 @@ export function targets(cases: ReadonlyArray<KpiCase>): ShareRow[] {
   })
 }
 
-/** First physician contact to the consult request, by department (the March deck's slide 9). */
+/**
+ * First physician contact to the consult request, by department (the March deck's slide 9).
+ * `n` counts consults, not cases: a case consulting the same department twice contributes two.
+ */
 export function examToConsult(cases: ReadonlyArray<KpiCase>): StatRow[] {
   const m = new Map<string, { ids: string[]; hours: number[] }>()
   for (const c of live(cases)) {
@@ -667,7 +739,7 @@ export function examToConsult(cases: ReadonlyArray<KpiCase>): StatRow[] {
     .sort((a, b) => b.n - a.n || a.name.localeCompare(b.name))
 }
 
-export const TURNAROUND_BANDS: ReadonlyArray<Band> = [
+export const TURNAROUND_BANDS: ReadonlyArray<BandDef> = [
   { name: '≤30 min', min: 0, max: 30 + 1e-9 },
   { name: '31–60 min', min: 30 + 1e-9, max: 60 + 1e-9 },
   { name: '61–90 min', min: 60 + 1e-9, max: 90 + 1e-9 },
@@ -679,8 +751,10 @@ export const TURNAROUND_BANDS: ReadonlyArray<Band> = [
 export type TurnaroundRow = { type: KpiInvestigationType; orderToResult: IdRow[]; doneToReport: IdRow[] }
 
 /**
- * Order to result (imaging: the earlier of the preliminary and the official report) and the
- * second leg (imaging: scan done to report; lab: received by lab to resulted), in minute bands.
+ * Order to result (imaging: the earlier of the preliminary and the official report, because
+ * this is a turnaround picture, not the compliance target) and the second leg (imaging: scan
+ * done to that report; lab: received by lab to resulted), in minute bands. The unit is the
+ * investigation row: `value` counts rows, `ids` the cases behind them.
  */
 export function turnaroundBands(cases: ReadonlyArray<KpiCase>): TurnaroundRow[] {
   const types: KpiInvestigationType[] = ['LAB', 'CT', 'US', 'XR']
@@ -706,7 +780,7 @@ export function turnaroundBands(cases: ReadonlyArray<KpiCase>): TurnaroundRow[] 
 
 export const NOT_RECORDED = 'Not recorded'
 
-function statBy(cases: ReadonlyArray<KpiCase>, now: Date, keyOf: (c: KpiCase) => string): StatRow[] {
+function statBy(cases: ReadonlyArray<KpiCase>, now: Date, keyOf: (c: KpiCase) => string): Map<string, StatRow> {
   const m = new Map<string, { ids: string[]; hours: number[] }>()
   for (const { c, v } of stayValues(cases, now)) {
     const key = keyOf(c)
@@ -714,22 +788,21 @@ function statBy(cases: ReadonlyArray<KpiCase>, now: Date, keyOf: (c: KpiCase) =>
     row.ids.push(c.id)
     row.hours.push(v)
   }
-  return [...m.entries()].map(([name, { ids, hours }]) => ({ name, n: ids.length, ids, med: guardedMedian(hours) }))
+  return new Map([...m.entries()].map(([name, { ids, hours }]) => [name, { name, n: ids.length, ids, med: guardedMedian(hours) }]))
 }
 
-/** '1'..'5' in order, then 'Not recorded' last when any case lacks a CTAS. */
+/** '1'..'5' always, in order (empty levels as zero rows), then 'Not recorded' when any case lacks a CTAS. */
 export function byCtas(cases: ReadonlyArray<KpiCase>, now: Date): StatRow[] {
-  const rows = statBy(cases, now, (c) => (c.ctas == null ? NOT_RECORDED : String(c.ctas)))
-  return rows.sort((a, b) => {
-    if (a.name === NOT_RECORDED) return 1
-    if (b.name === NOT_RECORDED) return -1
-    return a.name.localeCompare(b.name)
-  })
+  const m = statBy(cases, now, (c) => (c.ctas == null ? NOT_RECORDED : String(c.ctas)))
+  const rows = ['1', '2', '3', '4', '5'].map((name) => m.get(name) ?? { name, n: 0, ids: [], med: null })
+  const missing = m.get(NOT_RECORDED)
+  if (missing) rows.push(missing)
+  return rows
 }
 
 /** Largest first, 'Not recorded' last. */
 export function byArea(cases: ReadonlyArray<KpiCase>, now: Date): StatRow[] {
-  const rows = statBy(cases, now, (c) => c.areaName ?? NOT_RECORDED)
+  const rows = [...statBy(cases, now, (c) => c.areaName ?? NOT_RECORDED).values()]
   return rows.sort((a, b) => {
     if (a.name === NOT_RECORDED) return 1
     if (b.name === NOT_RECORDED) return -1

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { MIN_N } from '../time'
 import {
   ADMISSION_BANDS,
   actionsDocumented,
@@ -8,6 +9,7 @@ import {
   byArea,
   byCtas,
   completeness,
+  doorAt,
   doorToDispositionHours,
   examToConsult,
   headline,
@@ -16,6 +18,7 @@ import {
   kpi1Minutes,
   kpi2Minutes,
   kpi3Minutes,
+  leftAt,
   longestStays,
   minutesBetween,
   outcomes,
@@ -26,7 +29,9 @@ import {
   targets,
   timeline,
   TREATED_BANDS,
+  treatedBandIndex,
   treatedBands,
+  TURNAROUND_BANDS,
   turnaroundBands,
   unitTypeOf,
   type KpiCase,
@@ -45,6 +50,7 @@ function base(id: string, over: Partial<KpiCase> = {}): KpiCase {
     departedAt: null,
     resolvedAt: null,
     triageAt: null,
+    roomAt: null,
     physicianAt: null,
     decisionAt: null,
     admOrderAt: null,
@@ -52,6 +58,8 @@ function base(id: string, over: Partial<KpiCase> = {}): KpiCase {
     bedAssignedAt: null,
     handoverAt: null,
     transferRequestedAt: null,
+    transferAcceptedAt: null,
+    transportArrivedAt: null,
     medAdminInformedAt: null,
     disposition: null,
     wardCode: null,
@@ -144,7 +152,7 @@ const e = base('e', {
 const v = base('v', { status: 'VOIDED', registrationAt: T(40) })
 const ALL = [a, b, c, d, e, v]
 
-describe('durations', () => {
+describe('durations and the two shared definitions', () => {
   it('are hours or minutes, null when missing or impossible', () => {
     expect(hoursBetween(T(2), T(1))).toBe(1)
     expect(minutesBetween(T(2), T(1.5))).toBe(30)
@@ -152,12 +160,26 @@ describe('durations', () => {
     expect(hoursBetween(null, T(1))).toBeNull()
     expect(hoursBetween(T(1), null)).toBeNull()
   })
+
+  it('the door is the earlier of registration and triage', () => {
+    expect(doorAt(c)).toEqual(T(13))
+    expect(doorAt(base('t', { registrationAt: T(10), triageAt: T(10.5) }))).toEqual(T(10.5))
+    expect(doorAt(a)).toEqual(T(8))
+  })
+
+  it('leaving is departed, else resolved, and only for a resolved case', () => {
+    expect(leftAt(c)).toEqual(T(3))
+    expect(leftAt(base('r', { status: 'RESOLVED', resolvedAt: T(1) }))).toEqual(T(1))
+    // A reopened case keeps its old departure time but is open again everywhere.
+    expect(leftAt(base('o', { status: 'OPEN', departedAt: T(2), resolvedAt: null }))).toBeNull()
+  })
 })
 
 describe('the weekly deck', () => {
-  it('headline: cases, episodes, median, mean, range, 10 h and 12 h shares, longest', () => {
+  it('headline: cases, measured, episodes, median, mean, range, 10 h and 12 h shares, longest', () => {
     const h = headline(ALL, NOW)
     expect(h.cases).toBe(5)
+    expect(h.measured).toBe(5)
     expect(h.episodes).toBe(4) // a and e share an MRN
     // stays: 8, 26.5, 10, 6, 4.5 -> sorted 4.5 6 8 10 26.5
     expect(h.med).toBe(8)
@@ -169,13 +191,22 @@ describe('the weekly deck', () => {
     expect(h.longest).toEqual({ id: 'b', mrn: '10b', hours: 26.5 })
   })
 
-  it('headline below n<3 keeps the counts and the longest but no median, mean or range', () => {
+  it('headline below n<3 keeps counts, min, max and the longest but no median or mean', () => {
     const h = headline([a, b], NOW)
     expect(h.cases).toBe(2)
     expect(h.med).toBeNull()
     expect(h.mean).toBeNull()
-    expect(h.min).toBeNull()
+    expect(h.min).toBe(8)
+    expect(h.max).toBe(26.5)
     expect(h.longest?.id).toBe('b')
+  })
+
+  it('headline counts a future-dated registration as a case but not as measured', () => {
+    const future = base('f', { registrationAt: T(-1) })
+    const h = headline([...ALL, future], NOW)
+    expect(h.cases).toBe(6)
+    expect(h.measured).toBe(5)
+    expect(stayBands([...ALL, future], NOW).reduce((n, r) => n + r.value, 0)).toBe(5)
   })
 
   it('stay bands are half-open and ordered', () => {
@@ -193,13 +224,24 @@ describe('the weekly deck', () => {
     expect(rows[3]!.ids).toEqual(['c'])
   })
 
-  it('previousRange is the window of the same length just before, and empty for all', () => {
-    // range 7 d: window is (7 d, 14 d] before now. Everything here is younger than 7 d.
-    expect(previousRange(ALL, '7', NOW)).toEqual([])
-    const old = base('old', { registrationAt: T(24 * 10) })
-    expect(previousRange([...ALL, old], '7', NOW).map((c) => c.id)).toEqual(['old'])
-    expect(previousRange([...ALL, old], '30', NOW)).toEqual([])
-    expect(previousRange([...ALL, old], 'all', NOW)).toEqual([])
+  it('stay band edges: 6.0 is 6–<8, 8.0 is 8–<10, 24.0 is 24+', () => {
+    const at = (h: number) => base(`s${h}`, { status: 'RESOLVED', registrationAt: T(h), departedAt: T(0) })
+    const rows = stayBands([at(5.999), at(6), at(8), at(10), at(12), at(24)], NOW)
+    expect(rows.map((r) => r.value)).toEqual([1, 1, 1, 1, 1, 1])
+  })
+
+  it('previousRange is the window just before, with the instant it ended', () => {
+    const { cases, asOf } = previousRange(ALL, '7', NOW)
+    expect(cases).toEqual([])
+    expect(asOf).toEqual(T(7 * 24))
+    const old = base('old', { registrationAt: T(24 * 10) }) // open, registered 10 days ago
+    const prev = previousRange([...ALL, old], '7', NOW)
+    expect(prev.cases.map((c) => c.id)).toEqual(['old'])
+    // Measured to the end of its own period (3 days after registration), not to today.
+    expect(headline(prev.cases, prev.asOf).longest?.hours).toBe(72)
+    expect(headline(prev.cases, NOW).longest?.hours).toBe(240)
+    expect(previousRange([...ALL, old], '30', NOW).cases).toEqual([])
+    expect(previousRange([...ALL, old], 'all', NOW)).toEqual({ cases: [], asOf: NOW })
   })
 
   it('longest stays are ranked, capped and carry what the table shows', () => {
@@ -234,16 +276,32 @@ describe('the weekly deck', () => {
     ])
   })
 
-  it('completeness flags the four data-quality rows', () => {
+  it('completeness flags the six data-quality rows', () => {
     const quiet = base('q', { registrationAt: T(13), stageNames: ['Triage'] }) // open, no update, 13 h
     const noDispo = base('n', { status: 'RESOLVED', registrationAt: T(10), resolvedAt: T(1), stageNames: ['Triage'] })
     const swapped = base('s', { physicianAt: T(1), decisionAt: T(2), stageNames: ['Triage'] })
-    const rows = completeness([...ALL, quiet, noDispo, swapped], NOW)
-    expect(rows.noReason.ids).toEqual([]) // every fixture case carries a stage
+    const bare = base('z', { registrationAt: T(1) })
+    const undecided = base('u', { registrationAt: T(30), stageNames: ['Admission process'], updatesCount: 1, lastUpdateAt: T(2) })
+    const future = base('f', { registrationAt: T(-1), stageNames: ['Triage'] })
+    const rows = completeness([...ALL, quiet, noDispo, swapped, bare, undecided, future], NOW)
+    expect(rows.noReason.ids).toEqual(['z'])
     expect(rows.openQuiet12h.ids).toEqual(['q']) // a is 8 h old with no update; b was updated 2 h ago
+    expect(rows.noDecision24h.ids).toEqual(['u']) // b is 26.5 h old but has a decision
     expect(rows.resolvedNoDisposition.ids).toEqual(['n'])
     expect(rows.outOfOrder.ids).toEqual(['s'])
+    expect(rows.noStay.ids).toEqual(['f'])
     expect(isOutOfOrder(c)).toBe(false)
+  })
+
+  it('out-of-order checks every sequence: milestones, admission, transfer, consults, investigations', () => {
+    expect(isOutOfOrder(base('m', { triageAt: T(7), roomAt: T(7.5) }))).toBe(true)
+    expect(isOutOfOrder(base('m2', { registrationAt: T(8), triageAt: T(8.5) }))).toBe(true)
+    expect(isOutOfOrder(base('ad', { admOrderAt: T(2), bedRequestedAt: T(3) }))).toBe(true)
+    expect(isOutOfOrder(base('tr', { transferRequestedAt: T(2), transferAcceptedAt: T(3) }))).toBe(true)
+    expect(isOutOfOrder(base('co', { consults: [{ departmentName: 'ICU', consultedAt: T(2), seenAt: T(3), repliedAt: null }] }))).toBe(true)
+    expect(isOutOfOrder(base('lab', { investigations: [{ type: 'LAB', orderedAt: T(2), collectedAt: T(3), receivedAt: null, doneAt: null, preliminaryAt: null, resultedAt: null }] }))).toBe(true)
+    expect(isOutOfOrder(base('ct', { investigations: [{ type: 'CT', orderedAt: T(3), collectedAt: null, receivedAt: null, doneAt: T(2), preliminaryAt: T(1), resultedAt: T(1.5) }] }))).toBe(true)
+    expect(isOutOfOrder(base('ok', { triageAt: T(7.5), roomAt: T(7), physicianAt: T(7), decisionAt: T(2) }))).toBe(false)
   })
 
   it('repeat visits: the MRN that appears twice', () => {
@@ -278,22 +336,72 @@ describe('the per-case timeline', () => {
     expect(steps[0]!.fromPrevious).toBeNull()
     expect(steps[1]!.fromPrevious).toBeCloseTo(0.25, 10)
     expect(steps.at(-1)!.fromPrevious).toBeCloseTo(0.5, 10)
-    // Ties keep insertion order: milestones, then investigations in array order (LAB before
-    // CT), then consults, then the admission chain. Three steps sit at exactly 12 h.
     const atTwelve = steps.filter((s) => s.at.getTime() === T(12).getTime()).map((s) => s.label)
     expect(atTwelve).toEqual(['Lab: received by lab', 'CT: ordered', 'Internal Medicine: consulted'])
-    // And at 9 h the CT report (an investigation) precedes the admission order (the chain).
     const atNine = steps.filter((s) => s.at.getTime() === T(9).getTime()).map((s) => s.label)
     expect(atNine).toEqual(['CT: reported', 'Admission order written'])
   })
 
-  it('is just the registration for an empty case', () => {
+  it('does not depend on how the rows were loaded: ties break by type order and department name', () => {
+    const shuffled: KpiCase = {
+      ...c,
+      investigations: [...c.investigations].reverse(),
+      consults: [{ departmentName: 'Urology', consultedAt: T(12), seenAt: null, repliedAt: null }, ...c.consults],
+    }
+    const atTwelve = timeline(shuffled)
+      .filter((s) => s.at.getTime() === T(12).getTime())
+      .map((s) => s.label)
+    expect(atTwelve).toEqual(['Lab: received by lab', 'CT: ordered', 'Internal Medicine: consulted', 'Urology: consulted'])
+  })
+
+  it('keeps every key unique with two rows of one type and two consults to one department, and shows the transfer chain and the room', () => {
+    const t = base('tx', {
+      status: 'RESOLVED',
+      registrationAt: T(10),
+      roomAt: T(9.5),
+      transferRequestedAt: T(6),
+      transferAcceptedAt: T(4),
+      transportArrivedAt: T(2),
+      departedAt: T(1.5),
+      resolvedAt: T(1.5),
+      disposition: 'TRANSFERRED',
+      investigations: [
+        { type: 'CT', orderedAt: T(9), collectedAt: null, receivedAt: null, doneAt: T(8), preliminaryAt: null, resultedAt: T(7) },
+        { type: 'CT', orderedAt: T(5), collectedAt: null, receivedAt: null, doneAt: T(4.5), preliminaryAt: null, resultedAt: null },
+      ],
+      consults: [
+        { departmentName: 'Neurosurgery', consultedAt: T(7), seenAt: null, repliedAt: null },
+        { departmentName: 'Neurosurgery', consultedAt: T(3), seenAt: null, repliedAt: null },
+      ],
+    })
+    const steps = timeline(t)
+    expect(new Set(steps.map((s) => s.key)).size).toBe(steps.length)
+    expect(steps.map((s) => s.label)).toEqual([
+      'Registration',
+      'Resus / exam room',
+      'CT: ordered',
+      'CT: scan done',
+      'CT: reported',
+      'Neurosurgery: consulted',
+      'Transfer requested',
+      'CT: ordered',
+      'CT: scan done',
+      'Accepted by facility',
+      'Neurosurgery: consulted',
+      'RCC / transport arrived',
+      'Left ED',
+    ])
+  })
+
+  it('is just the registration for an empty case, and adds a Resolved step when no departure was recorded', () => {
     expect(timeline(a).map((s) => s.label)).toEqual(['Registration'])
+    const r = base('r', { status: 'RESOLVED', registrationAt: T(5), resolvedAt: T(1) })
+    expect(timeline(r).map((s) => s.label)).toEqual(['Registration', 'Resolved (no departure time recorded)'])
   })
 })
 
 describe('Adaa', () => {
-  it('KPI 1 starts at the earlier of registration and triage', () => {
+  it('KPI 1 starts at the door', () => {
     expect(kpi1Minutes(c)).toBe(30) // registration 13 h, triage 12.75, physician 12.5
     const triageFirst = base('t', { registrationAt: T(10), triageAt: T(10.5), physicianAt: T(10) })
     expect(kpi1Minutes(triageFirst)).toBe(30)
@@ -306,19 +414,46 @@ describe('Adaa', () => {
     expect(kpi3Minutes(b)).toBeNull() // open
     expect(doorToDispositionHours(c)).toBe(10)
     expect(doorToDispositionHours(a)).toBeNull()
+    // Resolved without a departure time: the resolution time is the end.
+    const r = base('r', { status: 'RESOLVED', registrationAt: T(5), decisionAt: T(2), resolvedAt: T(1) })
+    expect(kpi3Minutes(r)).toBe(60)
+    expect(doorToDispositionHours(r)).toBe(4)
+    // A reopened case is open: no KPI 3, no door-to-disposition, whatever departedAt says.
+    const reopened = base('o', { status: 'OPEN', registrationAt: T(5), decisionAt: T(2), departedAt: T(1) })
+    expect(kpi3Minutes(reopened)).toBeNull()
+    expect(doorToDispositionHours(reopened)).toBeNull()
   })
 
-  it('benchmarks read the definitions sheet', () => {
+  it('KPI 5 uses the same door as KPI 1: a triage-first case is measured from triage', () => {
+    const triageFirst = base('t', { status: 'RESOLVED', registrationAt: T(10), triageAt: T(10.5), departedAt: T(6), resolvedAt: T(6) })
+    expect(doorToDispositionHours(triageFirst)).toBe(4.5)
+    expect(treatedBands([triageFirst]).map((r) => r.value)).toEqual([0, 1, 0, 0, 0, 0, 0])
+  })
+
+  it('benchmarks read the definitions sheet, at every threshold', () => {
     expect(benchmark('kpi1', 9.9)).toBe('world')
+    expect(benchmark('kpi1', 10)).toBe('acceptable')
     expect(benchmark('kpi1', 20)).toBe('acceptable')
     expect(benchmark('kpi1', 20.1)).toBe('improve')
+    expect(benchmark('kpi1', 40)).toBe('improve')
     expect(benchmark('kpi1', 41)).toBe('unacceptable')
+    expect(benchmark('kpi2', 29.9)).toBe('world')
     expect(benchmark('kpi2', 30)).toBe('acceptable')
+    expect(benchmark('kpi2', 60)).toBe('acceptable')
+    expect(benchmark('kpi2', 90)).toBe('improve')
+    expect(benchmark('kpi2', 90.5)).toBe('unacceptable')
+    expect(benchmark('kpi3', 29.9)).toBe('world')
+    expect(benchmark('kpi3', 90)).toBe('acceptable')
     expect(benchmark('kpi3', 130)).toBe('improve')
+    expect(benchmark('kpi3', 131)).toBe('unacceptable')
     expect(benchmark('kpi4', 0.2)).toBe('world')
+    expect(benchmark('kpi4', 0.33)).toBe('acceptable')
+    expect(benchmark('kpi4', 0.5)).toBe('acceptable')
+    expect(benchmark('kpi4', 0.75)).toBe('improve')
     expect(benchmark('kpi4', 0.8)).toBe('unacceptable')
     expect(benchmark('kpi5', 0.96)).toBe('world')
     expect(benchmark('kpi5', 0.95)).toBe('acceptable')
+    expect(benchmark('kpi5', 0.75)).toBe('acceptable')
     expect(benchmark('kpi5', 0.6)).toBe('improve')
     expect(benchmark('kpi5', 0.59)).toBe('unacceptable')
     expect(benchmark('kpi6', 0.1)).toBeNull()
@@ -326,6 +461,7 @@ describe('Adaa', () => {
 
   it('treated-within bands: 4 h exactly is within, then (min, max]', () => {
     expect(TREATED_BANDS.map((b) => b.name)).toEqual(['Within 4 h', '4–6 h', '6–12 h', '12–24 h', '24–48 h', '48–72 h', '>72 h'])
+    expect([4, 4.01, 6, 6.01, 12, 12.01, 24, 24.01, 48, 48.01, 72, 72.01].map(treatedBandIndex)).toEqual([0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6])
     const four = base('f', { status: 'RESOLVED', registrationAt: T(4), departedAt: T(0) })
     const six = base('g', { status: 'RESOLVED', registrationAt: T(6), departedAt: T(0) })
     const long = base('h', { status: 'RESOLVED', registrationAt: T(80), departedAt: T(0) })
@@ -334,9 +470,10 @@ describe('Adaa', () => {
     expect(treatedBands(ALL).map((r) => r.value)).toEqual([0, 2, 1, 0, 0, 0, 0])
   })
 
-  it('summary rows: one per CTAS, an unknown row only when needed, then overall', () => {
+  it('summary rows: one per CTAS always, an unknown row only when needed, then overall', () => {
     const rows = adaaSummary(ALL)
     expect(rows.map((r) => r.ctas)).toEqual([1, 2, 3, 4, 5, 'overall'])
+    expect(rows[0]!.total).toBe(0)
     const three = rows.find((r) => r.ctas === 3)!
     expect(three.total).toBe(2) // a and c
     expect(three.kpi1N).toBe(1)
@@ -359,7 +496,7 @@ describe('Adaa', () => {
     expect(withUnknown.at(-1)!.nonUrgentShare).toBeCloseTo(2 / 5, 10) // the unknown case is not in the denominator
   })
 
-  it('unit types and admission-to-unit bands', () => {
+  it('unit types and admission-to-unit bands, at the edges', () => {
     expect(unitTypeOf('ICU')).toBe('ICU')
     expect(unitTypeOf('ccu / isolation')).toBe('ICU')
     expect(unitTypeOf('PICU')).toBe('ICU')
@@ -367,11 +504,17 @@ describe('Adaa', () => {
     expect(unitTypeOf('SDU')).toBe('Ward')
     expect(unitTypeOf(null)).toBeNull()
     expect(ADMISSION_BANDS.map((b) => b.name)).toEqual(['≤30 min', '≤1 h', '1–4 h', '>4 h'])
-    const icu = base('i', { status: 'RESOLVED', registrationAt: T(10), admOrderAt: T(3), departedAt: T(2.5), wardCode: 'ICU', disposition: 'ADMITTED' })
-    const rows = admissionToUnitBands([...ALL, icu])
-    expect(rows[0]).toEqual({ unit: 'ICU', bands: [{ name: '≤30 min', value: 1, ids: ['i'] }, { name: '≤1 h', value: 0, ids: [] }, { name: '1–4 h', value: 0, ids: [] }, { name: '>4 h', value: 0, ids: [] }] })
+    const adm = (id: string, hours: number, ward = 'ICU') =>
+      base(id, { status: 'RESOLVED', registrationAt: T(10), admOrderAt: T(hours), departedAt: T(0), resolvedAt: T(0), wardCode: ward, disposition: 'ADMITTED' })
+    const edges = admissionToUnitBands([adm('h', 0.5), adm('i', 0.5001), adm('j', 1), adm('k', 1.0001), adm('l', 4), adm('m', 4.0001)])
+    expect(edges[0]!.bands.map((r) => r.value)).toEqual([1, 2, 2, 1])
+    const rows = admissionToUnitBands([...ALL, adm('n', 0.25)])
+    expect(rows[0]).toEqual({ unit: 'ICU', bands: [{ name: '≤30 min', value: 1, ids: ['n'] }, { name: '≤1 h', value: 0, ids: [] }, { name: '1–4 h', value: 0, ids: [] }, { name: '>4 h', value: 0, ids: [] }] })
     // c: order 9 h, left 3 h -> 6 h -> >4 h
     expect(rows[1]!.bands.map((r) => r.value)).toEqual([0, 0, 0, 1])
+    // A reopened case with an order and an old departure is open: not counted.
+    const reopened = base('o', { status: 'OPEN', registrationAt: T(10), admOrderAt: T(3), departedAt: T(2.5), wardCode: 'ICU' })
+    expect(admissionToUnitBands([reopened])[0]!.bands.map((r) => r.value)).toEqual([0, 0, 0, 0])
   })
 })
 
@@ -381,8 +524,9 @@ describe('the working targets', () => {
     const byKey = Object.fromEntries(rows.map((r) => [r.name, r]))
     // lab60: c (12.4 -> 11.5 = 54 min, within), d (29 -> 27.5 = 90, missed)
     expect(byKey['Lab resulted within 1 h of order']).toMatchObject({ n: 2, within: 1, ids: ['c', 'd'], withinIds: ['c'], share: null })
-    // imaging90: c CT ordered 12 h, preliminary 10.5 -> 90 min exactly, within; e XR 19.5 -> 18 = 90, within
-    expect(byKey['Imaging reported within 90 min of order']).toMatchObject({ n: 2, within: 2, withinIds: ['c', 'e'] })
+    // imaging90 is the OFFICIAL report: c CT ordered 12 h, reported 9 h = 180 min (missed, the
+    // preliminary at 90 min does not count); e XR 19.5 -> 18 = 90, within
+    expect(byKey['Imaging official report within 90 min of order']).toMatchObject({ n: 2, within: 1, ids: ['c', 'e'], withinIds: ['e'] })
     // consult60: b consulted 25 -> seen 24 = 60 within; c consulted 12 -> replied 11.5 = 30 within
     expect(byKey['Consulted team responded within 1 h']).toMatchObject({ n: 2, within: 2 })
     // decision150: b 360 missed, c 150 within, d 60 within, e 165 missed
@@ -392,13 +536,27 @@ describe('the working targets', () => {
     expect(byKey['Left ED within 30 min of admission order']).toMatchObject({ n: 1, within: 0, ids: ['c'], withinIds: [] })
   })
 
-  it('exam to consult, by department', () => {
+  it('a preliminary read inside 90 min with the official report outside it is a miss, and a share appears at n>=3', () => {
+    const img = (id: string, prelim: number | null, official: number) =>
+      base(id, { investigations: [{ type: 'CT', orderedAt: T(5), collectedAt: null, receivedAt: null, doneAt: T(4.5), preliminaryAt: prelim == null ? null : T(prelim), resultedAt: T(official) }] })
+    const rows = targets([img('p', 4, 2), img('q', null, 3.6), img('r', 3.9, 3.5)])
+    const imaging = rows.find((r) => r.name.startsWith('Imaging'))!
+    expect(imaging).toMatchObject({ n: 3, within: 2, withinIds: ['q', 'r'] })
+    expect(imaging.share).toBeCloseTo(2 / 3, 10)
+  })
+
+  it('exam to consult, by department, with n counting consults', () => {
     const rows = examToConsult(ALL)
     // b: physician 26 -> consulted 25 = 1 h; c: 12.5 -> 12 = 0.5 h
     expect(rows).toEqual([{ name: 'Internal Medicine', n: 2, ids: ['b', 'c'], med: null }])
+    const twice = base('w', { physicianAt: T(6), consults: [{ departmentName: 'Internal Medicine', consultedAt: T(4), seenAt: null, repliedAt: null }, { departmentName: 'Internal Medicine', consultedAt: T(1), seenAt: null, repliedAt: null }] })
+    const three = examToConsult([...ALL, twice])[0]!
+    expect(three).toMatchObject({ n: 4, ids: ['b', 'c', 'w'] })
+    expect(three.med).toBe((1 + 2) / 2) // hours 1, 0.5, 2, 5 -> median of 0.5 1 2 5
   })
 
-  it('turnaround bands per investigation type', () => {
+  it('turnaround bands per investigation type, with ids deduplicated per band', () => {
+    expect(TURNAROUND_BANDS.map((b) => b.name)).toEqual(['≤30 min', '31–60 min', '61–90 min', '91–120 min', '2–4 h', '>4 h'])
     const rows = turnaroundBands(ALL)
     const lab = rows.find((r) => r.type === 'LAB')!
     // order->result: c 54 min (31–60), d 90 min (61–90); received->resulted: c 30 min (≤30)
@@ -410,13 +568,29 @@ describe('the working targets', () => {
     expect(ct.doneToReport.map((r) => r.value)).toEqual([1, 0, 0, 0, 0, 0])
     const xr = rows.find((r) => r.type === 'XR')!
     expect(xr.orderToResult.map((r) => r.value)).toEqual([0, 0, 1, 0, 0, 0])
+    const twoLabs = base('ll', {
+      investigations: [
+        { type: 'LAB', orderedAt: T(5), collectedAt: null, receivedAt: null, doneAt: null, preliminaryAt: null, resultedAt: T(4.75) },
+        { type: 'LAB', orderedAt: T(3), collectedAt: null, receivedAt: null, doneAt: null, preliminaryAt: null, resultedAt: T(2.8) },
+      ],
+    })
+    const band = turnaroundBands([twoLabs]).find((r) => r.type === 'LAB')!.orderToResult[0]!
+    expect(band).toEqual({ name: '≤30 min', value: 2, ids: ['ll'] })
+  })
+
+  it('turnaround edges: 30 min is ≤30, 30.5 is 31–60, 240 is 2–4 h', () => {
+    const lab = (id: string, minutes: number) =>
+      base(id, { investigations: [{ type: 'LAB', orderedAt: T(minutes / 60), collectedAt: null, receivedAt: null, doneAt: null, preliminaryAt: null, resultedAt: T(0) }] })
+    const rows = turnaroundBands([lab('a1', 30), lab('a2', 30.5), lab('a3', 60), lab('a4', 90), lab('a5', 120), lab('a6', 240), lab('a7', 241)])
+    expect(rows[0]!.orderToResult.map((r) => r.value)).toEqual([1, 2, 1, 1, 1, 1])
   })
 })
 
 describe('by CTAS and by area', () => {
-  it('orders CTAS 1..5 with Not recorded last and medians guarded', () => {
+  it('always lists CTAS 1..5 in order, then Not recorded, with medians guarded', () => {
     const rows = byCtas([...ALL, base('u', { registrationAt: T(1) })], NOW)
     expect(rows.map((r) => [r.name, r.n])).toEqual([
+      ['1', 0],
       ['2', 1],
       ['3', 2],
       ['4', 1],
@@ -424,13 +598,34 @@ describe('by CTAS and by area', () => {
       ['Not recorded', 1],
     ])
     expect(rows.every((r) => r.med === null)).toBe(true)
+    expect(byCtas(ALL, NOW)).toHaveLength(5)
   })
 
-  it('orders areas by size with Not recorded last', () => {
+  it('orders areas by size with Not recorded last, and gives a median at n>=3', () => {
     expect(byArea(ALL, NOW).map((r) => [r.name, r.n])).toEqual([
       ['Acute area', 2],
       ['Resuscitation area', 1],
       ['Not recorded', 2],
     ])
+    const third = base('x', { registrationAt: T(9), areaName: 'Acute area' })
+    const acute = byArea([...ALL, third], NOW)[0]!
+    expect(acute).toMatchObject({ name: 'Acute area', n: 3 })
+    expect(acute.med).toBe(9) // stays 8, 10, 9
+    expect(MIN_N).toBe(3)
+  })
+})
+
+describe('voided cases are in nothing', () => {
+  it('every aggregate over a voided-only list is empty', () => {
+    expect(headline([v], NOW)).toMatchObject({ cases: 0, measured: 0, episodes: 0, med: null, longest: null })
+    expect(stayBands([v], NOW).every((r) => r.value === 0)).toBe(true)
+    expect(longestStays([v], NOW)).toEqual([])
+    expect(actionsDocumented([v]).any.value).toBe(0)
+    expect(outcomes([v])).toEqual([])
+    expect(repeatVisits([v, { ...v, id: 'v2' }])).toEqual([])
+    expect(adaaSummary([v]).at(-1)!.total).toBe(0)
+    expect(targets([v]).every((r) => r.n === 0)).toBe(true)
+    expect(byCtas([v], NOW).every((r) => r.n === 0)).toBe(true)
+    expect(byArea([v], NOW)).toEqual([])
   })
 })
