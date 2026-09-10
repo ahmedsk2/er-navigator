@@ -22,12 +22,22 @@ import {
 } from '@/src/lib/board/rows'
 import { BOARD_FILTERS, type BoardFilter, type BoardPayload } from '@/src/lib/board/types'
 import { fmtClock } from '@/src/lib/cases/local-time'
+import { Search } from '@/src/components/icons'
 import { InstallPrompt } from '@/src/components/shell/InstallPrompt'
 import { PageHeader } from '@/src/components/shell/PageHeader'
-import { BoardRowItem } from './BoardRowItem'
+import { Input } from '@/src/components/ui'
+import { BoardRowItem, ROW_COLUMNS } from './BoardRowItem'
 import { HandoverSheet } from './HandoverSheet'
 
 const FILTER_LABEL: Record<BoardFilter, string> = { open: 'Open', resolved: 'Resolved', all: 'All' }
+
+/**
+ * The laptop's column headings (Phase 9). Decorative: every cell under them repeats its own
+ * meaning in words — "reg 09/09 03:32", "No update for 3h 10m" — and a screen reader that read
+ * five headings before every row would say more than the row does. `aria-hidden`, therefore, and
+ * `hidden lg:grid`, because the phone's row is three stacked lines and has nothing to head.
+ */
+const COLUMN_LABELS = ['MRN', 'Registered', 'Waiting on', 'Last update', 'Elapsed'] as const
 
 /** `/`, `/?f=all`, `/?f=resolved&q=8515` — the canonical URL for a filter and a query. */
 function boardHref(filter: BoardFilter, query: string): string {
@@ -118,8 +128,13 @@ export function Board({ initial, initialQuery, printedBy }: { initial: BoardPayl
         title="ER board"
         subtitle={
           <>
+            {/* One element, one sentence — the board spec matches it whole. What Phase 9 adds is
+                weight and colour on the three figures inside it, so the two that matter can be
+                found without reading the line. */}
             <p className="num mt-0.5 text-[14px] text-muted">
-              {counts.open} open · {counts.past6} past 6h · {counts.past12} past 12h
+              <span className="font-semibold text-ink">{counts.open} open</span> ·{' '}
+              <span className="font-semibold text-band-h6">{counts.past6} past 6h</span> ·{' '}
+              <span className="font-semibold text-band-h12">{counts.past12} past 12h</span>
             </p>
             {/* How old the rows are. Riyadh time, 24 h, the same string on the server's first
                 paint and on every client tick. A nurse reading a frozen board must be able to see
@@ -136,28 +151,38 @@ export function Board({ initial, initialQuery, printedBy }: { initial: BoardPayl
         }
       />
 
-      <div className="no-print px-4 pb-2.5 lg:px-0">
+      {/* The phone stacks the field over the chips; the laptop has room for one line, which is
+          also what puts the chips beside the field the mockup shows. */}
+      <div className="no-print px-4 pb-2.5 lg:flex lg:items-center lg:gap-3 lg:px-0">
         <label htmlFor="board-search" className="sr-only">
           Search MRN
         </label>
-        <input
-          id="board-search"
-          type="search"
-          inputMode="numeric"
-          autoComplete="off"
-          placeholder="Search MRN"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          className="num mb-2.5 w-full min-h-11 rounded-field border border-line bg-panel px-3 py-2.5 text-input text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft"
-        />
+        <div className="relative mb-2.5 lg:mb-0 lg:w-[320px] lg:shrink-0">
+          <Search
+            size={18}
+            className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted"
+          />
+          <Input
+            id="board-search"
+            type="search"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="Search MRN"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            className="num pl-10"
+          />
+        </div>
         <div className="flex gap-2" role="group" aria-label="Filter">
           {BOARD_FILTERS.map((option) => (
             <Link
               key={option}
               href={boardHref(option, query)}
               aria-current={option === filter ? 'true' : undefined}
-              className={`inline-flex min-h-11 items-center rounded-chip border px-3 text-[14px] ${
-                option === filter ? 'border-accent bg-accent font-semibold text-white' : 'border-line bg-panel text-ink'
+              className={`inline-flex min-h-11 items-center rounded-chip border px-3.5 text-[14px] ${
+                option === filter
+                  ? 'border-accent bg-accent font-semibold text-white'
+                  : 'border-line bg-panel text-ink-2'
               }`}
             >
               {FILTER_LABEL[option]}
@@ -169,13 +194,28 @@ export function Board({ initial, initialQuery, printedBy }: { initial: BoardPayl
       <HandoverSheet rows={visible} now={now} printedBy={printedBy} />
 
       {visible.length === 0 ? (
-        <p className="no-print border-y border-line bg-panel p-7 text-center text-body text-muted">{emptyMessage}</p>
+        <p className="no-print mx-4 rounded-card border border-line bg-panel p-7 text-center text-body text-muted shadow-card lg:mx-0">
+          {emptyMessage}
+        </p>
       ) : (
-        <ul className="no-print">
-          {visible.map((row) => (
-            <BoardRowItem key={row.id} row={row} now={now} />
-          ))}
-        </ul>
+        <>
+          <div
+            aria-hidden="true"
+            data-board-columns
+            className={`no-print hidden px-4 pb-1 text-caption font-semibold text-muted lg:grid lg:gap-x-3 ${ROW_COLUMNS}`}
+          >
+            {COLUMN_LABELS.map((label, i) => (
+              <span key={label} className={i === COLUMN_LABELS.length - 1 ? 'text-right' : undefined}>
+                {label}
+              </span>
+            ))}
+          </div>
+          <ul className="no-print">
+            {visible.map((row) => (
+              <BoardRowItem key={row.id} row={row} now={now} />
+            ))}
+          </ul>
+        </>
       )}
 
       {/* After the rows, not before them (Phase 7). The banner can only appear once the browser
