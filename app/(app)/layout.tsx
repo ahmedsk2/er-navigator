@@ -44,6 +44,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <TabBar
           showExport={can(user.role, 'export.xlsx')}
           showAdmin={user.role === 'ADMIN'}
+          canCreate={can(user.role, 'case.create')}
           displayName={user.displayName}
           roleLabel={ROLE_LABELS[user.role]}
         />
@@ -51,10 +52,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
       <div className="contents lg:flex lg:min-w-0 lg:flex-col">
         <header className="no-print bg-header flex items-center justify-between gap-3 px-4 py-2.5 text-white lg:px-6">
-          <span className="flex items-center gap-2.5">
+          {/*
+            The brand is drawn once per screen. On a phone it is this header's mark and h1; from
+            `lg` the rail owns it (its wordmark is the h1 there) and this bar names the department
+            instead, so "ER Navigator" is not printed twice side by side. Each heading is
+            `display: none` on the other shape, so a role query finds exactly one.
+          */}
+          <span className="flex items-center gap-2.5 lg:hidden">
             <Mark size={32} tone="onTeal" />
             <h1 className="text-section tracking-tight">ER Navigator</h1>
           </span>
+          <span className="hidden text-label text-white/85 lg:inline">Qatif Central Hospital · Emergency Department</span>
           <OverflowMenu displayName={user.displayName} roleLabel={ROLE_LABELS[user.role]} />
         </header>
 

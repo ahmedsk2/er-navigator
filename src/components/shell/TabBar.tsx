@@ -18,7 +18,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Wordmark } from '@/src/components/brand/Mark'
-import { BarChart3, Download, LayoutList, Settings } from '@/src/components/icons'
+import { BarChart3, Download, LayoutList, Plus, Settings } from '@/src/components/icons'
 import { initialsOf } from './initials'
 
 type Tab = { href: string; label: string; Icon: typeof LayoutList }
@@ -34,11 +34,14 @@ const ADMIN_TAB: Tab = { href: '/admin', label: 'Admin', Icon: Settings }
 export function TabBar({
   showExport,
   showAdmin,
+  canCreate = false,
   displayName,
   roleLabel,
 }: {
   showExport: boolean
   showAdmin: boolean
+  /** Renders the rail's "+ New case" button on a laptop; the phone keeps the floating one. */
+  canCreate?: boolean
   displayName?: string
   roleLabel?: string
 }) {
@@ -50,12 +53,13 @@ export function TabBar({
       aria-label="Sections"
       className="no-print fixed inset-x-0 bottom-0 z-10 border-t border-line bg-panel lg:sticky lg:inset-x-auto lg:top-0 lg:bottom-auto lg:z-auto lg:flex lg:h-dvh lg:w-[232px] lg:flex-col lg:gap-4 lg:border-t-0 lg:border-r lg:border-navy lg:bg-navy lg:p-3.5 lg:text-rail-ink"
     >
-      {/* The rail owns the brand on a laptop, where there is a column to put it in. The wrapper
-          does the hiding: `Wordmark` sets its own `inline-flex`, and two display utilities on one
-          element are decided by the order Tailwind emits them, not by the order they are written. */}
-      <span className="hidden px-1.5 pt-2 pb-1 lg:block">
-        <Wordmark tone="onTeal" size="sm" />
-      </span>
+      {/* The rail owns the brand on a laptop, where there is a column to put it in, and its
+          wordmark is the page's h1 there (the header's h1 is `lg:hidden`, so there is one per
+          shape). The wrapper does the hiding: `Wordmark` sets its own `inline-flex`, and two
+          display utilities on one element are decided by the order Tailwind emits them. */}
+      <div className="hidden px-1.5 pt-2 pb-1 lg:block">
+        <Wordmark tone="onTeal" size="sm" as="h1" />
+      </div>
 
       <ul className="mx-auto flex max-w-md lg:mx-0 lg:max-w-none lg:flex-1 lg:flex-col lg:gap-1">
         {tabs.map((tab) => {
@@ -78,6 +82,22 @@ export function TabBar({
           )
         })}
       </ul>
+
+      {/*
+        The primary action, in the rail on a laptop: the phone's floating button would float over
+        the admin tables at 1280, and a sidebar is where a laptop expects "new". Same href, same
+        accessible name "+ New case" as the floating one; the two are never displayed together,
+        because this one is `hidden` below `lg` and the floating one is `lg:hidden`.
+      */}
+      {canCreate ? (
+        <Link
+          href="/cases/new"
+          className="hidden min-h-11 items-center justify-center gap-1.5 rounded-button bg-panel px-3 text-body font-bold text-navy shadow-float lg:flex"
+        >
+          <Plus size={18} />
+          <span className="sr-only">+ </span>New case
+        </Link>
+      ) : null}
 
       {/*
         Who is signed in, at the foot of the rail — the MedAxis pattern, and the one place on a

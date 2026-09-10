@@ -10,10 +10,10 @@ import { Plus } from '@/src/components/icons'
 
 export function NewCaseFab() {
   // `pb-[76px]` clears the 64 px tab bar (Phase 9 grew it from 56 to make room for the icons).
-  // From `lg` the tab bar is the rail and there is nothing at the foot of the screen, so the
-  // button sits in the bottom right corner of the content column instead.
+  // From `lg` the tab bar is the rail and the rail carries its own "+ New case" (TabBar.tsx), so
+  // this one is hidden there rather than floating over the admin tables.
   return (
-    <div className="no-print pointer-events-none fixed inset-x-0 bottom-0 z-10 mx-auto flex max-w-md justify-end px-4 pb-[76px] lg:inset-x-auto lg:right-8 lg:bottom-8 lg:mx-0 lg:max-w-none lg:px-0 lg:pb-0">
+    <div className="no-print pointer-events-none fixed inset-x-0 bottom-0 z-10 mx-auto flex max-w-md justify-end px-4 pb-[76px] lg:hidden">
       <Link
         href="/cases/new"
         className="pointer-events-auto inline-flex min-h-11 items-center gap-1.5 rounded-chip bg-ink px-[18px] text-[15px] font-bold text-white shadow-float"
