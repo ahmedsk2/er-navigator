@@ -21,24 +21,37 @@ export const UNREACHABLE_MESSAGE =
 
 // --- section ----------------------------------------------------------------------------------
 
+/**
+ * A section of the case editor. A card since Phase 9, for the same reason the dashboard's
+ * sections became cards: an editor that is fourteen strips between hairlines reads as one form,
+ * and the nurse's question is which block she is in. `icon` goes inside the heading and is
+ * `aria-hidden`, so every section title is still selected by its exact name.
+ */
 export function Section({
   title,
   children,
   tone = 'plain',
   id,
+  icon,
 }: {
   title?: string
   children: ReactNode
   tone?: 'plain' | 'warn'
   id?: string
+  icon?: ReactNode
 }) {
   return (
     <section
       id={id}
-      className={`mb-2.5 border-y border-line bg-panel p-4 ${tone === 'warn' ? 'border-l-4 border-l-band-h4' : ''}`}
+      className={`mx-4 mb-2.5 rounded-card border bg-panel p-4 shadow-card ${
+        tone === 'warn' ? 'border-band-h4 border-l-4 border-l-band-h4' : 'border-line'
+      }`}
     >
       {title ? (
-        <h2 className={`mb-2.5 text-section ${tone === 'warn' ? 'text-band-h4-ink' : ''}`}>{title}</h2>
+        <h2 className={`mb-2.5 flex items-center gap-2 text-section ${tone === 'warn' ? 'text-band-h4-ink' : ''}`}>
+          {icon ? <span className={tone === 'warn' ? 'text-band-h4-ink' : 'text-accent'}>{icon}</span> : null}
+          {title}
+        </h2>
       ) : null}
       {children}
     </section>
@@ -85,9 +98,18 @@ export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
 
 const BUTTON_BASE =
   'min-h-11 rounded-button px-4 text-body font-semibold disabled:opacity-60 disabled:cursor-not-allowed'
+
+/**
+ * The two button fills, exported because the export page's downloads are <a> elements — a link
+ * that starts a download cannot be a <button> — and a second copy of these strings is how the
+ * primitive drifts (Phase 9).
+ */
+export const BUTTON_MAIN = 'bg-accent text-white'
+export const BUTTON_QUIET = 'border border-line bg-panel text-ink'
+
 const BUTTON_TONE = {
-  main: 'bg-accent text-white',
-  quiet: 'border border-line bg-panel text-ink',
+  main: BUTTON_MAIN,
+  quiet: BUTTON_QUIET,
   danger: 'border border-danger bg-panel text-danger',
 } as const
 
@@ -178,13 +200,17 @@ export function Chips<T extends string>({
             type="button"
             disabled={disabled || spent}
             aria-pressed={on}
+            /* Phase 9: the pressed chip is the soft tint the templates use for a status, not a
+               block of accent — a form with nine selected chips was nine teal rectangles. The
+               ring that marks the primary reason still reads against it because it is the
+               accent border, not the soft fill. */
             className={`${CHIP_BASE} ${
               retired
                 ? `border-line bg-bg text-muted ${spent ? 'opacity-60' : ''}`
                 : on
-                  ? 'border-accent bg-accent text-white'
-                  : 'border-line bg-panel text-ink'
-            } ${primary === option ? 'ring-3 ring-accent-soft' : ''}`}
+                  ? 'border-accent bg-accent-soft font-semibold text-accent-ink'
+                  : 'border-line bg-panel text-ink-2'
+            } ${primary === option ? 'ring-3 ring-accent' : ''}`}
             onClick={() => {
               if (spent) return
               onChange(on ? value.filter((v) => v !== option) : [...value, option])
