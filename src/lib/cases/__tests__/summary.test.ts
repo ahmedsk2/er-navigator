@@ -160,6 +160,16 @@ describe('summaryOf', () => {
     expect(dayLater.elapsedHours).toBe(6)
   })
 
+  it('reads a reopened case as still in the ED, although it keeps its old departure time', () => {
+    // `reopenCase` clears resolvedAt and leaves departedAt as entered (the prototype's reopen), so
+    // an OPEN case can carry a departure time. Every clock in the app reads that as "still here".
+    const s = summaryOf(loaded({ status: 'OPEN', resolvedAt: null }, { departedAt: T(2) }), REFERENCE, NOW)
+    expect(s.leftAt).toBeNull()
+    expect(s.elapsedHours).toBe(9)
+    expect(s.band).toBe('h6')
+    expect(summaryText(s)).toContain('Left ED: still in the ED')
+  })
+
   it('lists the reasons with the primary first and marked, each under its stage', () => {
     const s = summaryOf(loaded(), REFERENCE, NOW)
     expect(s.reasons).toEqual([
@@ -194,6 +204,14 @@ describe('summaryOf', () => {
     ])
     // Six, not seven: "Update without an action tag" is not one of the deck's categories.
     expect(s.actions).toHaveLength(6)
+  })
+
+  it('counts a recorded transfer request as the external transfer category, once', () => {
+    // No update carries the FAX_RCC tag here, so the one count is the transfer request time on
+    // the case — the third timestamp `actionKindsOf` in kpi.ts reads as a documented action.
+    const s = summaryOf(loaded({}, { transferRequestedAt: T(4) }), REFERENCE, NOW)
+    expect(s.actions.map((a) => [a.name, a.count])).toContainEqual(['External transfer / fax / RCC', 1])
+    expect(summaryText(s)).toContain('External transfer / fax / RCC ×1')
   })
 
   it('counts the updates and dates the newest, whatever order they arrived in', () => {
