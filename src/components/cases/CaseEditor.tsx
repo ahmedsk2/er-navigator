@@ -39,6 +39,7 @@ import {
 } from '@/src/components/ui'
 import { appendDictated, DictationRow } from '@/src/components/ui/DictationButton'
 import { fmtStamp, hoursAgo, nowLocalInput, shiftMinutes } from '@/src/lib/cases/local-time'
+import { caseClockOf } from '@/src/lib/cases/summary'
 import type {
   CaseDraft,
   CaseUpdateView,
@@ -132,6 +133,12 @@ export type CaseEditorProps = {
   initial: CaseDraft
   caseId: string | null
   initialStatus: 'OPEN' | 'RESOLVED' | 'VOIDED'
+  /**
+   * When the case was last resolved (`LoadedCase.resolvedAt`), or null; absent on a new case. Only
+   * the header clock reads it: it is where the stay of a resolved case ends once "Left ED at" has
+   * been cleared, as it does on the board row and in the summary (`caseClockOf`).
+   */
+  initialResolvedAt?: string | null
   voidReason: string | null
   navigatorName: string
   initialUpdates: CaseUpdateView[]
@@ -175,6 +182,8 @@ export function CaseEditor(props: CaseEditorProps) {
 
   const [draft, setDraft] = useState<CaseDraft>(props.initial)
   const [status, setStatus] = useState(props.initialStatus)
+  /** Held beside the status because resolve and reopen move both, as the server does. */
+  const [resolvedAt, setResolvedAt] = useState(props.initialResolvedAt ?? null)
   const [updates, setUpdates] = useState<CaseUpdateView[]>(props.initialUpdates)
   const [updateText, setUpdateText] = useState('')
   /** The deck category for the update being typed, cleared with the box when it is sent. */
@@ -206,8 +215,9 @@ export function CaseEditor(props: CaseEditorProps) {
   const diagnosisId = useId()
   const noteId = useId()
 
-  // The clock ticks only while the case is open; a resolved case is frozen at its departure time.
-  // `now` starts at the server's instant so the first client render matches the server's HTML.
+  // The clock ticks only while the case is open; a resolved case is frozen at its departure time,
+  // or at its resolution once that has been cleared. `now` starts at the server's instant so the
+  // first client render matches the server's HTML.
   const ticking = status === 'OPEN'
   useEffect(() => {
     if (!ticking) return
@@ -258,16 +268,12 @@ export function CaseEditor(props: CaseEditorProps) {
 
   // --- derived state --------------------------------------------------------------------------
 
-  const elapsed = elapsedHours(
-    {
-      status,
-      registrationAt: new Date(draft.registrationAt),
-      // resolve always writes departedAt, so it is the end of the clock for a resolved case.
-      departedAt: draft.departedAt ? new Date(draft.departedAt) : null,
-      resolvedAt: null,
-    },
-    now,
-  )
+  // The clock the board row and the summary read. It used to be built here with no resolvedAt,
+  // on the grounds that resolve always writes a departure time, but "Left ED at" can be cleared
+  // on a resolved case and saved, and then this header counted on to every page load while the
+  // board row stood still at the resolution. It reads the draft, so a departure time typed on
+  // this page moves it at once.
+  const elapsed = elapsedHours(caseClockOf({ status, resolvedAt, draft }), now)
 
   const anyReasonNeedsDepartment = draft.reasons.some((r) => reasonById.get(r.reasonId)?.requiresDepartment)
   const anyStageNeedsDepartment = selectedStages.some((s) => s.reasons.some((r) => r.requiresDepartment))
@@ -512,6 +518,8 @@ export function CaseEditor(props: CaseEditorProps) {
       if (result.ok) {
         set({ version: result.version, departedAt })
         setStatus('RESOLVED')
+        // `resolveCase` writes the departure time as the resolution as well.
+        setResolvedAt(departedAt)
         setReview(null)
         setUpdates((rows) => [...rows, result.update])
       } else handleFailure(result)
@@ -524,6 +532,8 @@ export function CaseEditor(props: CaseEditorProps) {
       if (result.ok) {
         set({ version: result.version })
         setStatus('OPEN')
+        // `reopenCase` clears the resolution and keeps the departure time as entered.
+        setResolvedAt(null)
         setUpdates((rows) => [...rows, result.update])
       } else handleFailure(result)
     })

@@ -616,6 +616,64 @@ test('the case summary opens over the case, names it, and copies itself as text'
 })
 
 /**
+ * Phase 10 review. The editor's own clock on the one case whose departure time does not end the
+ * stay: resolved, then "Left ED at" cleared and saved (the draft's departure time is nullable, and
+ * a save refuses only a voided case). The board row and the summary stop at the resolution; the
+ * header built its clock without it and counted on to every page load. It reads `caseClockOf`
+ * now, as the summary does, and a departure time typed while the page is open still moves it.
+ *
+ * Every time is typed from one instant, in the browser's zone as `toLocalInput` writes it, so the
+ * stay is exactly three hours and the clock can be read to the minute.
+ */
+test('a resolved case whose departure time is cleared keeps its clock stopped at the resolution', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.221')
+  const taps = await signIn(page, E2E_USERS.navigator)
+  const url = await openCase(page, uniqueMrn(), STAGE, REASON, taps)
+
+  const at = await page.evaluate(() => {
+    const now = Date.now()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const local = (hours: number) => {
+      const d = new Date(now - hours * 3_600_000)
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+    }
+    return { registered: local(10), left: local(7), corrected: local(8) }
+  })
+  const registration = page.getByLabel('Registration time (clock starts here)', { exact: true })
+  const leftAt = page.getByLabel('Left ED at (defaults to now)', { exact: true })
+  const clock = page.getByRole('img', { name: /^Time in the Emergency Department/ })
+
+  // Registered ten hours ago and left seven hours ago; `resolveCase` writes that departure time
+  // as the resolution too. (The registration box is empty until the page has hydrated.)
+  await expect(registration).not.toHaveValue('')
+  await registration.fill(at.registered)
+  await leftAt.fill(at.left)
+  await page.getByLabel('Final disposition').selectOption('DISCHARGED_HOME')
+  await page.getByRole('button', { name: 'Mark resolved' }).click()
+  await expect(page.getByText('Resolved: Discharged home')).toBeVisible()
+  await expect(clock).toHaveText('3h 00m')
+
+  // "Left ED at" cleared: the stay still ended at the resolution, before the save and after it.
+  await leftAt.fill('')
+  await expect(clock).toHaveText('3h 00m')
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
+
+  await page.goto(url)
+  await expect(registration).toHaveValue(at.registered)
+  await expect(leftAt).toHaveValue('')
+  await expect(clock).toHaveText('3h 00m')
+  await expect(clock).toHaveAccessibleName('Time in the Emergency Department: 3 hours')
+
+  // A departure time typed on the page moves the clock at once, and clearing it again puts the
+  // end back at the resolution, which is where the board row has it.
+  await leftAt.fill(at.corrected)
+  await expect(clock).toHaveText('2h 00m')
+  await leftAt.fill('')
+  await expect(clock).toHaveText('3h 00m')
+})
+
+/**
  * Phase 8, Slice E. The case's time sequence, read-only, after the updates — the weekly deck's
  * per-case slide generated — and the same sequence in one compact line under the case's row on
  * the handover sheet.
