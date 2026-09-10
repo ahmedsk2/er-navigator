@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import ExcelJS from 'exceljs'
 import { prisma } from '../../src/lib/db'
+import { FILTER_DIMENSIONS } from '../../src/lib/domain/case-filter'
 import { countCasesForExport } from '../../src/lib/export/load'
 import { DEFAULT_REPORT_HEADER } from '../../src/lib/export/report-header'
 import { riyadhDateKey } from '../../src/lib/export/range'
@@ -173,6 +174,43 @@ test('a filter narrows the count, the workbook and the printed report together',
   await page.goto(`/report?from=${window.from}&to=${window.to}&status=all&payer=INSURED`)
   await expect(page.locator('[data-report-filter]')).toHaveText('Filtered: Payer: Insured')
   await expect(page.locator('[data-report-range]')).toContainText('2 cases')
+})
+
+/** Every query key the case filter can put in an address: the seven dimensions and the two modes. */
+const FILTER_KEYS = [...FILTER_DIMENSIONS, 'not', 'lone']
+
+/**
+ * Phase 10. The report is read on screen before it is printed, and every row on it is a drill link
+ * into the dashboard. Under a filter each link must carry it, or a tapped row opens the whole
+ * department under a masthead that says "Filtered"; without one, no link may carry a filter key,
+ * so an unfiltered report's links stay the strings they were before the filter existed.
+ */
+test('the report’s drill links carry its filter, and an unfiltered report’s carry none', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', DESKTOP_ONLY)
+  await fromClientIp(page, '198.51.100.161')
+  await signIn(page, E2E_USERS.supervisor)
+
+  const window = await fixtureWindow()
+  const drillLinks = async (): Promise<URLSearchParams[]> => {
+    const hrefs = await page
+      .locator('a[href*="drill="]')
+      .evaluateAll((els) => els.map((el) => el.getAttribute('href') ?? ''))
+    return hrefs.map((href) => new URL(href, 'http://report.invalid').searchParams)
+  }
+
+  await page.goto(`/report?from=${window.from}&to=${window.to}&status=all&payer=INSURED`)
+  await expect(page.locator('[data-report-filter]')).toHaveText('Filtered: Payer: Insured')
+  const filtered = await drillLinks()
+  expect(filtered.length, 'the filtered report has drill links').toBeGreaterThan(0)
+  for (const params of filtered) expect(params.getAll('payer'), params.toString()).toEqual(['INSURED'])
+
+  await page.goto(`/report?from=${window.from}&to=${window.to}&status=all`)
+  await expect(page.locator('[data-report-filter]')).toHaveCount(0)
+  const whole = await drillLinks()
+  expect(whole.length, 'the unfiltered report has drill links').toBeGreaterThan(0)
+  for (const params of whole) {
+    for (const key of FILTER_KEYS) expect(params.has(key), `${params.toString()} carries no "${key}"`).toBe(false)
+  }
 })
 
 test('each format downloads its own workbook, which opens with its own header row', async ({ page }, testInfo) => {
