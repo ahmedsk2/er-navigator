@@ -34,7 +34,7 @@ import { InstallPrompt } from '@/src/components/shell/InstallPrompt'
 import { PageHeader } from '@/src/components/shell/PageHeader'
 import { Input } from '@/src/components/ui'
 import { BoardRowItem, ROW_COLUMNS } from './BoardRowItem'
-import { HandoverSheet } from './HandoverSheet'
+import { HandoverSheet, narrowingLine } from './HandoverSheet'
 
 const FILTER_LABEL: Record<BoardFilter, string> = { open: 'Open', resolved: 'Resolved', all: 'All' }
 
@@ -234,7 +234,14 @@ export function Board({
         count={filtered ? `${counts.open} of ${payload.totalOpen} open cases` : undefined}
       />
 
-      <HandoverSheet rows={visible} now={now} printedBy={printedBy} />
+      {/* The sheet prints `visible`, which both the filter and the search box narrow, and the
+          chips and the count line that say so on screen do not print: the sheet says it itself. */}
+      <HandoverSheet
+        rows={visible}
+        now={now}
+        printedBy={printedBy}
+        narrowing={narrowingLine(caseFilter, filterOptions, query)}
+      />
 
       {visible.length === 0 ? (
         <p className="no-print mx-4 rounded-card border border-line bg-panel p-7 text-center text-body text-muted shadow-card lg:mx-0">

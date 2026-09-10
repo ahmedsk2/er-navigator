@@ -285,6 +285,49 @@ test('printing the board gives the handover sheet, not the screen', async ({ pag
 })
 
 /**
+ * Phase 10 review. The sheet prints the rows the board is showing, and the two things on screen
+ * that say those rows are narrowed — the filter's chips and its count line — are `.no-print`. A
+ * charge nurse who narrowed to Admission process and printed at shift change used to hand over a
+ * partial list with nothing on the paper saying so. The line under the stamp now says how the
+ * rows were narrowed, and a sheet of the whole board has no such line at all.
+ */
+test('a narrowed board says so on the handover sheet, and the whole board does not', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.201')
+  await signIn(page, E2E_USERS.navigator)
+  const sheet = page.locator('section.print-only')
+  // Its own line, straight under the stamp line (the heading, the stamp, then this).
+  const narrowed = sheet.locator('h2 + p + [data-sheet-narrowed]')
+
+  // The whole Open board: the sheet as it always was, with nothing saying otherwise.
+  await page.emulateMedia({ media: 'print' })
+  await expect(sheet).toBeVisible()
+  await expect(sheet.locator('[data-sheet-narrowed]')).toHaveCount(0)
+  await expect(sheet).not.toContainText('Filtered:')
+  await expect(sheet).not.toContainText('MRN search:')
+  await page.emulateMedia({ media: 'screen' })
+
+  // Narrowed to one stage. On paper the chip has gone with the rest of the screen, so this line
+  // is the only thing left saying the list is partial.
+  await page.goto('/?stage=adm')
+  const chip = page.locator('[data-filter-chip="Stage: Admission process"]')
+  await expect(chip).toBeVisible()
+  await page.emulateMedia({ media: 'print' })
+  await expect(chip).toBeHidden()
+  await expect(narrowed).toHaveText('Filtered: Stage: Admission process')
+  await page.emulateMedia({ media: 'screen' })
+
+  // The MRN search narrows the printed rows too, so it is named beside the filter: the two open
+  // admission delays the fixtures seed are the sheet, and the investigations case is not on it.
+  await narrowToFixtures(page)
+  await page.emulateMedia({ media: 'print' })
+  await expect(narrowed).toHaveText(`Filtered: Stage: Admission process · MRN search: ${BOARD_MRN_PREFIX}`)
+  await expect(sheet).toContainText('· 2 cases')
+  await expect(sheet.getByRole('cell', { name: LONGEST.mrn, exact: true })).toBeVisible()
+  await expect(sheet.getByRole('cell', { name: '3100003', exact: true })).toHaveCount(0)
+  await page.emulateMedia({ media: 'screen' })
+})
+
+/**
  * Review C19. The poll is a 30 s beat, so these two tests wait for one real tick rather than
  * faking a clock the hydrated board also reads.
  */
