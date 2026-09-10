@@ -144,8 +144,10 @@ export function RowSummaryButton({ caseId, mrn }: { caseId: string; mrn: string 
       >
         <FileText size={18} />
       </button>
+      {/* A line of its own under the card (the row's `<li>` wraps), right-aligned so it sits
+          under the button it answers. Beside the card it would take its width from the card. */}
       {state.kind === 'failed' ? (
-        <span role="status" className="no-print text-caption text-danger">
+        <span role="status" className="no-print basis-full text-right text-caption text-danger">
           Could not read the summary.
         </span>
       ) : null}

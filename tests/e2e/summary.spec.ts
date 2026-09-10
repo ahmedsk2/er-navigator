@@ -18,7 +18,8 @@ import { E2E_USERS } from './fixtures/seed-users'
  * would hit underneath, so a green run cannot mean the press simply missed.
  *
  * The board's panel belongs to the board and not to the row it summarises, so a poll that drops
- * the row leaves it open (the same review).
+ * the row leaves it open; and a summary that cannot be read says so on a line of its own under the
+ * row, without taking the card's width (both from the same review).
  *
  * The route the board's row button reads is held to its two guards: a live session (proxy.ts turns
  * away a request with no cookie at all, the route's own requireUser one whose cookie matches no
@@ -287,6 +288,43 @@ test('a row summary outlives its row leaving the board, and closing it lands on 
   await dialog.getByRole('button', { name: 'Close', exact: true }).click()
   await expect(dialog).toHaveCount(0)
   await expect(page.getByLabel('Search MRN')).toBeFocused()
+})
+
+/**
+ * When the summary cannot be read the button says so, and that line used to be a third item in
+ * the row's one flex line: the card gave it the room (about 306 → 144 px on a phone), and on a
+ * laptop its cells slid out from under the column labels. It now wraps onto a line of its own
+ * under the card, and the card and the button keep their size.
+ */
+test('a summary that cannot be read says so under the row, and the card keeps its width', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.203')
+  await signIn(page, E2E_USERS.navigator)
+  await page.getByLabel('Search MRN').fill(BOARD_MRN_PREFIX)
+  const card = page.locator(`a[data-mrn="${LONGEST.mrn}"]`)
+  const opener = page.locator(`[data-summary-for="${LONGEST.mrn}"]`)
+  await expect(card).toBeVisible()
+  const before = { card: await card.boundingBox(), opener: await opener.boundingBox() }
+
+  await page.route('**/api/cases/*/summary', (route) => route.fulfill({ status: 500 }))
+  await opener.click()
+  const message = page.locator('li', { has: card }).getByRole('status')
+  await expect(message).toHaveText('Could not read the summary.')
+  await expect(message).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'Case summary' })).toHaveCount(0)
+
+  const after = {
+    card: await card.boundingBox(),
+    opener: await opener.boundingBox(),
+    message: await message.boundingBox(),
+  }
+  if (!before.card || !before.opener || !after.card || !after.opener || !after.message) {
+    throw new Error('no geometry for the card, its summary button or the message')
+  }
+  expect(after.card.width, 'the card keeps its width').toBe(before.card.width)
+  expect(after.opener.width, 'the button keeps its width').toBe(before.opener.width)
+  expect(after.message.y, 'the message is on a line of its own, under the card').toBeGreaterThanOrEqual(
+    after.card.y + after.card.height,
+  )
 })
 
 test('GET /api/cases/[id]/summary answers 401 without a live session, and is never cached', async ({ request }) => {
