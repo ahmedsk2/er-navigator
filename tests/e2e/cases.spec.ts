@@ -366,7 +366,7 @@ test('CTAS and the ED area reach the board row and the export', async ({ page })
  * iPhone gets, and the keyboard's own microphone is what a nurse uses there.
  */
 test('the working diagnosis and the payer reach the board row and the export', async ({ page }) => {
-  await fromClientIp(page, '198.51.100.58')
+  await fromClientIp(page, '198.51.100.182')
   // A supervisor, for `export.xlsx`, as the Phase 8 test above.
   const taps = await signIn(page, E2E_USERS.supervisor)
   const mrn = uniqueMrn()
@@ -575,7 +575,7 @@ test('a dictated phrase stops at the cap of the box it lands in', async ({ page 
  * update text the nurse typed on this very case must not be in it.
  */
 test('the case summary opens over the case, names it, and copies itself as text', async ({ page }) => {
-  await fromClientIp(page, '198.51.100.59')
+  await fromClientIp(page, '198.51.100.183')
   const taps = await signIn(page, E2E_USERS.navigator)
   const mrn = uniqueMrn()
   await openCase(page, mrn, STAGE, REASON, taps)
