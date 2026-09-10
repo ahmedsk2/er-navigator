@@ -11,6 +11,7 @@ import { resolveDrill } from '@/src/lib/dashboard/drill'
 import { loadCasesForStats } from '@/src/lib/dashboard/load'
 import { prisma } from '@/src/lib/db'
 import { dashboard } from '@/src/lib/domain/aggregates'
+import { EMPTY_FILTER, matchesFilter } from '@/src/lib/domain/case-filter'
 
 /**
  * What `/dashboard` reads, against a real Postgres and through the same service functions a nurse
@@ -213,6 +214,15 @@ describe('loadCasesForStats', () => {
     expect(row!.primaryReasonName).toBe('No bed available on accepting ward')
     // Two reasons under "Admission process" collapse to one stage name, in taxonomy order.
     expect(row!.stageNames).toEqual(['Investigations', 'Admission process', 'Discharge process'])
+    // Phase 10: the same stages by code, and every reason by name, both of which the filter reads
+    // and neither of which any section draws — so only a query is what proves they are there.
+    expect(row!.stageCodes).toEqual(['inv', 'adm', 'dc'])
+    expect(row!.reasonNames).toEqual([
+      'Lab: delay in processing',
+      'No bed available on accepting ward',
+      'Bed available, awaiting transport/porter',
+      'Other',
+    ])
     expect(row!.departmentNames).toEqual(['MROD'])
     expect(row!.consults).toHaveLength(1)
     expect(row!.consults[0]!.departmentName).toBe('MROD')
@@ -288,6 +298,40 @@ describe('loadCasesForStats', () => {
     // The count is `_count`, not `updates.length`: the select only fetches the newest row.
     expect(row.updatesCount).toBe(2)
     expect(row.lastUpdateAt).toBeInstanceOf(Date)
+  })
+
+  /**
+   * Phase 10. The dashboard filters the loaded cases before `dashboard()` runs, so every figure on
+   * the page is over one population. What a database test adds to the predicate's own unit test is
+   * that the query really carries the fields it reads, and that narrowing really moves the numbers.
+   */
+  it('narrows the whole page when a filter is applied before dashboard() runs', async () => {
+    const nurse = await makeUser('NAVIGATOR')
+    const lab = reasonNamed('inv', 'Lab: delay in processing')
+    const area = await prisma.edArea.findFirstOrThrow({ where: { code: 'RESUS' } })
+    const { id } = await openCase(nurse, {
+      reasons: [{ reasonId: lab, otherText: null }],
+      primaryReasonId: lab,
+      areaId: area.id,
+      ctas: 2,
+      payer: 'SELF_PAY',
+    })
+    const bed = reasonNamed('adm', 'No bed available on accepting ward')
+    const { id: elsewhere } = await openCase(nurse, {
+      reasons: [{ reasonId: bed, otherText: null }],
+      primaryReasonId: bed,
+    })
+
+    const loaded = mine(await loadCasesForStats())
+    const kept = loaded.filter((c) => matchesFilter(c, { ...EMPTY_FILTER, stage: ['inv'], area: ['RESUS'] }))
+    expect(kept.map((c) => c.id)).toContain(id)
+    expect(kept.map((c) => c.id)).not.toContain(elsewhere)
+
+    // And the page's own numbers move with it: `inRange` is over the filtered set, not the board.
+    const now = new Date()
+    expect(dashboard(kept, 'all', now).inRange).toBeLessThan(dashboard(loaded, 'all', now).inRange)
+    // The payer table over the filtered population names only the payer the kept case carries.
+    expect(dashboard(kept, 'all', now).kpi.byPayer.find((r) => r.name === 'Self-pay')?.ids).toContain(id)
   })
 
   it('never returns a voided case, so no drill-down can reach one', async () => {

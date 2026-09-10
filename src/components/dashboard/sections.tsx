@@ -43,21 +43,30 @@ import {
 import { UNIT_LABELS, dashboardHref, drillKey, gridKey, investigationLabel, type DrillSection } from '@/src/lib/dashboard/drill'
 import { BENCHMARK_LABELS, BENCHMARK_TEXT, adaaRows, fmtShare, headlineTiles } from '@/src/lib/dashboard/panels'
 import type { DashboardKpi, Range } from '@/src/lib/domain/aggregates'
+import type { CaseFilter } from '@/src/lib/domain/case-filter'
 import { NOT_RECORDED, TURNAROUND_BANDS, type IdRow } from '@/src/lib/domain/kpi'
 import { DISPOSITION_LABELS } from '@/src/lib/domain/taxonomy'
 import { fmtStamp } from '@/src/lib/cases/local-time'
 import { fmtHours } from '@/src/lib/domain/time'
 
-type Props = { kpi: DashboardKpi; range: Range }
+/**
+ * `filter` is the Phase 10 case filter the page is drawn over, and it rides on every link a
+ * section builds. It has to: the drill-down resolves its ids from a `dashboard()` computed over
+ * the filtered population, so a link that dropped the filter would open a different case list
+ * under the same row's name.
+ */
+type Props = { kpi: DashboardKpi; range: Range; filter?: CaseFilter }
 
-const href = (range: Range, section: DrillSection, name: string | number): string =>
-  dashboardHref(range, drillKey(section, name))
+const href = (range: Range, filter: CaseFilter | undefined, section: DrillSection, name: string | number): string =>
+  dashboardHref(range, drillKey(section, name), filter)
 
 export const hbarRows = (
   rows: ReadonlyArray<{ name: string; value: number }>,
   range: Range,
   section: DrillSection,
-): HBarRow[] => rows.map((row) => ({ name: row.name, value: row.value, href: href(range, section, row.name) }))
+  filter?: CaseFilter,
+): HBarRow[] =>
+  rows.map((row) => ({ name: row.name, value: row.value, href: href(range, filter, section, row.name) }))
 
 /** A bar section: the chart, and the same rows as links for keyboard, screen readers and print. */
 export function BarSection({
@@ -85,8 +94,17 @@ export function BarSection({
 }
 
 /** A count row as a tappable table row, which is what every new drill-down is. */
-function countRows(rows: ReadonlyArray<IdRow>, range: Range, section: DrillSection): TableRow[] {
-  return rows.map((row) => ({ key: row.name, href: href(range, section, row.name), cells: [row.name, row.value] }))
+function countRows(
+  rows: ReadonlyArray<IdRow>,
+  range: Range,
+  section: DrillSection,
+  filter?: CaseFilter,
+): TableRow[] {
+  return rows.map((row) => ({
+    key: row.name,
+    href: href(range, filter, section, row.name),
+    cells: [row.name, row.value],
+  }))
 }
 
 const anyValue = (rows: ReadonlyArray<{ value: number }>): boolean => rows.some((r) => r.value > 0)
@@ -116,6 +134,7 @@ const TILE_ICONS: Record<string, ReactNode> = {
   longest: <History size={16} />,
 }
 
+// The only section with no drill-down row of its own: its one link is a case, so no filter.
 export function HeadlineTiles({ kpi, range }: Props) {
   const tiles = headlineTiles(kpi, range)
   const h = kpi.headline
@@ -146,13 +165,13 @@ export function HeadlineTiles({ kpi, range }: Props) {
 
 // --- 2. stay bands ----------------------------------------------------------------------------
 
-export function StayBandsSection({ kpi, range }: Props) {
+export function StayBandsSection({ kpi, range, filter }: Props) {
   if (!anyValue(kpi.stayBands)) return null
   return (
     <BarSection
       title="Stay bands"
       icon={<BarChart3 size={18} />}
-      rows={hbarRows(kpi.stayBands, range, 'stayband')}
+      rows={hbarRows(kpi.stayBands, range, 'stayband', filter)}
       color="accent"
       footnote="Total ED stay: registration to leaving, or to now for a case that is still open."
     />
@@ -161,7 +180,7 @@ export function StayBandsSection({ kpi, range }: Props) {
 
 // --- 4. the Adaa panel ------------------------------------------------------------------------
 
-export function AdaaPanel({ kpi, range }: Props) {
+export function AdaaPanel({ kpi, range, filter }: Props) {
   const rows = adaaRows(kpi.adaaOverall)
   const { painkillerYesN, pethidineYesN } = kpi.adaaOverall
   // The form's Pain Killer Statistics block. Nothing to show until a painkiller or a pethidine has
@@ -185,7 +204,7 @@ export function AdaaPanel({ kpi, range }: Props) {
         }))}
       />
       <PanelLabel>Treated within (door to disposition)</PanelLabel>
-      <DataTable head={['Band', 'Cases']} rows={countRows(kpi.treated, range, 'treated')} />
+      <DataTable head={['Band', 'Cases']} rows={countRows(kpi.treated, range, 'treated', filter)} />
       {pain ? (
         <div className="grid gap-x-6 sm:grid-cols-2" data-pain-block>
           <div>
@@ -196,7 +215,7 @@ export function AdaaPanel({ kpi, range }: Props) {
               head={['Band', 'Cases']}
               rows={kpi.painkiller.map((row) => ({
                 key: row.name,
-                href: href(range, 'painkiller', gridKey('band', row.name)),
+                href: href(range, filter, 'painkiller', gridKey('band', row.name)),
                 cells: [row.name, row.value],
               }))}
             />
@@ -209,7 +228,7 @@ export function AdaaPanel({ kpi, range }: Props) {
               head={['Dose', 'Cases']}
               rows={kpi.pethidine.map((row) => ({
                 key: row.name,
-                href: href(range, 'painkiller', gridKey('dose', row.name)),
+                href: href(range, filter, 'painkiller', gridKey('dose', row.name)),
                 cells: [row.name, row.value],
               }))}
             />
@@ -231,7 +250,7 @@ export function AdaaPanel({ kpi, range }: Props) {
 
 // --- 5. working targets -----------------------------------------------------------------------
 
-export function WorkingTargets({ kpi, range }: Props) {
+export function WorkingTargets({ kpi, range, filter }: Props) {
   if (!kpi.targets.some((t) => t.n > 0)) return null
   return (
     <DashSection title="Working targets" icon={<Check size={18} />}>
@@ -241,7 +260,7 @@ export function WorkingTargets({ kpi, range }: Props) {
         head={['Target', 'Within / n', 'Share']}
         rows={kpi.targets.map((row) => ({
           key: row.key,
-          href: href(range, 'target', row.key),
+          href: href(range, filter, 'target', row.key),
           cells: [
             row.name,
             `${row.within} / ${row.n}`,
@@ -263,7 +282,7 @@ export function WorkingTargets({ kpi, range }: Props) {
 
 // --- 6. admission to unit ---------------------------------------------------------------------
 
-export function AdmissionToUnit({ kpi, range }: Props) {
+export function AdmissionToUnit({ kpi, range, filter }: Props) {
   const groups = kpi.admissionToUnit.filter((g) => anyValue(g.bands))
   if (groups.length === 0) return null
   return (
@@ -275,7 +294,7 @@ export function AdmissionToUnit({ kpi, range }: Props) {
             head={['Order to left ED', 'Cases']}
             rows={group.bands.map((band) => ({
               key: band.name,
-              href: href(range, 'unitband', gridKey(group.unit, band.name)),
+              href: href(range, filter, 'unitband', gridKey(group.unit, band.name)),
               cells: [band.name, band.value],
             }))}
           />
@@ -290,7 +309,7 @@ export function AdmissionToUnit({ kpi, range }: Props) {
 
 // --- 7. turnaround, and exam to consult -------------------------------------------------------
 
-export function TurnaroundSection({ kpi, range }: Props) {
+export function TurnaroundSection({ kpi, range, filter }: Props) {
   const bands = TURNAROUND_BANDS.map((b) => b.name)
   const groups = kpi.turnaround.filter((g) => anyValue(g.orderToResult))
   if (groups.length === 0) return null
@@ -299,14 +318,14 @@ export function TurnaroundSection({ kpi, range }: Props) {
     name: investigationLabel(group.type),
     cells: group.orderToResult.map((band) => ({
       value: band.value,
-      href: href(range, 'turnaround', gridKey(group.type, band.name)),
+      href: href(range, filter, 'turnaround', gridKey(group.type, band.name)),
     })),
   }))
   const links = groups.flatMap((group) =>
     group.orderToResult.map((band) => ({
       name: `${investigationLabel(group.type)} ${band.name}`,
       value: band.value,
-      href: href(range, 'turnaround', gridKey(group.type, band.name)),
+      href: href(range, filter, 'turnaround', gridKey(group.type, band.name)),
     })),
   )
 
@@ -323,7 +342,7 @@ export function TurnaroundSection({ kpi, range }: Props) {
   )
 }
 
-export function ExamToConsultSection({ kpi, range }: Props) {
+export function ExamToConsultSection({ kpi, range, filter }: Props) {
   if (kpi.examToConsult.length === 0) return null
   return (
     <DashSection title="Exam to consult, median" icon={<Users size={18} />}>
@@ -331,7 +350,7 @@ export function ExamToConsultSection({ kpi, range }: Props) {
         head={['Team', 'Consults', 'Median']}
         rows={kpi.examToConsult.map((row) => ({
           key: row.name,
-          href: href(range, 'examconsult', row.name),
+          href: href(range, filter, 'examconsult', row.name),
           cells: [row.name, row.n, <Median key="m" value={row.med} n={row.n} />],
         }))}
       />
@@ -378,12 +397,12 @@ export function LongestStays({ kpi }: Props) {
 
 // --- 9. actions documented --------------------------------------------------------------------
 
-export function ActionsDocumented({ kpi, range }: Props) {
+export function ActionsDocumented({ kpi, range, filter }: Props) {
   const { any, none, byKind } = kpi.actions
   if (any.value === 0 && none.value === 0) return null
   return (
     <DashSection title="Actions documented" icon={<ListChecks size={18} />}>
-      <DataTable head={['Action', 'Cases']} rows={countRows([any, none, ...byKind], range, 'action')} />
+      <DataTable head={['Action', 'Cases']} rows={countRows([any, none, ...byKind], range, 'action', filter)} />
       <Footnote>
         Of the {kpi.headline.cases} {kpi.headline.cases === 1 ? 'case' : 'cases'} in this range. A case can carry
         several kinds, so the seven below add to more than the first row; &quot;No action documented&quot; is the
@@ -396,13 +415,13 @@ export function ActionsDocumented({ kpi, range }: Props) {
 
 // --- 10. outcomes, CTAS, area, repeats, documentation -----------------------------------------
 
-export function OutcomesSection({ kpi, range }: Props) {
+export function OutcomesSection({ kpi, range, filter }: Props) {
   if (kpi.outcomes.length === 0) return null
   return (
     <BarSection
       title="Outcomes"
       icon={<Check size={18} />}
-      rows={hbarRows(kpi.outcomes, range, 'outcome')}
+      rows={hbarRows(kpi.outcomes, range, 'outcome', filter)}
       color="ok"
       footnote="Resolved cases by disposition, then the cases still open."
     />
@@ -415,7 +434,7 @@ export function OutcomesSection({ kpi, range }: Props) {
  * "3 of 4" says something a bare 75 % does not — and the share itself is null below MIN_N and
  * renders "n<3", like every other share on this page.
  */
-export function DischargeCommunication({ kpi, range }: Props) {
+export function DischargeCommunication({ kpi, range, filter }: Props) {
   if (!kpi.communication.some((row) => row.n > 0)) return null
   return (
     <DashSection title="Discharge communication" icon={<Bell size={18} />}>
@@ -423,7 +442,7 @@ export function DischargeCommunication({ kpi, range }: Props) {
         head={['Question', 'Yes / n', 'Share']}
         rows={kpi.communication.map((row) => ({
           key: row.name,
-          href: href(range, 'communication', row.name),
+          href: href(range, filter, 'communication', row.name),
           cells: [
             row.name,
             `${row.within} / ${row.n}`,
@@ -442,7 +461,7 @@ export function DischargeCommunication({ kpi, range }: Props) {
   )
 }
 
-export function ByCtasSection({ kpi, range }: Props) {
+export function ByCtasSection({ kpi, range, filter }: Props) {
   if (!kpi.byCtas.some((r) => r.n > 0)) return null
   return (
     <DashSection title="By CTAS" icon={<LayoutList size={18} />}>
@@ -450,7 +469,7 @@ export function ByCtasSection({ kpi, range }: Props) {
         head={['CTAS', 'Cases', 'Median stay']}
         rows={kpi.byCtas.map((row) => ({
           key: row.name,
-          href: href(range, 'ctas', row.name),
+          href: href(range, filter, 'ctas', row.name),
           cells: [row.name, row.n, <Median key="m" value={row.med} n={row.n} />],
         }))}
       />
@@ -458,7 +477,7 @@ export function ByCtasSection({ kpi, range }: Props) {
   )
 }
 
-export function ByAreaSection({ kpi, range }: Props) {
+export function ByAreaSection({ kpi, range, filter }: Props) {
   // Nothing to show until an area is recorded on at least one case: a table whose only row is
   // "Not recorded" tells the reader nothing they did not already know.
   if (!kpi.byArea.some((r) => r.name !== NOT_RECORDED && r.n > 0)) return null
@@ -468,7 +487,7 @@ export function ByAreaSection({ kpi, range }: Props) {
         head={['Area', 'Cases', 'Median stay']}
         rows={kpi.byArea.map((row) => ({
           key: row.name,
-          href: href(range, 'area', row.name),
+          href: href(range, filter, 'area', row.name),
           cells: [row.name, row.n, <Median key="m" value={row.med} n={row.n} />],
         }))}
       />
@@ -476,7 +495,7 @@ export function ByAreaSection({ kpi, range }: Props) {
   )
 }
 
-export function RepeatVisits({ kpi, range }: Props) {
+export function RepeatVisits({ kpi, range, filter }: Props) {
   if (kpi.repeats.length === 0) return null
   return (
     <DashSection title="Repeat visits" icon={<History size={18} />}>
@@ -484,7 +503,7 @@ export function RepeatVisits({ kpi, range }: Props) {
         head={['MRN', 'Cases in range']}
         rows={kpi.repeats.map((row) => ({
           key: row.mrn,
-          href: href(range, 'repeat', row.mrn),
+          href: href(range, filter, 'repeat', row.mrn),
           cells: [<span key="m" className="num">{row.mrn}</span>, row.ids.length],
         }))}
       />
@@ -493,11 +512,11 @@ export function RepeatVisits({ kpi, range }: Props) {
   )
 }
 
-export function DocumentationSection({ kpi, range }: Props) {
+export function DocumentationSection({ kpi, range, filter }: Props) {
   if (!anyValue(kpi.completeness)) return null
   return (
     <DashSection title="Documentation" icon={<FileText size={18} />}>
-      <DataTable head={['Check', 'Cases']} rows={countRows(kpi.completeness, range, 'quality')} />
+      <DataTable head={['Check', 'Cases']} rows={countRows(kpi.completeness, range, 'quality', filter)} />
       <Footnote>What is missing or contradictory on the record, so it can be fixed while the case is fresh.</Footnote>
     </DashSection>
   )
@@ -511,7 +530,7 @@ export function DocumentationSection({ kpi, range }: Props) {
  * the phases with a median and a share, the longest phase per case, then the stages of each
  * phase. Every row drills down; the grid key is `phase|what`.
  */
-export function WhereTimeGoesSection({ kpi, range }: Props) {
+export function WhereTimeGoesSection({ kpi, range, filter }: Props) {
   const { phases, completeN } = kpi.phases
   if (!phases.some((p) => p.n > 0)) return null
   return (
@@ -520,7 +539,7 @@ export function WhereTimeGoesSection({ kpi, range }: Props) {
         head={['Phase', 'Cases', 'Median', 'Share']}
         rows={phases.map((p) => ({
           key: p.key,
-          href: href(range, 'phase', gridKey(p.key, 'median')),
+          href: href(range, filter, 'phase', gridKey(p.key, 'median')),
           cells: [
             p.name,
             p.n,
@@ -537,7 +556,7 @@ export function WhereTimeGoesSection({ kpi, range }: Props) {
         head={['Phase', 'Cases']}
         rows={phases.map((p) => ({
           key: `longest-${p.key}`,
-          href: href(range, 'phase', gridKey(p.key, 'longest')),
+          href: href(range, filter, 'phase', gridKey(p.key, 'longest')),
           cells: [p.name, p.longestN],
         }))}
       />
@@ -548,7 +567,7 @@ export function WhereTimeGoesSection({ kpi, range }: Props) {
             head={['Stage', 'Cases']}
             rows={p.stages.map((s) => ({
               key: `${p.key}-${s.name}`,
-              href: href(range, 'phase', gridKey(p.key, s.name)),
+              href: href(range, filter, 'phase', gridKey(p.key, s.name)),
               cells: [s.name, s.value],
             }))}
           />
@@ -564,7 +583,7 @@ export function WhereTimeGoesSection({ kpi, range }: Props) {
 }
 
 /** Nothing to show until a payer is recorded on at least one case, as with the ED area. */
-export function ByPayerSection({ kpi, range }: Props) {
+export function ByPayerSection({ kpi, range, filter }: Props) {
   if (!kpi.byPayer.some((r) => r.name !== NOT_RECORDED && r.n > 0)) return null
   return (
     <DashSection title="By payer" icon={<Users size={18} />}>
@@ -572,7 +591,7 @@ export function ByPayerSection({ kpi, range }: Props) {
         head={['Payer', 'Cases', 'Median stay']}
         rows={kpi.byPayer.map((row) => ({
           key: row.name,
-          href: href(range, 'payer', row.name),
+          href: href(range, filter, 'payer', row.name),
           cells: [row.name, row.n, <Median key="m" value={row.med} n={row.n} />],
         }))}
       />

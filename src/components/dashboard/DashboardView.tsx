@@ -51,24 +51,53 @@ import {
   WorkingTargets,
   hbarRows,
 } from '@/src/components/dashboard/sections'
+import { FilterBar } from '@/src/components/filter/FilterBar'
 import { PageHeader } from '@/src/components/shell/PageHeader'
 import { RANGE_LABELS, dashboardHref, drillKey, type DrillSection } from '@/src/lib/dashboard/drill'
 import { RANGES, type Range, type dashboard } from '@/src/lib/domain/aggregates'
+import {
+  EMPTY_FILTER,
+  describeFilter,
+  isEmptyFilter,
+  type CaseFilter,
+  type FilterOptions,
+} from '@/src/lib/domain/case-filter'
 import { SHIFT_LABELS } from '@/src/lib/domain/taxonomy'
 import { weekPoint } from '@/src/lib/dashboard/weeks'
 import { MIN_N } from '@/src/lib/domain/time'
 
 type DashboardData = ReturnType<typeof dashboard>
 
-export function DashboardView({ data, range }: { data: DashboardData; range: Range }) {
+export function DashboardView({
+  data,
+  range,
+  filter = EMPTY_FILTER,
+  filterOptions,
+}: {
+  data: DashboardData
+  range: Range
+  /** The Phase 10 case filter the page is drawn over; every number above is already narrowed by it. */
+  filter?: CaseFilter
+  filterOptions: FilterOptions
+}) {
+  const filtered = !isEmptyFilter(filter)
   return (
     <div className="dash">
       <PageHeader
         title="Dashboard"
         subtitle={
-          <p className="num mt-0.5 text-[14px] text-muted" data-subtitle>
-            {data.inRange} of {data.total} cases
-          </p>
+          <>
+            <p className="num mt-0.5 text-[14px] text-muted" data-subtitle>
+              {data.inRange} of {data.total} cases
+            </p>
+            {/* What the page is counting, said in words directly under the count it changed. A
+                filtered dashboard that does not say so is a wrong number with a confident face. */}
+            {filtered ? (
+              <p className="mt-0.5 text-caption text-muted" data-filter-note>
+                Filtered: {describeFilter(filter, filterOptions)}
+              </p>
+            ) : null}
+          </>
         }
       />
 
@@ -76,7 +105,7 @@ export function DashboardView({ data, range }: { data: DashboardData; range: Ran
         {RANGES.map((option) => (
           <Link
             key={option}
-            href={dashboardHref(option)}
+            href={dashboardHref(option, null, filter)}
             aria-current={option === range ? 'true' : undefined}
             className={`inline-flex min-h-11 items-center rounded-chip border px-3.5 text-[14px] ${
               option === range
@@ -89,7 +118,14 @@ export function DashboardView({ data, range }: { data: DashboardData; range: Ran
         ))}
       </div>
 
-      <DashboardBody data={data} range={range} />
+      <FilterBar
+        basePath="/dashboard"
+        baseQuery={range === '30' ? '' : `r=${range}`}
+        filter={filter}
+        options={filterOptions}
+      />
+
+      <DashboardBody data={data} range={range} filter={filter} />
     </div>
   )
 }
@@ -108,14 +144,17 @@ export function DashboardView({ data, range }: { data: DashboardData; range: Ran
 export function DashboardBody({
   data,
   range,
+  filter,
   variant = 'screen',
 }: {
   data: DashboardData
   range: Range
+  filter?: CaseFilter
   variant?: 'screen' | 'report'
 }) {
   const { admission, kpi } = data
-  const href = (section: DrillSection, name: string | number) => dashboardHref(range, drillKey(section, name))
+  const href = (section: DrillSection, name: string | number) =>
+    dashboardHref(range, drillKey(section, name), filter)
 
   const thresholdRows: TableRow[] = data.thresholds.map((row) => ({
     key: String(row.threshold),
@@ -160,16 +199,16 @@ export function DashboardBody({
   /** What a printed report opens with, and what the screen keeps further down the page. */
   const lead = (
     <>
-      <StayBandsSection kpi={kpi} range={range} />
-      <AdaaPanel kpi={kpi} range={range} />
-      <WorkingTargets kpi={kpi} range={range} />
-      <WhereTimeGoesSection kpi={kpi} range={range} />
+      <StayBandsSection kpi={kpi} range={range} filter={filter} />
+      <AdaaPanel kpi={kpi} range={range} filter={filter} />
+      <WorkingTargets kpi={kpi} range={range} filter={filter} />
+      <WhereTimeGoesSection kpi={kpi} range={range} filter={filter} />
     </>
   )
 
   return (
     <>
-      <HeadlineTiles kpi={kpi} range={range} />
+      <HeadlineTiles kpi={kpi} range={range} filter={filter} />
 
       {variant === 'report' ? lead : null}
 
@@ -191,8 +230,8 @@ export function DashboardBody({
         </section>
       ) : (
         <>
-          {variant === 'screen' ? <StayBandsSection kpi={kpi} range={range} /> : null}
-          {variant === 'screen' ? <WhereTimeGoesSection kpi={kpi} range={range} /> : null}
+          {variant === 'screen' ? <StayBandsSection kpi={kpi} range={range} filter={filter} /> : null}
+          {variant === 'screen' ? <WhereTimeGoesSection kpi={kpi} range={range} filter={filter} /> : null}
 
           {data.weeks.length > 1 && (
             <DashSection title="By week: cases and median stay" icon={<Activity size={18} />}>
@@ -212,7 +251,7 @@ export function DashboardBody({
           <BarSection
             title="Primary delay reason"
             icon={<TriangleAlert size={18} />}
-            rows={hbarRows(data.byPrimary, range, 'primary')}
+            rows={hbarRows(data.byPrimary, range, 'primary', filter)}
             color="accent"
           />
           {/* The weekly deck's "delay pathway" classification, expressed through the locked stage
@@ -220,7 +259,7 @@ export function DashboardBody({
           <BarSection
             title="Pathways"
             icon={<Activity size={18} />}
-            rows={hbarRows(data.byStage, range, 'stage')}
+            rows={hbarRows(data.byStage, range, 'stage', filter)}
             color="ink"
             unit={`of ${data.inRange} cases`}
             footnote="The journey stage each delay reason belongs to. A case whose reasons span several stages is counted in each, so the bars add to more than the number of cases."
@@ -228,20 +267,20 @@ export function DashboardBody({
           <BarSection
             title="Departments involved"
             icon={<Users size={18} />}
-            rows={hbarRows(data.byDept, range, 'dept')}
+            rows={hbarRows(data.byDept, range, 'dept', filter)}
             color="plum"
           />
 
           {variant === 'screen' ? (
             <>
-              <AdaaPanel kpi={kpi} range={range} />
-              <WorkingTargets kpi={kpi} range={range} />
+              <AdaaPanel kpi={kpi} range={range} filter={filter} />
+              <WorkingTargets kpi={kpi} range={range} filter={filter} />
             </>
           ) : null}
 
-          <AdmissionToUnit kpi={kpi} range={range} />
-          <TurnaroundSection kpi={kpi} range={range} />
-          <ExamToConsultSection kpi={kpi} range={range} />
+          <AdmissionToUnit kpi={kpi} range={range} filter={filter} />
+          <TurnaroundSection kpi={kpi} range={range} filter={filter} />
+          <ExamToConsultSection kpi={kpi} range={range} filter={filter} />
 
           <DashSection title="Consulted team response, median" icon={<Users size={18} />}>
             {consultRows.length ? (
@@ -292,8 +331,8 @@ export function DashboardBody({
             )}
           </DashSection>
 
-          <LongestStays kpi={kpi} range={range} />
-          <ActionsDocumented kpi={kpi} range={range} />
+          <LongestStays kpi={kpi} range={range} filter={filter} />
+          <ActionsDocumented kpi={kpi} range={range} filter={filter} />
 
           {shiftRows.length > 0 && (
             <DashSection title="By shift" icon={<History size={18} />}>
@@ -305,18 +344,18 @@ export function DashboardBody({
             <BarSection
               title="By day of week"
               icon={<BarChart3 size={18} />}
-              rows={hbarRows(data.byWeekday, range, 'weekday')}
+              rows={hbarRows(data.byWeekday, range, 'weekday', filter)}
               color="muted"
             />
           )}
 
-          <OutcomesSection kpi={kpi} range={range} />
-          <DischargeCommunication kpi={kpi} range={range} />
-          <ByCtasSection kpi={kpi} range={range} />
-          <ByAreaSection kpi={kpi} range={range} />
-          <ByPayerSection kpi={kpi} range={range} />
-          <RepeatVisits kpi={kpi} range={range} />
-          <DocumentationSection kpi={kpi} range={range} />
+          <OutcomesSection kpi={kpi} range={range} filter={filter} />
+          <DischargeCommunication kpi={kpi} range={range} filter={filter} />
+          <ByCtasSection kpi={kpi} range={range} filter={filter} />
+          <ByAreaSection kpi={kpi} range={range} filter={filter} />
+          <ByPayerSection kpi={kpi} range={range} filter={filter} />
+          <RepeatVisits kpi={kpi} range={range} filter={filter} />
+          <DocumentationSection kpi={kpi} range={range} filter={filter} />
 
           <DashSection title={`Other reasons awaiting review (${data.otherQueue.length})`} icon={<Ellipsis size={18} />}>
             {data.otherQueue.length === 0 ? (

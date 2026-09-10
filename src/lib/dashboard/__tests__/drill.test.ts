@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { FIXTURE, NOW } from '@/src/lib/domain/__tests__/aggregates.fixture'
 import { dashboard } from '@/src/lib/domain/aggregates'
+import { EMPTY_FILTER } from '@/src/lib/domain/case-filter'
 import {
   DEFAULT_RANGE,
   DRILL_SECTIONS,
@@ -84,6 +85,26 @@ describe('dashboardHref', () => {
       '/dashboard?drill=primary%3ALab%3A+delay+in+processing',
     )
     expect(dashboardHref('7', 'threshold:6')).toBe('/dashboard?r=7&drill=threshold%3A6')
+  })
+
+  /**
+   * Phase 10. The filter is appended after `r` and `drill`, and an empty one is not appended at
+   * all — which is what keeps every string above exactly what it was before the filter existed.
+   */
+  it('emits nothing at all for an empty filter, however it is passed', () => {
+    expect(dashboardHref('30', null, EMPTY_FILTER)).toBe('/dashboard')
+    expect(dashboardHref('7', null, EMPTY_FILTER)).toBe('/dashboard?r=7')
+    expect(dashboardHref('7', 'threshold:6', EMPTY_FILTER)).toBe('/dashboard?r=7&drill=threshold%3A6')
+    // The two modes alone are not a selection, so they are not a filter and emit nothing.
+    expect(dashboardHref('30', null, { ...EMPTY_FILTER, not: true, lone: true })).toBe('/dashboard')
+  })
+
+  it('appends the filter after the range and the drill key', () => {
+    const filter = { ...EMPTY_FILTER, stage: ['adm', 'inv'], payer: ['INSURED' as const], not: true }
+    expect(dashboardHref('30', null, filter)).toBe('/dashboard?stage=adm&stage=inv&payer=INSURED&not=1')
+    expect(dashboardHref('7', 'threshold:6', filter)).toBe(
+      '/dashboard?r=7&drill=threshold%3A6&stage=adm&stage=inv&payer=INSURED&not=1',
+    )
   })
 })
 

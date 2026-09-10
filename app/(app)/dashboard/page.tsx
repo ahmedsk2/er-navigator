@@ -3,9 +3,11 @@ import { DashboardView } from '@/src/components/dashboard/DashboardView'
 import { DrillView } from '@/src/components/dashboard/DrillView'
 import { requireAction } from '@/src/lib/auth/session'
 import { loadBoardRowsByIds } from '@/src/lib/board/load'
+import { loadReference } from '@/src/lib/cases/reference'
 import { parseDrill, parseRange, resolveDrill } from '@/src/lib/dashboard/drill'
 import { loadCasesForStats } from '@/src/lib/dashboard/load'
 import { dashboard } from '@/src/lib/domain/aggregates'
+import { filterOptionsOf, matchesFilter, parseCaseFilter } from '@/src/lib/domain/case-filter'
 
 export const metadata: Metadata = { title: 'Dashboard · ER Navigator' }
 export const dynamic = 'force-dynamic'
@@ -21,28 +23,37 @@ export const dynamic = 'force-dynamic'
  * same aggregates. `now` is the request time and the page does not poll: leadership reads this
  * on a laptop and reloads it, unlike the board, which a nurse leaves open on a phone all shift.
  *
+ * The Phase 10 case filter is applied to the loaded cases BEFORE `dashboard()` runs, so every
+ * section, the headline, `total` and the previous period are all over the same filtered
+ * population — there is no half-filtered figure on the page, because there is only one call.
+ * `total` narrowing with it is the point: "6 of 9 cases" under a filter means six of the nine
+ * cases the filter kept, which is what the footnote under it says in words.
+ *
  * An unresolvable `?drill=` — a section this page does not have, or a row that has fallen out of
  * the chosen range — renders the dashboard. A bad query string is a stale bookmark, not an error.
  */
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ r?: string | string[]; drill?: string | string[] }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   await requireAction('dashboard.view')
   const params = await searchParams
   const range = parseRange(params.r)
+  const filter = parseCaseFilter(params)
   const now = new Date()
 
-  const cases = await loadCasesForStats()
+  const [loaded, reference] = await Promise.all([loadCasesForStats(), loadReference()])
+  const cases = loaded.filter((c) => matchesFilter(c, filter))
   const data = dashboard(cases, range, now)
+  const filterOptions = filterOptionsOf(reference)
 
   const key = parseDrill(params.drill)
   const drill = key ? resolveDrill(data, key) : null
   if (drill) {
     const rows = await loadBoardRowsByIds(drill.ids)
-    return <DrillView label={drill.label} rows={rows} range={range} now={now} />
+    return <DrillView label={drill.label} rows={rows} range={range} filter={filter} now={now} />
   }
 
-  return <DashboardView data={data} range={range} />
+  return <DashboardView data={data} range={range} filter={filter} filterOptions={filterOptions} />
 }

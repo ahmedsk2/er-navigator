@@ -11,6 +11,7 @@
  * ("Lab: delay in processing").
  */
 import { RANGES, type Range } from '@/src/lib/domain/aggregates'
+import { caseFilterQuery, type CaseFilter } from '@/src/lib/domain/case-filter'
 import { NOT_RECORDED } from '@/src/lib/domain/kpi'
 import { DISPOSITION_LABELS, INVESTIGATION_LABELS, SHIFT_LABELS } from '@/src/lib/domain/taxonomy'
 
@@ -100,12 +101,19 @@ export function drillKey(section: DrillSection, name: string | number): string {
   return `${section}:${name}`
 }
 
-/** The canonical URL for a range, with or without a drill-down. `r=30` is left implicit. */
-export function dashboardHref(range: Range, drill?: string | null): string {
+/**
+ * The canonical URL for a range, with or without a drill-down. `r=30` is left implicit.
+ *
+ * The Phase 10 case filter is appended after both, and an empty one adds nothing — so every link
+ * on an unfiltered dashboard is the string it was before the filter existed, and every link on a
+ * filtered one carries the filter, which is what makes a drill-down stay inside the population
+ * the reader was looking at.
+ */
+export function dashboardHref(range: Range, drill?: string | null, filter?: CaseFilter): string {
   const params = new URLSearchParams()
   if (range !== DEFAULT_RANGE) params.set('r', range)
   if (drill) params.set('drill', drill)
-  const search = params.toString()
+  const search = [params.toString(), filter ? caseFilterQuery(filter) : ''].filter(Boolean).join('&')
   return search ? `/dashboard?${search}` : '/dashboard'
 }
 

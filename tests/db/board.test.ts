@@ -360,11 +360,14 @@ describe('loadBoard', () => {
     const all = await loadBoard('open', now)
     const narrowed = await loadBoard('open', now, { ...EMPTY_FILTER, stage: ['inv'] })
 
-    expect(narrowed.rows.length).toBeLessThanOrEqual(all.rows.length)
+    // Narrowed to this file's own rows: the suite shares one database, and another spec file
+    // opening a case between the two loads would move a whole-database figure without saying
+    // anything about what the filter did.
+    expect(myOpen(narrowed.openRegistrations).length).toBeLessThan(myOpen(all.openRegistrations).length)
+    for (const iso of myOpen(narrowed.openRegistrations)) expect(myOpen(all.openRegistrations)).toContain(iso)
     expect(narrowed.openRegistrations.length).toBe(narrowed.rows.length)
     // The denominator is the whole open board, whatever the filter kept.
     expect(narrowed.totalOpen).toBeGreaterThanOrEqual(narrowed.openRegistrations.length)
-    expect(narrowed.totalOpen).toBe(all.openRegistrations.length)
     // On the Resolved tab the strip is over the filtered OPEN cases, not the rows on screen.
     const onResolved = await loadBoard('resolved', now, { ...EMPTY_FILTER, stage: ['inv'] })
     expect(myOpen(onResolved.openRegistrations)).toEqual(myOpen(narrowed.openRegistrations))
