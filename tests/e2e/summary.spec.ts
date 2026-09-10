@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { prisma } from '../../src/lib/db'
 import { BOARD_MRN_PREFIX, LONGEST, VOIDED } from './fixtures/board-cases'
-import { fromClientIp, signIn } from './fixtures/case-flow'
+import { fromClientIp, signIn, uniqueMrn } from './fixtures/case-flow'
 import { E2E_USERS } from './fixtures/seed-users'
 
 /**
@@ -16,6 +16,9 @@ import { E2E_USERS } from './fixtures/seed-users'
  * Both projects make the press the way their user would: a finger on the phone, a mouse on the
  * laptop. The point pressed is proven first to be the scrim on top with the control a ghost click
  * would hit underneath, so a green run cannot mean the press simply missed.
+ *
+ * The board's panel belongs to the board and not to the row it summarises, so a poll that drops
+ * the row leaves it open (the same review).
  *
  * The route the board's row button reads is held to its two guards: a live session (proxy.ts turns
  * away a request with no cookie at all, the route's own requireUser one whose cookie matches no
@@ -209,6 +212,81 @@ test('a press that starts or ends inside the panel leaves it open', async ({ pag
   // And a plain click on the same point does close it, so the two above did reach the scrim.
   await page.mouse.click(outside.x, outside.y)
   await expect(dialog).toHaveCount(0)
+})
+
+/**
+ * The panel used to be rendered inside the row it summarises, so when the 30 s poll dropped that
+ * row — a colleague resolved the case, or edited it out of the filter — the panel went with it,
+ * mid-read, and the keyboard fell to <body>. Now the row can go and the panel stays until it is
+ * closed; closing it puts the keyboard on the search box, since the button that opened it is gone.
+ *
+ * A case of the test's own, so resolving it disturbs no fixture another test reads. It is written
+ * and resolved straight in the database, as the fixtures are: the board cannot tell that from a
+ * colleague's save, and the editor's resolve flow is cases.spec.ts's to test.
+ */
+test('a row summary outlives its row leaving the board, and closing it lands on the search box', async ({ page }) => {
+  test.setTimeout(90_000)
+  const mrn = uniqueMrn()
+  const [navigator, reason] = await Promise.all([
+    prisma.user.findUniqueOrThrow({ where: { username: E2E_USERS.navigator.username }, select: { id: true } }),
+    prisma.reason.findFirstOrThrow({
+      where: { name: LONGEST.reason.name, stage: { code: LONGEST.reason.stage } },
+      select: { id: true },
+    }),
+  ])
+  const registrationAt = new Date(Date.now() - 5 * 36e5)
+  const created = await prisma.case.create({
+    data: {
+      mrn,
+      registrationAt,
+      openedAt: registrationAt,
+      openedById: navigator.id,
+      primaryReasonId: reason.id,
+      reasons: { create: [{ reasonId: reason.id }] },
+    },
+    select: { id: true },
+  })
+
+  await fromClientIp(page, '198.51.100.202')
+  await signIn(page, E2E_USERS.navigator)
+  await page.getByLabel('Search MRN').fill(mrn)
+  const row = page.locator(`a[data-mrn="${mrn}"]`)
+  await expect(row).toBeVisible()
+  await page.locator(`[data-summary-for="${mrn}"]`).click()
+  const dialog = page.getByRole('dialog', { name: 'Case summary' })
+  await expect(dialog.getByRole('row', { name: /^MRN/ })).toContainText(mrn)
+
+  // A colleague resolves it. The wait is for the first poll to answer without it, whenever that
+  // is: a poll already in flight when the case changed can still list it.
+  const dropped = page.waitForResponse(
+    async (response) =>
+      /\/api\/board\?/.test(response.url()) &&
+      response.ok() &&
+      !((await response.json()) as { rows: Array<{ mrn: string }> }).rows.some((r) => r.mrn === mrn),
+    { timeout: 45_000 },
+  )
+  const leftAt = new Date()
+  await prisma.case.update({
+    where: { id: created.id },
+    data: {
+      status: 'RESOLVED',
+      departedAt: leftAt,
+      resolvedAt: leftAt,
+      disposition: 'DISCHARGED_HOME',
+      version: { increment: 1 },
+    },
+  })
+  await dropped
+
+  // The row has gone — the search now matches nothing at all — and the panel is still open.
+  await expect(row).toHaveCount(0)
+  await expect(page.getByText(`No case matching ${mrn}.`)).toBeVisible()
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('row', { name: /^MRN/ })).toContainText(mrn)
+
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByLabel('Search MRN')).toBeFocused()
 })
 
 test('GET /api/cases/[id]/summary answers 401 without a live session, and is never cached', async ({ request }) => {
