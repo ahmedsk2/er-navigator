@@ -3,17 +3,23 @@
  * dressed as a card in Phase 9 (Ahmed's direction A of 10 September):
  *
  *   phone                                    laptop
- *   ┌──────────────────────────────┐         MRN   Registered  Waiting on   Last update  Elapsed
- *   │ MRN [chips] reg dd/mm HH:mm  │         ─────────────────────────────────────────────────
- *   │ primary reason · teams       │  6h05m  │ MRN  reg dd/mm  reason · teams   No update  6h05m│
- *   │ No update for 3h 10m         │         └───────────────────────────────────────────────┘
- *   └──────────────────────────────┘
+ *   ┌───────────────────────────────┐  ┌──┐   MRN  Registered  Waiting on  Last update  Elapsed
+ *   │ MRN [chips] reg dd/mm  6h05m  │  │ ▤│   ┌────────────────────────────────────────────────┐
+ *   │ primary reason · teams        │  └──┘   │ MRN  reg dd/mm  reason · teams  No upd.  6h05m │  ▤
+ *   │ No update for 3h 10m          │         └────────────────────────────────────────────────┘
+ *   └───────────────────────────────┘
  *
- * One `<a>`, one grid, two templates. The phone places its cells explicitly — three stacked lines
- * beside a pill that spans them — and the laptop drops that placement and lets five columns fill
- * themselves in source order. The MRN, the chips and the stamp are one wrapping line on the phone
- * and the first two columns on the laptop, which is what the `lg:contents` wrapper buys: one
- * markup, no duplicated DOM. The text, the order and every `data-*` hook are what they were.
+ * One `<a>`, one grid, two templates. The phone places its cells explicitly — the identity line
+ * beside the elapsed pill, then the reason and the last line across the whole card — and the
+ * laptop drops that placement and lets five columns fill themselves in source order. The MRN, the
+ * chips and the stamp are one wrapping line on the phone and the first two columns on the laptop,
+ * which is what the `lg:contents` wrapper buys: one markup, no duplicated DOM. The text, the
+ * order and every `data-*` hook are what they were.
+ *
+ * Phase 10 is why the phone's lower two lines span both columns rather than running up to a pill
+ * that spans all three rows: the summary button takes about fifty pixels off the card, and the
+ * reason — the one thing a charge nurse scans a board for — has to stay readable. The pill is
+ * 48 px tall in a 90 px card, so those two lines were reaching past empty space to get to it.
  *
  * The 6 px band stripe is gone. Its job — the threshold, read from across a corridor — is now the
  * elapsed clock itself, filled with the band's own colour (`BAND_PILL`, whose contrast with white
@@ -21,8 +27,9 @@
  * carrying the colour and the number beats two, and it survives the five-column row, where a
  * stripe on the far left would be 900 px from the time it describes.
  *
- * Phase 10 adds one control beside the card: the summary button, a sibling of the link inside the
- * `<li>`, standing in the gutter the desktop label strip now reserves as its sixth column.
+ * The control beside the card is the Phase 10 summary button: a sibling of the link inside the
+ * `<li>`, never a descendant of it, standing in the gutter the desktop label strip reserves as an
+ * empty sixth column.
  *
  * No `'use client'` of its own: the board renders it inside a client component, the dashboard
  * (Phase 4) reuses it from a server component, and it has no state either way. The summary button
@@ -122,7 +129,7 @@ export function BoardRowItem({ row, now }: { row: BoardRow; now: Date }) {
           in source order, so a second top-level child here would push the last update and the
           clock one column along.
         */}
-        <span className={`col-start-1 row-start-2 mt-[3px] block min-w-0 lg:mt-0 ${CELL_RESET}`}>
+        <span className={`col-start-1 col-span-2 row-start-2 mt-[3px] block min-w-0 lg:mt-0 ${CELL_RESET}`}>
           {row.diagnosis ? (
             <span data-diagnosis={row.diagnosis} className="block truncate text-caption text-ink-2">
               {row.diagnosis}
@@ -133,7 +140,7 @@ export function BoardRowItem({ row, now }: { row: BoardRow; now: Date }) {
 
         {row.status === 'RESOLVED' ? (
           <span
-            className={`col-start-1 row-start-3 flex flex-wrap items-baseline gap-x-1.5 text-caption text-band-ok ${CELL_RESET}`}
+            className={`col-start-1 col-span-2 row-start-3 flex flex-wrap items-baseline gap-x-1.5 text-caption text-band-ok ${CELL_RESET}`}
           >
             <span>{resolvedText(row)}</span>
             {/* Phase 8b: a supervisor has read this one. The chip and nothing else — who and
@@ -149,7 +156,7 @@ export function BoardRowItem({ row, now }: { row: BoardRow; now: Date }) {
           </span>
         ) : (
           <span
-            className={`num col-start-1 row-start-3 block text-caption ${stale ? 'font-semibold text-band-h4-ink' : 'text-muted'} ${CELL_RESET}`}
+            className={`num col-start-1 col-span-2 row-start-3 block text-caption ${stale ? 'font-semibold text-band-h4-ink' : 'text-muted'} ${CELL_RESET}`}
           >
             {stalenessText(idle)}
           </span>
@@ -158,7 +165,7 @@ export function BoardRowItem({ row, now }: { row: BoardRow; now: Date }) {
         {/* The eye reads "6h 05m"; a screen reader would say "six h zero five m", so the row's
             clock carries the whole sentence and the tabular text is hidden from it. */}
         <span
-          className={`num col-start-2 row-start-1 row-span-3 self-center justify-self-end rounded-button px-2.5 py-1.5 text-center text-rowclock whitespace-nowrap ${BAND_PILL[rowBand]} ${CELL_RESET}`}
+          className={`num col-start-2 row-start-1 self-center justify-self-end rounded-button px-2.5 py-1.5 text-center text-rowclock whitespace-nowrap ${BAND_PILL[rowBand]} ${CELL_RESET}`}
         >
           <span className="sr-only">In the Emergency Department {spokenHours(hours)}</span>
           <span aria-hidden="true">{fmtHours(hours)}</span>

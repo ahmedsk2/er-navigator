@@ -18,7 +18,7 @@
  * It is "as of page load", exactly like the Timeline section beside it: the clock on it does not
  * tick, and the panel says so.
  */
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { X } from '@/src/components/icons'
 import { Button } from '@/src/components/ui'
 import { fmtStamp } from '@/src/lib/cases/local-time'
@@ -51,7 +51,6 @@ export function CaseSummaryDialog({ summary, onClose }: { summary: CaseSummary; 
   const [copyNote, setCopyNote] = useState<string | null>(null)
   /** True once the clipboard API has refused us and the text is on screen to be selected by hand. */
   const [selectable, setSelectable] = useState(false)
-  const labelId = useId()
 
   // Escape and a tap outside, the two ways out of a panel on a phone (the OverflowMenu pattern).
   useEffect(() => {
@@ -116,18 +115,21 @@ export function CaseSummaryDialog({ summary, onClose }: { summary: CaseSummary; 
         role="dialog"
         aria-modal="true"
         aria-label="Case summary"
-        aria-labelledby={labelId}
         tabIndex={-1}
         data-summary-dialog
         className="max-h-[88vh] w-full max-w-[560px] overflow-y-auto rounded-t-sheet border border-line bg-panel shadow-sheet focus:outline-none sm:rounded-card sm:shadow-float"
       >
         <div className="sticky top-0 flex items-center justify-between gap-2 border-b border-line bg-panel px-4 py-3">
-          <h2 id={labelId} className="m-0 text-section">
-            Case {summary.mrn}
-          </h2>
+          {/*
+            "Case summary", not "Case {mrn}": the case page's own h1 is already "Case {mrn}" and
+            two headings of that name on one screen is a selector collision the whole suite would
+            have to work around. The MRN sits beside it, and is the first row of the table below.
+          */}
+          <h2 className="m-0 text-section">Case summary</h2>
+          <span className="num ml-auto mr-1 text-label text-muted">MRN {summary.mrn}</span>
           <button
             type="button"
-            aria-label="Close"
+            aria-label="Close summary"
             onClick={onClose}
             className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-button text-ink-2"
           >
