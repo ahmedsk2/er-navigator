@@ -155,12 +155,24 @@ test('the filter narrows the board, says so, and the poll keeps it', async ({ pa
   const [, shown, total] = /^(\d+) of (\d+) open cases$/.exec(countLine) ?? []
   expect(Number(total), countLine).toBeGreaterThan(Number(shown))
 
-  // The 30 s poll carries the filter: a board narrowed to one stage must stay narrowed.
-  const polled = await page.waitForRequest((request) => /\/api\/board\?/.test(request.url()), {
+  // The 30 s poll carries the filter, and its answer keeps it: a board narrowed to one stage must
+  // stay narrowed. The answer and not just the request, because a route that ignored the filter
+  // would still have been asked with it. Then the board itself, read again once the answer has
+  // had two frames to be drawn, so the rows counted are the poll's and not the first paint's.
+  const polled = await page.waitForResponse((response) => /\/api\/board\?/.test(response.url()), {
     timeout: 45_000,
   })
   expect(polled.url()).toContain('stage=inv')
+  expect(polled.status()).toBe(200)
+  const answer = (await polled.json()) as { rows: Array<{ mrn: string; stageCodes: string[] }> }
+  expect(answer.rows.map((r) => r.mrn)).toContain('3100003')
+  expect(answer.rows.filter((r) => !r.stageCodes.includes('inv')).map((r) => r.mrn)).toEqual([])
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  )
   await expect(rowFor(page, '3100003')).toBeVisible()
+  await expect(rowFor(page, LONGEST.mrn)).toHaveCount(0)
+  await expect(page.locator('a[data-mrn]')).toHaveCount(1)
 
   // Dropping the chip is the same navigation as Clear, and the whole board comes back.
   await page.getByRole('button', { name: 'Remove Stage: Investigations' }).click()
