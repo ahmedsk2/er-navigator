@@ -125,6 +125,9 @@ export function FilterBar({
   const [draft, setDraft] = useState<CaseFilter>(filter)
   const panel = useRef<HTMLDivElement | null>(null)
   const toggle = useRef<HTMLButtonElement | null>(null)
+  const dim = useRef<HTMLDivElement | null>(null)
+  /** Whether the press in progress began on the phone's dim: the only press its click may close on. */
+  const pressOnDim = useRef(false)
 
   const chips = useMemo(() => filterChips(filter, options), [filter, options])
   const active = !isEmptyFilter(filter)
@@ -149,7 +152,8 @@ export function FilterBar({
     setOpen(true)
   }
 
-  // Escape, and a tap anywhere that is neither the panel nor the button that opened it.
+  // Escape, and a press anywhere that is neither the panel nor the button that opened it — which
+  // is the laptop's popover. A press on the phone's dim is left to the dim's own click, below.
   useEffect(() => {
     if (!open) return
     const onKey = (event: KeyboardEvent) => {
@@ -157,7 +161,8 @@ export function FilterBar({
     }
     const onPointer = (event: PointerEvent) => {
       const target = event.target as Node | null
-      if (!target) return
+      if (!target || dim.current?.contains(target)) return
+      pressOnDim.current = false
       if (panel.current?.contains(target) || toggle.current?.contains(target)) return
       setOpen(false)
     }
@@ -255,8 +260,26 @@ export function FilterBar({
         <>
           {/* The phone's sheet covers the rows behind it, so it says so: a dim over the board is
               what makes "tap anywhere to close" a thing a thumb discovers. The laptop's popover
-              is small and anchored under its button and needs none. */}
-          <div aria-hidden="true" className="fixed inset-0 z-30 bg-ink/30 lg:hidden" />
+              is small and anchored under its button and needs none.
+
+              The dim closes the panel on its CLICK, the last event a tap makes, and only for a
+              press that began on it — the rule CaseSummarySheet's scrim keeps. Closing on the
+              press took the dim away with the finger still down, and the click the browser makes
+              after touchend was hit-tested afresh onto what the dim covered: the Filter button
+              (the panel opened again), a chip's × (the filter changed), "Clear filter" (Phase 10
+              review). Escape and the Close button are the keyboard's ways out. */}
+          <div
+            ref={dim}
+            aria-hidden="true"
+            data-filter-dim
+            onPointerDown={() => {
+              pressOnDim.current = true
+            }}
+            onClick={() => {
+              if (pressOnDim.current) setOpen(false)
+            }}
+            className="fixed inset-0 z-30 bg-ink/30 lg:hidden"
+          />
           <div
             id={panelId}
             ref={panel}

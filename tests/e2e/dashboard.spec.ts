@@ -687,6 +687,113 @@ test('the panel offers "Other" once, under "Any stage", and it presses one chip'
 })
 
 /**
+ * A point over `selector` that the phone's filter sheet leaves uncovered, where `elementFromPoint`
+ * is the dim and the stack beneath it holds `selector`: the tap is proven to land on the dim, over
+ * the control a ghost click would hit, so a green run cannot mean the tap simply missed.
+ */
+async function dimPointOver(page: Page, selector: string): Promise<{ x: number; y: number }> {
+  const target = await page.locator(selector).first().boundingBox()
+  const sheet = await page.locator('[data-filter-panel]').boundingBox()
+  const viewport = page.viewportSize()
+  if (!target || !sheet || !viewport) throw new Error(`no geometry for ${selector}, the sheet or the viewport`)
+  const inSheet = (x: number, y: number): boolean =>
+    x >= sheet.x && x <= sheet.x + sheet.width && y >= sheet.y && y <= sheet.y + sheet.height
+  for (const fy of [0.5, 0.25, 0.75]) {
+    for (const fx of [0.5, 0.3, 0.7, 0.1, 0.9]) {
+      const x = Math.round(target.x + target.width * fx)
+      const y = Math.round(target.y + target.height * fy)
+      if (x < 1 || y < 1 || x >= viewport.width - 1 || y >= viewport.height - 1 || inSheet(x, y)) continue
+      const hit = await page.evaluate(
+        ({ x, y, selector }) => ({
+          dim: document.elementFromPoint(x, y)?.hasAttribute('data-filter-dim') ?? false,
+          over: document.elementsFromPoint(x, y).some((element) => element.closest(selector) !== null),
+        }),
+        { x, y, selector },
+      )
+      if (hit.dim && hit.over) return { x, y }
+    }
+  }
+  throw new Error(`no point over ${selector} is left to the dim by the sheet`)
+}
+
+/**
+ * Phase 10 review. On a phone the filter panel is a bottom sheet over a dim, and the dim covers the
+ * Filter button, the chips' × and "Clear filter". The panel used to close on the press: React took
+ * the dim away with the finger still down, and the click the browser makes after touchend was
+ * hit-tested afresh onto whatever the dim had covered — the panel opened again, a chip was dropped,
+ * the filter was cleared. The dim now closes the panel from its own click. The laptop's popover
+ * has no dim, and a press outside it still closes it.
+ */
+test('a tap on the filter dim closes the panel and changes nothing under it', async ({ page }, testInfo) => {
+  const mobile = testInfo.project.name === 'mobile'
+  await fromClientIp(page, mobile ? '198.51.100.213' : '198.51.100.214')
+  await signIn(page, E2E_USERS.navigator)
+  const filtered = '/dashboard?r=all&payer=SELF_PAY'
+  await page.goto(filtered)
+  const toggle = page.locator('[data-filter-toggle]')
+  const panel = page.getByRole('dialog', { name: 'Filter cases' })
+  const chipLabels = () =>
+    page.locator('[data-filter-chip]').evaluateAll((els) => els.map((el) => el.getAttribute('data-filter-chip')))
+  await expect(page.locator('[data-filter-chip]')).toHaveCount(1)
+  const chips = await chipLabels()
+
+  if (!mobile) {
+    await toggle.click()
+    await expect(panel).toBeVisible()
+    await expect(page.locator('[data-filter-dim]')).toBeHidden()
+    await page.getByRole('heading', { name: 'Dashboard' }).click()
+    await expect(panel).toHaveCount(0)
+    await expect(page).toHaveURL(filtered)
+    expect(await chipLabels()).toEqual(chips)
+    return
+  }
+
+  // The bar to the top of the screen, where the sheet (at most 80 % of it) leaves only the dim.
+  await page.locator('[data-filter-bar]').evaluate((element) => element.scrollIntoView({ block: 'start' }))
+  // Every click from here on, by what it landed on: "dim", or the control's name.
+  await page.evaluate(() => {
+    const landed: string[] = []
+    Object.assign(window, { __filterClicks: landed })
+    document.addEventListener(
+      'click',
+      (event) => {
+        const target = event.target as Element
+        const control = target.closest('button, a')
+        landed.push(
+          target.hasAttribute('data-filter-dim')
+            ? 'dim'
+            : (control?.getAttribute('aria-label') ?? control?.textContent ?? target.tagName.toLowerCase()),
+        )
+      },
+      { capture: true },
+    )
+  })
+  type Recorded = { __filterClicks: string[] }
+  const clicks = () => page.evaluate(() => [...(window as unknown as Recorded).__filterClicks])
+  const forgetClicks = () => page.evaluate(() => void (window as unknown as Recorded).__filterClicks.splice(0))
+
+  for (const [what, selector] of [
+    ['the Filter button', '[data-filter-toggle]'],
+    ['a chip’s ×', '[data-filter-chip] button'],
+    ['Clear filter', '[data-filter-clear]'],
+  ] as const) {
+    await toggle.click()
+    await expect(panel, what).toBeVisible()
+    await forgetClicks()
+    const point = await dimPointOver(page, selector)
+    await page.touchscreen.tap(point.x, point.y)
+
+    await expect(panel, `a tap on the dim over ${what} closes the panel`).toHaveCount(0)
+    // The tap's one click was the dim's, not the control's under it...
+    await expect.poll(clicks, what).toEqual(['dim'])
+    // ...so the page is the same filtered dashboard, and the keyboard is back on the button.
+    expect(page.url(), what).toMatch(/\/dashboard\?r=all&payer=SELF_PAY$/)
+    expect(await chipLabels(), what).toEqual(chips)
+    await expect(toggle, what).toBeFocused()
+  }
+})
+
+/**
  * A filter that matches nothing empties every section, and the page must then say it was the
  * FILTER that found nothing: "No cases yet." under a filter reads as an empty department. A stage
  * code nothing carries is also what a link to a stage an Admin has since deactivated looks like.
