@@ -15,6 +15,7 @@ import {
   summaryRows,
   updatesSheet,
   type CaseForExport,
+  type Cell,
 } from '../rows'
 
 /**
@@ -91,7 +92,7 @@ const column = (header: string[], name: string): number => {
   return i
 }
 
-const rowFor = (sheetRows: string[][], mrn: string): string[] => {
+const rowFor = (sheetRows: Cell[][], mrn: string): Cell[] => {
   const row = sheetRows.find((r) => r[0] === mrn)
   if (!row) throw new Error(`no row for MRN ${mrn}`)
   return row
@@ -130,16 +131,17 @@ describe('casesSheet', () => {
   it('puts the elapsed hours in the resolved column for a resolved case, to two decimals', () => {
     const c5 = filtered.find((c) => c.id === 'C5')!
     const row = rowFor(sheet.rows, c5.mrn)
-    expect(row[column(CASES_HEADER, 'Total ED hours (resolved)')]).toBe(elapsedHours(c5, NOW)!.toFixed(2))
-    expect(row[column(CASES_HEADER, 'Total ED hours (resolved)')]).toBe('8.00')
+    // A number, not text, since 10 September: Excel sums the column. Shown "8.00" by the writer.
+    expect(row[column(CASES_HEADER, 'Total ED hours (resolved)')]).toBe(Math.round(elapsedHours(c5, NOW)! * 100) / 100)
+    expect(row[column(CASES_HEADER, 'Total ED hours (resolved)')]).toBe(8)
     expect(row[column(CASES_HEADER, 'Hours waiting so far (open)')]).toBe('')
   })
 
   it('puts the elapsed hours in the open column for an open case, to two decimals', () => {
     const c3 = filtered.find((c) => c.id === 'C3')!
     const row = rowFor(sheet.rows, c3.mrn)
-    expect(row[column(CASES_HEADER, 'Hours waiting so far (open)')]).toBe(elapsedHours(c3, NOW)!.toFixed(2))
-    expect(row[column(CASES_HEADER, 'Hours waiting so far (open)')]).toBe('13.00')
+    expect(row[column(CASES_HEADER, 'Hours waiting so far (open)')]).toBe(Math.round(elapsedHours(c3, NOW)! * 100) / 100)
+    expect(row[column(CASES_HEADER, 'Hours waiting so far (open)')]).toBe(13)
     expect(row[column(CASES_HEADER, 'Total ED hours (resolved)')]).toBe('')
   })
 
@@ -169,7 +171,7 @@ describe('casesSheet', () => {
     expect(row[column(CASES_HEADER, 'Departments')]).toBe('MROD; General Surgery')
     expect(row[column(CASES_HEADER, 'Left ED')]).toBe('07/09 17:00')
     // admOrderAt is 27 h before NOW, bedAssignedAt 23 h: four hours.
-    expect(row[column(CASES_HEADER, 'Order to bed (h)')]).toBe('4.00')
+    expect(row[column(CASES_HEADER, 'Order to bed (h)')]).toBe(4)
     expect(row[column(CASES_HEADER, 'Note')]).toBe('Admitted to ICU')
   })
 
@@ -217,8 +219,8 @@ describe('consultsSheet', () => {
   it('measures consult to seen and consult to reply to two decimals', () => {
     // C5's MROD consult: consulted 28 h before NOW, seen 27 h, replied 26.5 h.
     const row = sheet.rows.find((r) => r[0] === '100005' && r[1] === 'MROD')!
-    expect(row[column(CONSULTS_HEADER, 'Consult to seen (h)')]).toBe('1.00')
-    expect(row[column(CONSULTS_HEADER, 'Consult to reply (h)')]).toBe('1.50')
+    expect(row[column(CONSULTS_HEADER, 'Consult to seen (h)')]).toBe(1)
+    expect(row[column(CONSULTS_HEADER, 'Consult to reply (h)')]).toBe(1.5)
   })
 
   it('leaves a missing reply blank instead of guessing', () => {
@@ -261,7 +263,7 @@ describe('investigationsSheet', () => {
     const lab = sheet.rows.find((r) => r[1] === 'Lab')!
     expect(lab[column(INVESTIGATIONS_HEADER, 'Preliminary report')]).toBe('')
     // "Order to result" is still measured to the OFFICIAL report, not the verbal one.
-    expect(ct[column(INVESTIGATIONS_HEADER, 'Order to result (h)')]).toBe('5.00')
+    expect(ct[column(INVESTIGATIONS_HEADER, 'Order to result (h)')]).toBe(5)
   })
 
   it('fills only the columns that belong to the row`s own test type', () => {
@@ -269,13 +271,13 @@ describe('investigationsSheet', () => {
     expect(lab[column(INVESTIGATIONS_HEADER, 'Sample collected')]).not.toBe('')
     expect(lab[column(INVESTIGATIONS_HEADER, 'Scan done')]).toBe('')
     // C3's lab: ordered 12 h before NOW, resulted 8 h.
-    expect(lab[column(INVESTIGATIONS_HEADER, 'Order to result (h)')]).toBe('4.00')
+    expect(lab[column(INVESTIGATIONS_HEADER, 'Order to result (h)')]).toBe(4)
 
     const ct = sheet.rows.find((r) => r[1] === 'CT')!
     expect(ct[column(INVESTIGATIONS_HEADER, 'Scan done')]).not.toBe('')
     expect(ct[column(INVESTIGATIONS_HEADER, 'Sample collected')]).toBe('')
     // C6's CT: ordered 48 h before NOW, reported 43 h.
-    expect(ct[column(INVESTIGATIONS_HEADER, 'Order to result (h)')]).toBe('5.00')
+    expect(ct[column(INVESTIGATIONS_HEADER, 'Order to result (h)')]).toBe(5)
   })
 })
 
@@ -295,7 +297,7 @@ describe('updatesSheet', () => {
 describe('summaryRows', () => {
   const data = dashboard(filtered, 'all', NOW)
   const rows = summaryRows({ data, range: RANGE, generatedAt: NOW })
-  const valueOf = (label: string): string[] => {
+  const valueOf = (label: string): Cell[] => {
     const row = rows.find((r) => r.cells[0] === label)
     if (!row) throw new Error(`no "${label}" row`)
     return row.cells
@@ -325,9 +327,9 @@ describe('summaryRows', () => {
     // Only two EVENING cases are in this range, so its median is not a number.
     expect(valueOf('Evening')).toEqual(['Evening', '2', 'n<3'])
     // Three NIGHT cases clear MIN_N: elapsed 13, 6 and 4 → median 6.
-    expect(valueOf('Night')).toEqual(['Night', '3', '6.00'])
+    expect(valueOf('Night')).toEqual(['Night', '3', 6])
     // Four resolved cases: LOS 8, 10, 6 and 2 → median 7.
-    expect(valueOf('Median stay, resolved (h)')[1]).toBe('7.00')
+    expect(valueOf('Median stay, resolved (h)')[1]).toBe(7)
   })
 
   it('carries the disposition table by label', () => {

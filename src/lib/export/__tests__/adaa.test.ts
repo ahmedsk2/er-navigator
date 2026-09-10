@@ -16,6 +16,7 @@ import {
 } from '../adaa'
 import { dayOffset, fmtFormDate, fmtFormTime } from '../format'
 import type { ExportRange } from '../range'
+import type { Cell } from '../rows'
 import { caseWith } from './phase8.fixture'
 
 /**
@@ -225,7 +226,7 @@ describe('adaaRow', () => {
     expect(adaaRow(nextDay).slice(8, 14)).toEqual(['', 'Yes', '1', '', '', '01:20'])
     // The Read me counts the blanked row, beside the triage line.
     const rows = adaaReadMeRows({ cases: [ambulance, nextDay], range: RANGE, generatedAt: new Date('2026-09-09T12:00:00Z') })
-    const line = rows.find((r) => r.cells[0]?.startsWith('Rows whose painkiller time was left blank'))
+    const line = rows.find((r) => String(r.cells[0] ?? '').startsWith('Rows whose painkiller time was left blank'))
     expect(line?.cells[1]).toBe('1')
   })
 
@@ -390,7 +391,7 @@ describe('the KPI summary sheet, Phase 8b', () => {
     caseWith({ id: 'p3', mrn: 'p3', ctas: 3, painkillerPrescribed: 'YES', painkillerAt: null }),
   ]
   const rows = adaaSummaryRows(cases)
-  const rowFor = (heading: string, label: string): string[] => {
+  const rowFor = (heading: string, label: string): Cell[] => {
     const start = rows.findIndex((r) => r.cells[0] === heading)
     const found = rows.slice(start).find((r) => r.cells[0] === label)
     if (!found) throw new Error(`no "${label}" row under "${heading}"`)
@@ -503,7 +504,7 @@ describe('the Read me', () => {
       triageAt: new Date('2026-09-01T20:50:00Z'),
     })
     const rows = adaaReadMeRows({ cases: [ambulance, OVERNIGHT], range: RANGE, generatedAt: new Date('2026-09-09T12:00:00Z') })
-    const row = rows.find((r) => r.cells[0]?.startsWith('Rows whose triage cells were left blank'))
+    const row = rows.find((r) => String(r.cells[0] ?? '').startsWith('Rows whose triage cells were left blank'))
     expect(row?.cells[1]).toBe('1')
   })
 

@@ -4,7 +4,8 @@
  * The whole file is never held in memory: `WorkbookWriter` zips each worksheet to a Node stream as
  * its rows are committed, and that stream is handed to the Response as a web `ReadableStream`, so
  * a year of cases costs a few kilobytes of buffer rather than a workbook-sized Buffer on the heap.
- * The rows themselves are already plain strings (src/lib/export/rows.ts) and arrive one case list
+ * The rows themselves are already plain strings, or numbers for the hour columns
+ * (src/lib/export/rows.ts), and arrive one case list
  * at a time from a single Prisma read.
  *
  * Formatting, per the Phase 5 spec: a bold, frozen header row; column widths from the longest of
@@ -13,7 +14,7 @@
  */
 import { PassThrough, Readable } from 'node:stream'
 import ExcelJS from 'exceljs'
-import type { Sheet, SummaryRow } from './rows'
+import type { Cell, Sheet, SummaryRow } from './rows'
 
 export const XLSX_CONTENT_TYPE =
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -29,8 +30,8 @@ const MIN_WIDTH = 10
 const MAX_WIDTH = 46
 const PADDING = 2
 
-export function columnWidth(header: string, sample: ReadonlyArray<string>): number {
-  const longest = sample.reduce((max, value) => Math.max(max, value.length), header.length)
+export function columnWidth(header: string, sample: ReadonlyArray<Cell>): number {
+  const longest = sample.reduce<number>((max, value) => Math.max(max, String(value).length), header.length)
   return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, longest + PADDING))
 }
 
@@ -65,11 +66,23 @@ export type WorkbookPart = { kind: 'free'; sheet: FreeSheet } | { kind: 'table';
 export const freePart = (sheet: FreeSheet): WorkbookPart => ({ kind: 'free', sheet })
 export const tablePart = (sheet: Sheet): WorkbookPart => ({ kind: 'table', sheet })
 
+/**
+ * Every numeric cell in these workbooks is an hours figure (`fmtHours2`): shown to two decimals,
+ * exactly as the text cells used to read, but kept a number so Excel can sum, average and chart
+ * the column (Ahmed, 10 September).
+ */
+function formatNumbers(row: ExcelJS.Row): void {
+  row.eachCell((cell) => {
+    if (typeof cell.value === 'number') cell.numFmt = '0.00'
+  })
+}
+
 function writeFree(workbook: ExcelJS.stream.xlsx.WorkbookWriter, sheet: FreeSheet): void {
   const worksheet = workbook.addWorksheet(sheet.name)
   worksheet.columns = sheet.widths.map((width) => ({ width }))
   for (const row of sheet.rows) {
     const written = worksheet.addRow([...row.cells])
+    formatNumbers(written)
     if (row.bold) written.font = { bold: true }
     row.fills?.forEach((argb, index) => {
       if (argb) written.getCell(index + 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } }
@@ -88,7 +101,11 @@ function writeSheet(workbook: ExcelJS.stream.xlsx.WorkbookWriter, sheet: Sheet):
     header.font = { bold: true }
     header.commit()
   }
-  for (const row of sheet.rows) worksheet.addRow(row).commit()
+  for (const row of sheet.rows) {
+    const written = worksheet.addRow(row)
+    formatNumbers(written)
+    written.commit()
+  }
   worksheet.commit()
 }
 

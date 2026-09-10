@@ -413,13 +413,18 @@ describe('GET /api/export.xlsx as a SUPERVISOR', () => {
 
     const consults = workbook.getWorksheet('Consults')!
     expect(columnValues(consults, 'MRN')).toEqual([seeded.open1])
-    expect(columnValues(consults, 'Consult to seen (h)')).toEqual(['2.00'])
+    // Numeric since 10 September: the cell holds 2 with the "0.00" format, not the text "2.00".
+    expect(columnValues(consults, 'Consult to seen (h)')).toEqual(['2'])
+    const seenIndex = (consults.getRow(1).values as ExcelJS.CellValue[]).indexOf('Consult to seen (h)')
+    expect(seenIndex).toBeGreaterThan(0)
+    expect(consults.getRow(2).getCell(seenIndex).value).toBe(2)
+    expect(consults.getRow(2).getCell(seenIndex).numFmt).toBe('0.00')
     // No reply was entered, so the cell is blank rather than a zero.
     expect(columnValues(consults, 'Consult to reply (h)')).toEqual([''])
 
     const investigations = workbook.getWorksheet('Investigations')!
     expect(columnValues(investigations, 'Test')).toEqual(['Lab'])
-    expect(columnValues(investigations, 'Order to result (h)')).toEqual(['4.00'])
+    expect(columnValues(investigations, 'Order to result (h)')).toEqual(['4'])
     expect(columnValues(investigations, 'Scan done')).toEqual([''])
 
     const updates = workbook.getWorksheet('Updates')!

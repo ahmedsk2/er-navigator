@@ -63,14 +63,21 @@ export type CaseForExport = CaseForStats & {
 }
 
 /**
- * A tabular sheet: one bold, frozen header row and string cells under it.
+ * A tabular sheet: one bold, frozen header row and text or numeric cells under it.
  *
  * `groupHeader` is the QCH sheet's second dimension (Phase 8): the August collection sheet writes
  * its image and consultation groups on one row and their sub-columns on the next, and the
  * receiving side matches on both, so a sheet may declare a row above `header`. Everything else
  * leaves it undefined and gets the single header row it always had.
  */
-export type Sheet = { name: string; header: string[]; rows: string[][]; groupHeader?: string[] }
+export type Sheet = { name: string; header: string[]; rows: Cell[][]; groupHeader?: string[] }
+
+/**
+ * One cell: text, or a number. Every number in these workbooks is an hours figure from
+ * `fmtHours2`, which the writer formats "0.00" (the text the cells used to hold) while leaving it
+ * a number Excel can sum, average and chart (Ahmed, 10 September). "n<3" stays text.
+ */
+export type Cell = string | number
 
 const STATUS_LABELS = { OPEN: 'Open', RESOLVED: 'Resolved', VOIDED: 'Voided' } as const
 
@@ -113,7 +120,7 @@ export const CASES_HEADER: string[] = [
   'Note',
 ]
 
-export function casesRow(c: CaseForExport, now: Date): string[] {
+export function casesRow(c: CaseForExport, now: Date): Cell[] {
   const elapsed = elapsedHours(c, now)
   return [
     c.mrn,
@@ -235,7 +242,7 @@ export function updatesSheet(cases: ReadonlyArray<CaseForExport>): Sheet {
  * `KPI summary` sheet colours a figure by its benchmark band). A shorter list, or a null entry,
  * leaves that cell unfilled.
  */
-export type SummaryRow = { cells: string[]; bold?: boolean; fills?: ReadonlyArray<string | null> }
+export type SummaryRow = { cells: Cell[]; bold?: boolean; fills?: ReadonlyArray<string | null> }
 
 /** Exactly the shape of `dashboard()` this sheet reads. */
 type SummaryData = {
@@ -247,7 +254,7 @@ type SummaryData = {
 }
 
 /** The hard rule: a median over fewer than three values is not a number, it is "n<3". */
-function median(value: number | null, n: number): string {
+function median(value: number | null, n: number): Cell {
   return n < MIN_N ? `n<${MIN_N}` : fmtHours2(value)
 }
 

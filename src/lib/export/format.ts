@@ -1,7 +1,8 @@
 /**
  * How a cell is written. Three rules, from the Phase 5 spec and the prototype's `ExportPanel`:
- * dates as `dd/mm HH:mm` in Asia/Riyadh, hours to two decimals, an empty string for anything
- * missing (the prototype's `fmtDT` renders a dash on screen; a spreadsheet wants a blank cell so
+ * dates as `dd/mm HH:mm` in Asia/Riyadh, hours as a NUMBER rounded to two decimals (the workbook
+ * formats the cell "8.00", and Excel can still sum and average the column: Ahmed, 10 September),
+ * an empty string for anything missing (the prototype's `fmtDT` renders a dash on screen; a spreadsheet wants a blank cell so
  * a column can still be sorted and counted).
  *
  * The date formatter is the one the board and the case editor already use, so a timestamp reads
@@ -60,8 +61,9 @@ export function dayOffset(base: Date, at: Date | null | undefined): string {
   return days > 0 ? String(days) : ''
 }
 
-export function fmtHours2(hours: number | null | undefined): string {
-  return hours == null || Number.isNaN(hours) ? '' : hours.toFixed(2)
+/** A numeric cell rounded to two decimals, or a blank. The writer gives every number the "0.00" format. */
+export function fmtHours2(hours: number | null | undefined): number | '' {
+  return hours == null || Number.isNaN(hours) ? '' : Math.round(hours * 100) / 100
 }
 
 /** The prototype's `c.isolation ? "Yes" : ""` — a blank, not a "No", so the column filters. */
