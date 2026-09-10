@@ -225,7 +225,14 @@ export function DashboardBody({
       {data.inRange === 0 ? (
         <section className="mx-4 mb-2.5 rounded-card border border-line bg-panel p-6 text-center shadow-card lg:mx-0">
           <p className="m-0 text-body text-muted">
-            {data.total ? 'No cases registered in this range.' : 'No cases yet.'}
+            {/* Under a filter `total` is the filtered population too, so a filter that matches
+                nothing would otherwise read "No cases yet." — a claim about the whole department
+                that only the filter made. */}
+            {filter && !isEmptyFilter(filter)
+              ? 'No case in this range matches this filter.'
+              : data.total
+                ? 'No cases registered in this range.'
+                : 'No cases yet.'}
           </p>
         </section>
       ) : (

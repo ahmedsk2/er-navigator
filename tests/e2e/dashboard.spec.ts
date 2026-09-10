@@ -647,6 +647,22 @@ test('the filter panel applies from the dashboard itself', async ({ page }, test
   await expect(page).toHaveURL('/dashboard?r=7&payer=INSURED')
 })
 
+/**
+ * A filter that matches nothing empties every section, and the page must then say it was the
+ * FILTER that found nothing: "No cases yet." under a filter reads as an empty department. A stage
+ * code nothing carries is also what a link to a stage an Admin has since deactivated looks like.
+ */
+test('a filter that matches nothing says so, rather than "No cases yet."', async ({ page }, testInfo) => {
+  await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.162' : '198.51.100.163')
+  await signIn(page, E2E_USERS.navigator)
+
+  await page.goto('/dashboard?stage=zzz-no-such-stage')
+  await expect(page.getByText('No case in this range matches this filter.', { exact: true })).toBeVisible()
+  await expect(page.getByText('No cases yet.')).toHaveCount(0)
+  // The footnote still names the filter that emptied the page, so the reader knows what to drop.
+  await expect(page.locator('[data-filter-note]')).toHaveText('Filtered: Stage: zzz-no-such-stage')
+})
+
 test('an unknown drill key renders the dashboard rather than an error', async ({ page }, testInfo) => {
   await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.101' : '198.51.100.102')
   await signIn(page, E2E_USERS.navigator)
