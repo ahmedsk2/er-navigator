@@ -134,7 +134,7 @@ describe('casesSheet', () => {
     // A number, not text, since 10 September: Excel sums the column. Shown "8.00" by the writer.
     expect(row[column(CASES_HEADER, 'Total ED hours (resolved)')]).toBe(Math.round(elapsedHours(c5, NOW)! * 100) / 100)
     expect(row[column(CASES_HEADER, 'Total ED hours (resolved)')]).toBe(8)
-    expect(row[column(CASES_HEADER, 'Hours waiting so far (open)')]).toBe('')
+    expect(row[column(CASES_HEADER, 'Hours waiting so far (open)')]).toBeNull()
   })
 
   it('puts the elapsed hours in the open column for an open case, to two decimals', () => {
@@ -142,7 +142,7 @@ describe('casesSheet', () => {
     const row = rowFor(sheet.rows, c3.mrn)
     expect(row[column(CASES_HEADER, 'Hours waiting so far (open)')]).toBe(Math.round(elapsedHours(c3, NOW)! * 100) / 100)
     expect(row[column(CASES_HEADER, 'Hours waiting so far (open)')]).toBe(13)
-    expect(row[column(CASES_HEADER, 'Total ED hours (resolved)')]).toBe('')
+    expect(row[column(CASES_HEADER, 'Total ED hours (resolved)')]).toBeNull()
   })
 
   it('formats every timestamp as dd/mm HH:mm in Asia/Riyadh', () => {
@@ -226,13 +226,13 @@ describe('consultsSheet', () => {
   it('leaves a missing reply blank instead of guessing', () => {
     const row = sheet.rows.find((r) => r[0] === '100002')!
     expect(row[column(CONSULTS_HEADER, 'Replied at')]).toBe('')
-    expect(row[column(CONSULTS_HEADER, 'Consult to reply (h)')]).toBe('')
+    expect(row[column(CONSULTS_HEADER, 'Consult to reply (h)')]).toBeNull()
   })
 
   it('blanks an out-of-order pair rather than writing a negative duration', () => {
     // C12 was seen before it was consulted; duration() returns null for that.
     const row = sheet.rows.find((r) => r[0] === '100012')!
-    expect(row[column(CONSULTS_HEADER, 'Consult to seen (h)')]).toBe('')
+    expect(row[column(CONSULTS_HEADER, 'Consult to seen (h)')]).toBeNull()
   })
 })
 

@@ -421,6 +421,9 @@ describe('GET /api/export.xlsx as a SUPERVISOR', () => {
     expect(consults.getRow(2).getCell(seenIndex).numFmt).toBe('0.00')
     // No reply was entered, so the cell is blank rather than a zero.
     expect(columnValues(consults, 'Consult to reply (h)')).toEqual([''])
+    // A missing hour is a blank cell, not an empty text cell (which a chart would plot as zero).
+    const replyIndex = (consults.getRow(1).values as ExcelJS.CellValue[]).indexOf('Consult to reply (h)')
+    expect(consults.getRow(2).getCell(replyIndex).value).toBeNull()
 
     const investigations = workbook.getWorksheet('Investigations')!
     expect(columnValues(investigations, 'Test')).toEqual(['Lab'])

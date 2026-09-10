@@ -3,8 +3,8 @@
  * reference/ERNavigatorTracker.jsx), sheet for sheet and column for column.
  *
  * Nothing here touches Prisma, Excel or the request: a sheet is a header array and an array of
- * string rows, so the columns can be asserted against the dashboard fixture without a database
- * and without parsing a file back.
+ * rows of text, numbers and blanks, so the columns can be asserted against the dashboard fixture
+ * without a database and without parsing a file back.
  *
  * Two places where the prototype's object literal decided something for it, made explicit here:
  *
@@ -73,11 +73,12 @@ export type CaseForExport = CaseForStats & {
 export type Sheet = { name: string; header: string[]; rows: Cell[][]; groupHeader?: string[] }
 
 /**
- * One cell: text, or a number. Every number in these workbooks is an hours figure from
- * `fmtHours2`, which the writer formats "0.00" (the text the cells used to hold) while leaving it
- * a number Excel can sum, average and chart (Ahmed, 10 September). "n<3" stays text.
+ * One cell: text, a number, or null for a blank. Every number in these workbooks is an hours
+ * figure from `fmtHours2`, which the writer formats "0.00" (the text the cells used to hold)
+ * while leaving it a number Excel can sum, average and chart (Ahmed, 10 September); a missing
+ * hours figure is null rather than '' so the cell is blank to a chart as well. "n<3" stays text.
  */
-export type Cell = string | number
+export type Cell = string | number | null
 
 const STATUS_LABELS = { OPEN: 'Open', RESOLVED: 'Resolved', VOIDED: 'Voided' } as const
 
@@ -127,8 +128,8 @@ export function casesRow(c: CaseForExport, now: Date): Cell[] {
     STATUS_LABELS[c.status],
     fmtAt(c.registrationAt),
     fmtAt(c.departedAt),
-    c.status === 'RESOLVED' ? fmtHours2(elapsed) : '',
-    c.status === 'OPEN' ? fmtHours2(elapsed) : '',
+    c.status === 'RESOLVED' ? fmtHours2(elapsed) : null,
+    c.status === 'OPEN' ? fmtHours2(elapsed) : null,
     riyadhWeekday(c.registrationAt),
     c.shift ? SHIFT_LABELS[c.shift] : '',
     c.ctas == null ? '' : String(c.ctas),

@@ -31,7 +31,7 @@ const MAX_WIDTH = 46
 const PADDING = 2
 
 export function columnWidth(header: string, sample: ReadonlyArray<Cell>): number {
-  const longest = sample.reduce<number>((max, value) => Math.max(max, String(value).length), header.length)
+  const longest = sample.reduce<number>((max, value) => Math.max(max, String(value ?? '').length), header.length)
   return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, longest + PADDING))
 }
 
