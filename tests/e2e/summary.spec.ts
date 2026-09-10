@@ -1,11 +1,11 @@
 import { expect, test, type Page } from '@playwright/test'
 import { prisma } from '../../src/lib/db'
-import { BOARD_MRN_PREFIX, LONGEST } from './fixtures/board-cases'
+import { BOARD_MRN_PREFIX, LONGEST, VOIDED } from './fixtures/board-cases'
 import { fromClientIp, signIn } from './fixtures/case-flow'
 import { E2E_USERS } from './fixtures/seed-users'
 
 /**
- * Phase 10 review, Slice 10C: how the case summary panel is left.
+ * Phase 10 review, Slice 10C: how the case summary panel is left, and who may read its route.
  *
  * The panel used to close on a document-level touchstart outside it. On a phone that is a ghost
  * click: React takes the scrim away before the finger lifts, and the click the browser makes after
@@ -16,10 +16,17 @@ import { E2E_USERS } from './fixtures/seed-users'
  * Both projects make the press the way their user would: a finger on the phone, a mouse on the
  * laptop. The point pressed is proven first to be the scrim on top with the control a ghost click
  * would hit underneath, so a green run cannot mean the press simply missed.
+ *
+ * The route the board's row button reads is held to its two guards: a live session (proxy.ts turns
+ * away a request with no cookie at all, the route's own requireUser one whose cookie matches no
+ * session) and a 404 for a voided case, which the board never lists.
  */
 test.afterAll(async () => {
   await prisma.$disconnect()
 })
+
+/** The session cookie's name, spelt as board.spec.ts spells it (route-gate.test.ts pins it). */
+const SESSION_COOKIE = '__Host-ern_session'
 
 type Point = { x: number; y: number }
 
@@ -202,4 +209,54 @@ test('a press that starts or ends inside the panel leaves it open', async ({ pag
   // And a plain click on the same point does close it, so the two above did reach the scrim.
   await page.mouse.click(outside.x, outside.y)
   await expect(dialog).toHaveCount(0)
+})
+
+test('GET /api/cases/[id]/summary answers 401 without a live session, and is never cached', async ({ request }) => {
+  const live = await prisma.case.findFirstOrThrow({ where: { mrn: LONGEST.mrn, status: 'OPEN' }, select: { id: true } })
+
+  // No cookie at all: proxy.ts answers before the route runs, with a status a fetch can use.
+  const signedOut = await request.get(`/api/cases/${live.id}/summary`)
+  expect(signedOut.status()).toBe(401)
+  expect(signedOut.headers()['cache-control']).toContain('no-store')
+
+  // A cookie the gate lets through and no session row matches: the route's own requireUser.
+  const forged = await request.get(`/api/cases/${live.id}/summary`, {
+    headers: { cookie: `${SESSION_COOKIE}=not-a-session-token` },
+  })
+  expect(forged.status()).toBe(401)
+  expect(forged.headers()['cache-control']).toContain('no-store')
+  expect(await forged.json()).toEqual({ error: 'unauthorized' })
+})
+
+test('GET /api/cases/[id]/summary reads a live case without its update text, and 404s a voided or unknown one', async ({
+  page,
+}) => {
+  const live = await prisma.case.findFirstOrThrow({
+    where: { mrn: LONGEST.mrn, status: 'OPEN' },
+    select: { id: true, updates: { select: { text: true } } },
+  })
+  const voided = await prisma.case.findFirstOrThrow({ where: { mrn: VOIDED.mrn, status: 'VOIDED' }, select: { id: true } })
+  // The fixture gives the longest stay an update; its text is what must never come back.
+  expect(live.updates.length).toBeGreaterThan(0)
+
+  await fromClientIp(page, '198.51.100.173')
+  await signIn(page, E2E_USERS.navigator)
+
+  const read = await page.request.get(`/api/cases/${live.id}/summary`)
+  expect(read.status()).toBe(200)
+  expect(read.headers()['cache-control']).toContain('no-store')
+  const body = await read.text()
+  const summary = JSON.parse(body) as { mrn: string; updates: { count: number } }
+  expect(summary.mrn).toBe(LONGEST.mrn)
+  // Counted, never quoted.
+  expect(summary.updates.count).toBe(live.updates.length)
+  for (const update of live.updates) expect(body).not.toContain(update.text)
+
+  // The route's own 404 — its JSON, not the framework's not-found page — for a voided case and
+  // for an id that was never a case.
+  for (const id of [voided.id, 'no-such-case']) {
+    const missing = await page.request.get(`/api/cases/${id}/summary`)
+    expect(missing.status(), id).toBe(404)
+    expect(await missing.json()).toEqual({ error: 'not_found' })
+  }
 })
