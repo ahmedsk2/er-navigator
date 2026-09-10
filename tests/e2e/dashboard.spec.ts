@@ -267,8 +267,10 @@ test('every section the seeded data earns is on the page, charts included', asyn
 
   for (const heading of [
     'Cases past each threshold',
-    // Phase 10: the stay in three parts; the seed records physician and decision times.
+    // Phase 10: the stay in three parts; the seed records physician and decision times. And the
+    // payer table, which the seed earns by recording a payer on two cases.
     'Where the time goes',
+    'By payer',
     'By week: cases and median stay',
     'Primary delay reason',
     // Phase 8 renamed "Journey stage where delays occur" to the weekly deck's own word.
@@ -398,6 +400,13 @@ test('each new drill-down lists exactly the seeded cases behind its row', async 
   // The deck's "no operational action documented": 3200012 has no update, no escalation, no fax
   // and no transfer; 3200001 has all but the transfer.
   await listsOnly('action:No action documented', ['3200012'], ['3200001'])
+
+  // Phase 10: the payer table and the phase split both drill down like every other row.
+  await page.goto('/dashboard?drill=payer%3AGovernment')
+  await expect(page.locator('[data-drill-label]')).toHaveText('Payer: Government')
+  await expect(page.locator('a[data-mrn]').first()).toBeVisible()
+  await page.goto('/dashboard?drill=phase%3Afront%7Cmedian')
+  await expect(page.locator('[data-drill-label]')).toHaveText('Front end: cases with the interval measured')
   await listsOnly('action:External transfer / fax / RCC', ['3200010'], ['3200001'])
 
   // Adaa's treated-within bands, and an outcome.
