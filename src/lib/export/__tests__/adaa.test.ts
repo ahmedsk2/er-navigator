@@ -14,6 +14,7 @@ import {
   painkillerBeforeRegistrationDay,
   pethidineDose,
 } from '../adaa'
+import { EMPTY_FILTER } from '@/src/lib/domain/case-filter'
 import { dayOffset, fmtFormDate, fmtFormTime } from '../format'
 import type { ExportRange } from '../range'
 import type { Cell } from '../rows'
@@ -518,5 +519,28 @@ describe('the Read me', () => {
       .map((r) => r.cells.join(' '))
       .join('\n')
     expect(empty).toContain('There are no rows to paste')
+  })
+
+  /**
+   * Phase 10. Rows pasted into the national form from a filtered export are part of the tracked
+   * cases, and the Read me is where the data collector finds out which part: the case filter sits
+   * right under the status filter, and an unfiltered export has no such row.
+   */
+  it('names the case filter under the status filter, and only when there is one', () => {
+    const generatedAt = new Date('2026-09-02T09:00:00Z')
+    const plain = adaaReadMeRows({ cases: [OVERNIGHT], range: RANGE, generatedAt })
+    const labels = plain.map((r) => r.cells[0])
+    expect(labels).not.toContain('Case filter')
+    expect(labels[labels.indexOf('Status filter') + 1]).toBe('Rows written')
+
+    const narrowed = adaaReadMeRows({
+      cases: [OVERNIGHT],
+      range: { ...RANGE, filter: { ...EMPTY_FILTER, ctas: [3] } },
+      generatedAt,
+      filterLine: 'CTAS 3',
+    })
+    const status = narrowed.findIndex((r) => r.cells[0] === 'Status filter')
+    expect(narrowed[status + 1]?.cells).toEqual(['Case filter', 'CTAS 3'])
+    expect(narrowed.filter((_, i) => i !== status + 1)).toEqual(plain)
   })
 })

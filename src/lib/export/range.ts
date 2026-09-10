@@ -222,6 +222,10 @@ export function reportQuery(range: ExportRange): string {
  * The name the browser saves the file under, per format. The ER Navigator workbook keeps the
  * prototype's name exactly (Phase 8 brief §4: "unchanged"); the two new formats carry their own
  * stem so three downloads of one range do not overwrite each other in a Downloads folder.
+ *
+ * A filtered workbook (Phase 10) ends `_filtered`: the name is all the receiving side sees before
+ * it opens the file, and part of the department saved as the whole of it is a wrong number
+ * waiting to be quoted. An empty filter is no filter, so every unfiltered name is unchanged.
  */
 const FILENAME_STEMS: Record<ExportFormat, string> = {
   navigator: 'ER_Navigator',
@@ -230,5 +234,6 @@ const FILENAME_STEMS: Record<ExportFormat, string> = {
 }
 
 export function exportFilename(range: ExportRange): string {
-  return `${FILENAME_STEMS[range.format]}_${range.from}_to_${range.to}.xlsx`
+  const filtered = range.filter && !isEmptyFilter(range.filter) ? '_filtered' : ''
+  return `${FILENAME_STEMS[range.format]}_${range.from}_to_${range.to}${filtered}.xlsx`
 }

@@ -20,7 +20,7 @@ import { ANSWER_LABELS, DISPOSITION_LABELS, INVESTIGATION_LABELS, STAGES } from 
 import { duration } from '@/src/lib/domain/time'
 import { fmtAt, fmtFormDate, fmtFormTime, fmtHm } from './format'
 import { EXPORT_STATUS_LABELS, type ExportRange } from './range'
-import type { CaseForExport, Sheet, SummaryRow } from './rows'
+import { caseFilterRows, type CaseForExport, type Sheet, type SummaryRow } from './rows'
 import { freePart, tablePart, type WorkbookPart } from './workbook'
 
 export const QCH_SHEET = 'Navigator sheet'
@@ -326,6 +326,8 @@ export function qchReadMeRows(input: {
   cases: ReadonlyArray<CaseForExport>
   range: ExportRange
   generatedAt: Date
+  /** `describeFilter` of the range's case filter; absent when the export has none (Phase 10). */
+  filterLine?: string
 }): SummaryRow[] {
   const { cases, range } = input
   const droppedImages = cases.filter((c) => c.investigations.filter((i) => i.type !== 'LAB').length > 2).length
@@ -335,6 +337,7 @@ export function qchReadMeRows(input: {
     BLANK,
     { cells: ['Range (registration date)', `${range.from} to ${range.to}`] },
     { cells: ['Status filter', EXPORT_STATUS_LABELS[range.status]] },
+    ...caseFilterRows(input.filterLine),
     { cells: ['Rows written', String(cases.length)] },
     { cells: ['Generated at', `${fmtAt(input.generatedAt)} (Asia/Riyadh)`] },
     BLANK,
@@ -412,6 +415,7 @@ export function qchWorkbook(input: {
   cases: ReadonlyArray<CaseForExport>
   range: ExportRange
   generatedAt: Date
+  filterLine?: string
 }): WorkbookPart[] {
   return [
     tablePart(qchSheet(input.cases)),

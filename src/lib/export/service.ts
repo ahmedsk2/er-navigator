@@ -13,8 +13,9 @@
  */
 import { type AuditContext } from '@/src/lib/audit'
 import { assertCan, isForbiddenError, type AuthUser } from '@/src/lib/auth/session'
+import { loadReference } from '@/src/lib/cases/reference'
 import { dashboard } from '@/src/lib/domain/aggregates'
-import { caseFilterQuery } from '@/src/lib/domain/case-filter'
+import { caseFilterQuery, describeFilter, filterOptionsOf, isEmptyFilter } from '@/src/lib/domain/case-filter'
 import { adaaWorkbook } from './adaa'
 import { countCasesForExport, loadCasesForExport } from './load'
 import { qchWorkbook } from './qch'
@@ -68,14 +69,19 @@ export async function exportWorkbookResponse(
 ): Promise<Response> {
   if (await refused(user, range, ctx)) return FORBIDDEN()
 
-  const cases = await loadCasesForExport(range)
+  // A filtered workbook names its filter in words under the status filter (Phase 10), and a stage
+  // or an area is a code in the address but a name on paper — so the reference lists are read for
+  // a filtered export only. An unfiltered one issues exactly the one read it always has.
+  const filter = range.filter && !isEmptyFilter(range.filter) ? range.filter : undefined
+  const [cases, reference] = await Promise.all([loadCasesForExport(range), filter ? loadReference() : null])
+  const filterLine = filter && reference ? describeFilter(filter, filterOptionsOf(reference)) : undefined
 
   // The filter is part of the request, so it is part of the record: "who pulled a month of cases"
   // is a different question from "who pulled the insured ones".
   console.info(
     `[export] xlsx actor=${user.id} format=${range.format} from=${range.from} to=${range.to} status=${range.status} filter=${range.filter ? caseFilterQuery(range.filter) || 'none' : 'none'} cases=${cases.length}`,
   )
-  return xlsxResponseOf(workbookFor(cases, range, now), exportFilename(range))
+  return xlsxResponseOf(workbookFor(cases, range, now, filterLine), exportFilename(range))
 }
 
 /**
@@ -87,16 +93,17 @@ function workbookFor(
   cases: ReadonlyArray<CaseForExport>,
   range: ExportRange,
   now: Date,
+  filterLine: string | undefined,
 ): WorkbookPart[] {
-  if (range.format === 'adaa') return adaaWorkbook({ cases, range, generatedAt: now })
-  if (range.format === 'qch') return qchWorkbook({ cases, range, generatedAt: now })
+  if (range.format === 'adaa') return adaaWorkbook({ cases, range, generatedAt: now, filterLine })
+  if (range.format === 'qch') return qchWorkbook({ cases, range, generatedAt: now, filterLine })
   // `dashboard()` does its own range filter; the rows are already the range, so 'all' is a no-op.
   const data = dashboard(cases, 'all', now)
   return [
     freePart({
       name: 'Summary',
       widths: [30, 26, 14],
-      rows: summaryRows({ data, range, generatedAt: now }),
+      rows: summaryRows({ data, range, generatedAt: now, filterLine }),
     }),
     ...dataSheets(cases, now).map(tablePart),
   ]

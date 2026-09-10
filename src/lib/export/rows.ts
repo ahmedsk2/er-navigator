@@ -269,10 +269,21 @@ function median(value: number | null, n: number): Cell {
   return n < MIN_N ? `n<${MIN_N}` : fmtHours2(value)
 }
 
+/**
+ * The Phase 10 case filter in words, as a row to go under the status filter — or no row at all,
+ * so an unfiltered workbook's notes are the rows they always were. Shared by the Summary here and
+ * the Adaa and QCH Read me sheets, which state the range the same way.
+ */
+export function caseFilterRows(filterLine: string | undefined): SummaryRow[] {
+  return filterLine ? [{ cells: ['Case filter', filterLine] }] : []
+}
+
 export function summaryRows(input: {
   data: SummaryData
   range: ExportRange
   generatedAt: Date
+  /** `describeFilter` of the range's case filter; absent when the export has none (Phase 10). */
+  filterLine?: string
 }): SummaryRow[] {
   const { data, range } = input
   const rows: SummaryRow[] = [
@@ -280,6 +291,7 @@ export function summaryRows(input: {
     { cells: ['Generated at', fmtAt(input.generatedAt)] },
     { cells: ['Range (registration date)', `${range.from} to ${range.to}`] },
     { cells: ['Status filter', EXPORT_STATUS_LABELS[range.status]] },
+    ...caseFilterRows(input.filterLine),
     { cells: ['Cases in range', String(data.inRange)] },
     { cells: [] },
     { cells: ['Open now', String(data.tiles.openNow)] },

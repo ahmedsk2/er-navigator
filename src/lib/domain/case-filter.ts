@@ -268,8 +268,9 @@ export function filterChips(filter: CaseFilter, reference: FilterReference): Fil
 }
 
 /**
- * One sentence for the dashboard's footnote and the printed report's filter line. It has to say
- * what `matchesFilter` does, so it is grouped the way the predicate is rather than chip by chip:
+ * One sentence for the dashboard's footnote, the printed report's filter line and the workbook's
+ * "Case filter" row. It has to say what `matchesFilter` does, so it is grouped the way the
+ * predicate is rather than chip by chip:
  *
  *   - one part per dimension, in dimension order, its values joined by "or" — or by "and" under
  *     `lone` for stage, reason and team, where the case's own set must be exactly those;

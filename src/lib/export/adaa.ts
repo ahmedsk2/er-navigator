@@ -38,7 +38,7 @@ import {
 import { MIN_N } from '@/src/lib/domain/time'
 import { dayOffset, fmtAt, fmtFormDate, fmtFormTime } from './format'
 import { EXPORT_STATUS_LABELS, riyadhDateKey, type ExportRange } from './range'
-import type { Sheet, SummaryRow } from './rows'
+import { caseFilterRows, type Sheet, type SummaryRow } from './rows'
 import { freePart, tablePart, type WorkbookPart } from './workbook'
 
 export const ADAA_MANUAL_SHEET = 'ED KPIs manual'
@@ -362,6 +362,8 @@ export function adaaReadMeRows(input: {
   cases: ReadonlyArray<KpiCase>
   range: ExportRange
   generatedAt: Date
+  /** `describeFilter` of the range's case filter; absent when the export has none (Phase 10). */
+  filterLine?: string
 }): SummaryRow[] {
   const { cases, range } = input
   const noCtas = cases.filter((c) => c.ctas == null).length
@@ -374,6 +376,7 @@ export function adaaReadMeRows(input: {
     { cells: ['Population', 'Tracked cases only: the cases ER Navigator holds. Not the whole ED.'] },
     { cells: ['Range (registration date)', `${range.from} to ${range.to}`] },
     { cells: ['Status filter', EXPORT_STATUS_LABELS[range.status]] },
+    ...caseFilterRows(input.filterLine),
     { cells: ['Rows written', String(cases.length)] },
     { cells: ['Rows with no CTAS recorded', String(noCtas)] },
     { cells: ['Rows whose triage cells were left blank (triage on the day before registration; enter by hand)', String(triageHidden)] },
@@ -464,6 +467,7 @@ export function adaaWorkbook(input: {
   cases: ReadonlyArray<KpiCase>
   range: ExportRange
   generatedAt: Date
+  filterLine?: string
 }): WorkbookPart[] {
   return [
     tablePart(adaaManualSheet(input.cases)),

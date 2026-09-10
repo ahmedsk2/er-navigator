@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { FIXTURE, NOW } from '@/src/lib/domain/__tests__/aggregates.fixture'
 import { dashboard, type CaseForStats } from '@/src/lib/domain/aggregates'
+import { EMPTY_FILTER } from '@/src/lib/domain/case-filter'
 import { elapsedHours } from '@/src/lib/domain/time'
 import { riyadhDateKey, type ExportRange } from '../range'
 import {
@@ -354,6 +355,28 @@ describe('summaryRows', () => {
 
   it('carries the disposition table by label', () => {
     expect(valueOf('Discharged home')).toEqual(['Discharged home', '2'])
+  })
+
+  /**
+   * Phase 10. A filtered workbook opened on its own has to say which part of the department it
+   * holds, so the case filter sits right under the status filter — and an unfiltered one has no
+   * such row, so its Summary is exactly the sheet it always was.
+   */
+  it('names the case filter under the status filter, and only when there is one', () => {
+    const labels = rows.map((r) => r.cells[0])
+    expect(labels).not.toContain('Case filter')
+    expect(labels[labels.indexOf('Status filter') + 1]).toBe('Cases in range')
+
+    const narrowed = summaryRows({
+      data,
+      range: { ...RANGE, filter: { ...EMPTY_FILTER, payer: ['INSURED'] } },
+      generatedAt: NOW,
+      filterLine: 'Payer: Insured',
+    })
+    const status = narrowed.findIndex((r) => r.cells[0] === 'Status filter')
+    expect(narrowed[status + 1]?.cells).toEqual(['Case filter', 'Payer: Insured'])
+    // Nothing else moves: take the new row out and the sheet is the unfiltered one.
+    expect(narrowed.filter((_, i) => i !== status + 1)).toEqual(rows)
   })
 })
 
