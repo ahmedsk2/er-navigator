@@ -31,7 +31,7 @@ const tokenValues = new Set(
 )
 
 /** The band tints of the sign-in illustration, lightened so they read on the teal hero. */
-const BAND_BAR_FILLS = ['#2e7d5b', '#b56aa6', '#e0645a', '#e0a23a']
+const BAND_BAR_FILLS = ['#4fa87c', '#b56aa6', '#e0645a', '#e0a23a']
 
 describe('colour literals outside the token block', () => {
   it('parses the @theme block (a rename must not make this test vacuous)', () => {

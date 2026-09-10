@@ -6,16 +6,16 @@ export const metadata: Metadata = { title: 'Sign in · ER Navigator' }
 
 /**
  * The four band tints of the illustration on the desktop hero. They are literals, not tokens,
- * because they exist for this one picture: the board's own `band-h4`, `h6` and `h12` are chosen
- * to hold their own on a white row and go muddy on the teal ground, so each is lightened here
- * (`band-ok` is already light enough to keep as it is). Nothing else in the app may use them,
- * and `tests/unit/colour-literals.test.ts` makes sure nothing does.
+ * because they exist for this one picture: the board's own `band-ok`, `h4`, `h6` and `h12` are
+ * chosen to hold their own on a white row and go muddy on the teal ground (the green sits within
+ * a step of the accent's luminance and read by hue alone), so each is lightened here. Nothing
+ * else in the app may use them, and `tests/unit/colour-literals.test.ts` makes sure nothing does.
  *
  * The bars are decorative: they carry no figure and the whole SVG is `aria-hidden`. What the
  * picture says in words is the purpose line above it.
  */
 const BAND_BARS = [
-  { label: 'under 4 h', fill: '#2e7d5b', width: 116 },
+  { label: 'under 4 h', fill: '#4fa87c', width: 116 },
   { label: '4 h and over', fill: '#e0a23a', width: 170 },
   { label: '6 h and over', fill: '#e0645a', width: 225 },
   { label: '12 h and over', fill: '#b56aa6', width: 274 },
