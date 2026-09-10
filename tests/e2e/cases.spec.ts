@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs'
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { prisma } from '../../src/lib/db'
 import { riyadhDateKey } from '../../src/lib/export/range'
 import { CASES_HEADER } from '../../src/lib/export/rows'
@@ -432,6 +432,109 @@ test('the working diagnosis and the payer reach the board row and the export', a
     }
   })
   expect(cells, `the workbook has one row for MRN ${mrn}`).toEqual([DIAGNOSIS, PAYER_LABEL])
+})
+
+/**
+ * A stand-in for the Web Speech API, installed before the page's own scripts run. Real
+ * recognition needs a microphone and, in Chrome, Google's servers; neither is here, and what is
+ * under test is ours — what the button and the box do with what the recogniser reports. Each
+ * `start()` reports the next outcome a moment later, as the real one does, and then the session
+ * ends; the last outcome repeats.
+ */
+type Heard = { error: string } | { transcript: string }
+async function fakeRecogniser(page: Page, outcomes: Heard[]): Promise<void> {
+  await page.addInitScript((sequence: Heard[]) => {
+    let started = 0
+    class FakeRecognition {
+      lang = ''
+      continuous = false
+      interimResults = false
+      onresult: ((event: unknown) => void) | null = null
+      onerror: ((event: { error: string }) => void) | null = null
+      onend: (() => void) | null = null
+      start(): void {
+        const heard = sequence[Math.min(started, sequence.length - 1)]!
+        started += 1
+        setTimeout(() => {
+          if ('error' in heard) this.onerror?.({ error: heard.error })
+          else {
+            const result = { isFinal: true, length: 1, 0: { transcript: heard.transcript } }
+            this.onresult?.({ resultIndex: 0, results: { length: 1, 0: result } })
+          }
+          this.onend?.()
+        }, 50)
+      }
+      stop(): void {}
+      abort(): void {}
+    }
+    Object.assign(window, { SpeechRecognition: FakeRecognition, webkitSpeechRecognition: FakeRecognition })
+  }, outcomes)
+}
+
+/** What the stand-in hears when it hears anything. */
+const HEARD = 'for admission'
+
+/**
+ * The microphone beside one box. Every box on the case page that has one calls it "Dictate", so
+ * it is found through its box: the innermost element holding both the box and a microphone.
+ */
+function micBeside(page: Page, box: Locator): Locator {
+  return page
+    .locator('div')
+    .filter({ has: box })
+    .filter({ has: page.locator('[data-dictate]') })
+    .last()
+    .locator('[data-dictate]')
+}
+
+/**
+ * Phase 10, the review of Slice 10A. A nurse who once refused the browser's microphone prompt —
+ * or whose phone refuses it for her — tapped the button and watched it flip to "Stop dictating"
+ * and back with no word of why. The recogniser's error code now becomes one line under the row.
+ */
+test('a blocked microphone says why, and the button goes back to Dictate', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.186')
+  await fakeRecogniser(page, [{ error: 'not-allowed' }])
+  const taps = await signIn(page, E2E_USERS.navigator)
+  await openCase(page, uniqueMrn(), STAGE, REASON, taps)
+
+  const diagnosis = page.getByLabel(DIAGNOSIS_LABEL, { exact: true })
+  const mic = micBeside(page, diagnosis)
+  await mic.click()
+
+  const line = page.locator('[data-dictate-status]')
+  await expect(line).toHaveText(
+    'The browser has blocked the microphone for this site. Allow it in the site settings, or type instead.',
+  )
+  await expect(line).toHaveAttribute('role', 'status')
+  await expect(mic).toHaveAccessibleName('Dictate')
+  await expect(mic).toHaveAttribute('aria-pressed', 'false')
+  // With the microphone certainly on the page, the box is still named by its label alone.
+  await expect(diagnosis).toHaveAccessibleName(DIAGNOSIS_LABEL)
+})
+
+/**
+ * The same stand-in, hearing words on the second try. The line a failed session left goes as
+ * soon as the nurse tries again, and what the recogniser hears joins what she has typed, with one
+ * space between.
+ */
+test('dictated words are appended to the box, and trying again clears the last line', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.187')
+  await fakeRecogniser(page, [{ error: 'no-speech' }, { transcript: HEARD }])
+  const taps = await signIn(page, E2E_USERS.navigator)
+  await openCase(page, uniqueMrn(), STAGE, REASON, taps)
+
+  const diagnosis = page.getByLabel(DIAGNOSIS_LABEL, { exact: true })
+  const mic = micBeside(page, diagnosis)
+  await diagnosis.fill('Chest pain')
+  await mic.click()
+  const line = page.locator('[data-dictate-status]')
+  await expect(line).toHaveText('Nothing was heard. Tap the microphone and speak again.')
+
+  await mic.click()
+  await expect(diagnosis).toHaveValue(`Chest pain ${HEARD}`)
+  await expect(line).toHaveCount(0)
+  await expect(mic).toHaveAccessibleName('Dictate')
 })
 
 /**

@@ -40,13 +40,14 @@ type RecognitionAlternative = { transcript: string }
 type RecognitionResult = { isFinal: boolean; length: number; 0?: RecognitionAlternative }
 type RecognitionResultList = { length: number; [index: number]: RecognitionResult }
 type RecognitionEvent = { resultIndex: number; results: RecognitionResultList }
+type RecognitionErrorEvent = { error?: string }
 type Recognition = {
   lang: string
   continuous: boolean
   interimResults: boolean
   onresult: ((event: RecognitionEvent) => void) | null
   onend: (() => void) | null
-  onerror: (() => void) | null
+  onerror: ((event: RecognitionErrorEvent) => void) | null
   start: () => void
   stop: () => void
   abort: () => void
@@ -82,13 +83,45 @@ export function appendDictated(current: string, text: string, max?: number): str
   return max == null ? merged : merged.slice(0, max)
 }
 
+const BLOCKED_LINE =
+  'The browser has blocked the microphone for this site. Allow it in the site settings, or type instead.'
+
+/**
+ * The one line a failed session leaves under its row, by the recogniser's error code. A blocked
+ * microphone used to be silent: the button flipped to "Stop dictating" and straight back, and a
+ * nurse who had once refused the prompt was left tapping it. The codes that name something she
+ * can act on get a line; "aborted" (the page stopping its own session) and any code not listed
+ * here get none, because a line that explains nothing is worse than no line.
+ */
+export function dictationErrorLine(code: string | undefined): string | null {
+  switch (code) {
+    case 'not-allowed':
+    case 'service-not-allowed':
+      return BLOCKED_LINE
+    case 'audio-capture':
+      return 'No microphone was found on this device.'
+    case 'network':
+      return 'Dictation needs a network connection.'
+    case 'no-speech':
+      return 'Nothing was heard. Tap the microphone and speak again.'
+    default:
+      return null
+  }
+}
+
 export function DictationButton({
   onText,
+  onStatus,
   disabled,
   className = '',
 }: {
   /** Called with each final transcript. The caller merges it into the value it owns. */
   onText: (text: string) => void
+  /**
+   * Called with the line to show when a session fails (`dictationErrorLine`), and with null when
+   * a new session starts or words arrive. `DictationRow` owns the line, so every box gets it.
+   */
+  onStatus?: (line: string | null) => void
   disabled?: boolean
   className?: string
 }) {
@@ -96,13 +129,15 @@ export function DictationButton({
   const [listening, setListening] = useState(false)
   const recognition = useRef<Recognition | null>(null)
 
-  // The callback the recogniser will use, kept current without re-creating the recogniser: the
+  // The callbacks the recogniser will use, kept current without re-creating the recogniser: the
   // editor hands a new closure on every keystroke, and re-binding a live recogniser to it would
   // end the session mid-sentence.
   const sink = useRef(onText)
+  const report = useRef(onStatus)
   useEffect(() => {
     sink.current = onText
-  }, [onText])
+    report.current = onStatus
+  }, [onText, onStatus])
 
   // Leaving the page, or the field being disabled underneath it, must stop the microphone.
   useEffect(
@@ -134,21 +169,27 @@ export function DictationButton({
         const result = event.results[i]
         if (result?.isFinal) text += result[0]?.transcript ?? ''
       }
-      if (text.trim()) sink.current(text)
+      if (text.trim()) {
+        report.current?.(null)
+        sink.current(text)
+      }
     }
     // A denied permission, a lost network (the recogniser is a server call in Chrome) and a
     // silence timeout all land here or in `onend`. Either way the button goes back to idle
-    // rather than sitting pressed over a microphone that stopped listening minutes ago.
+    // rather than sitting pressed over a microphone that stopped listening minutes ago, and an
+    // error says why in the line under the row.
     session.onend = () => {
       recognition.current = null
       setListening(false)
     }
-    session.onerror = () => {
+    session.onerror = (event) => {
       recognition.current = null
       setListening(false)
+      report.current?.(dictationErrorLine(event.error))
     }
     recognition.current = session
     setListening(true)
+    report.current?.(null)
     session.start()
   }, [])
 
@@ -179,6 +220,11 @@ export function DictationButton({
  * A free-text control with the microphone beside it. A flex row rather than a button floating
  * over the input: where the API is absent the button renders nothing and the control keeps the
  * whole width, with no reserved gap for a control that will never appear.
+ *
+ * The row owns the line a failed session leaves, under the control and announced as a status, so
+ * every box with a microphone says why it stopped. The wrapper is `flex-1` for the one box that
+ * sits in a flex row of its own ("What changed?", beside Add): sized by its content, it left that
+ * box at the input's default width and would have widened it when the line appeared.
  */
 export function DictationRow({
   onText,
@@ -189,10 +235,18 @@ export function DictationRow({
   disabled?: boolean
   children: ReactNode
 }) {
+  const [status, setStatus] = useState<string | null>(null)
   return (
-    <div className="flex items-start gap-1.5">
-      <div className="min-w-0 flex-1">{children}</div>
-      <DictationButton onText={onText} disabled={disabled} />
+    <div className="min-w-0 flex-1">
+      <div className="flex items-start gap-1.5">
+        <div className="min-w-0 flex-1">{children}</div>
+        <DictationButton onText={onText} onStatus={setStatus} disabled={disabled} />
+      </div>
+      {status ? (
+        <p role="status" data-dictate-status className="mt-1.5 text-caption text-band-h4-ink">
+          {status}
+        </p>
+      ) : null}
     </div>
   )
 }

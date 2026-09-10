@@ -1033,7 +1033,9 @@ export function CaseEditor(props: CaseEditorProps) {
                 onChange={setUpdateAction}
                 disabled={busy}
               />
-              <div className="flex gap-2">
+              {/* `items-start`: the microphone's line, when it shows, is under the box only, and the
+                  Add button keeps its height rather than stretching down beside it. */}
+              <div className="flex items-start gap-2">
                 <DictationRow
                   disabled={busy}
                   onText={(text) => setUpdateText((current) => appendDictated(current, text))}
