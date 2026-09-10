@@ -49,7 +49,10 @@ for (const route of routes) {
     const ctx = await browser.newContext(authed ? { ...opts, storageState } : opts)
     const page = await ctx.newPage()
     await page.goto(new URL(route, baseUrl).toString(), { waitUntil: 'networkidle' })
-    await page.locator('h1').first().waitFor({ timeout: 10_000 })
+    // A *visible* h1. Since Phase 9 the signed-in shell carries two — the rail's wordmark and the
+    // header's — and each is `display: none` at the width the other is drawn at, so the first one
+    // in the DOM is the hidden one on a phone and this guard would time out on every mobile shot.
+    await page.locator('h1:visible').first().waitFor({ timeout: 10_000 })
     await page.evaluate(() => document.fonts.ready)
     const file = `design/screens/${label}-${slug}-${name}.png`
     await page.screenshot({ path: file, fullPage: true })
