@@ -11,7 +11,7 @@
  * no Resolve, no Void.
  */
 import Link from 'next/link'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, useState, type ReactNode } from 'react'
 import {
   acknowledgeAlert as acknowledgeAlertAction,
   addCaseUpdate as addCaseUpdateAction,
@@ -196,6 +196,9 @@ export function CaseEditor(props: CaseEditorProps) {
   const [voidOpen, setVoidOpen] = useState(false)
   const [now, setNow] = useState(() => new Date(props.nowIso))
   const [alert, setAlert] = useState(props.alert ?? null)
+  /** The two labelled boxes that share their row with the microphone (`Field` with `htmlFor`). */
+  const diagnosisId = useId()
+  const noteId = useId()
 
   // The clock ticks only while the case is open; a resolved case is frozen at its departure time.
   // `now` starts at the server's instant so the first client render matches the server's HTML.
@@ -682,12 +685,13 @@ export function CaseEditor(props: CaseEditorProps) {
             row and the weekly deck can say what the patient came in with. It is a clinical line
             and not an identifier — but it is free text, so `phiWarnings` reads it like every
             other box and the 10-digit warning applies. */}
-        <Field label="Working diagnosis (optional)">
+        <Field label="Working diagnosis (optional)" htmlFor={diagnosisId}>
           <DictationRow
             disabled={disabled}
             onText={(text) => set({ diagnosis: appendDictated(draft.diagnosis, text, DIAGNOSIS_MAX) })}
           >
             <Input
+              id={diagnosisId}
               maxLength={DIAGNOSIS_MAX}
               placeholder="one line, e.g. chest pain, for admission"
               disabled={disabled}
@@ -1135,12 +1139,13 @@ export function CaseEditor(props: CaseEditorProps) {
               onChange={(next) => set({ departedAt: next })}
             />
           </Field>
-          <Field label="Resolution note (optional)">
+          <Field label="Resolution note (optional)" htmlFor={noteId}>
             <DictationRow
               disabled={disabled}
               onText={(text) => set({ resolutionNote: appendDictated(draft.resolutionNote, text) })}
             >
               <Input
+                id={noteId}
                 disabled={disabled}
                 value={draft.resolutionNote}
                 onChange={(e) => set({ resolutionNote: e.target.value })}

@@ -39,6 +39,8 @@ const AREA_CODE = 'RAZ'
 const DIAGNOSIS_LABEL = 'Working diagnosis (optional)'
 const DIAGNOSIS = 'Chest pain, for admission'
 const PAYER_LABEL = 'Insured'
+/** The other labelled box with a microphone beside it (the Resolve section). */
+const NOTE_LABEL = 'Resolution note (optional)'
 
 test('a navigator opens a case, adds an update and resolves it as discharged home', async ({ page }) => {
   await fromClientIp(page, '198.51.100.41')
@@ -369,14 +371,15 @@ test('the working diagnosis and the payer reach the board row and the export', a
   const mrn = uniqueMrn()
   const url = await openCase(page, mrn, STAGE, REASON, taps)
 
-  await page.getByLabel(DIAGNOSIS_LABEL).fill(DIAGNOSIS)
+  await page.getByLabel(DIAGNOSIS_LABEL, { exact: true }).fill(DIAGNOSIS)
   await page.getByRole('group', { name: 'Payer' }).getByRole('button', { name: PAYER_LABEL }).click()
   await page.getByRole('button', { name: 'Save changes' }).click()
   await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
 
   // Both come back on a fresh load, so the values really were stored.
   await page.goto(url)
-  await expect(page.getByLabel(DIAGNOSIS_LABEL)).toHaveValue(DIAGNOSIS)
+  const diagnosis = page.getByLabel(DIAGNOSIS_LABEL, { exact: true })
+  await expect(diagnosis).toHaveValue(DIAGNOSIS)
   await expect(
     page.getByRole('group', { name: 'Payer' }).getByRole('button', { name: PAYER_LABEL }),
   ).toHaveAttribute('aria-pressed', 'true')
@@ -393,6 +396,14 @@ test('the working diagnosis and the payer reach the board row and the export', a
     await expect(dictate).toHaveCount(0)
   }
   console.log(`[cases] the Web Speech API is ${speechApi ? 'present' : 'absent'} in this browser`)
+
+  // The box is named by its label and nothing else. The microphone shares the row with it, and
+  // a <label> wrapped round the pair made the button part of the input's name ("Working
+  // diagnosis (optional) Dictate"); the resolution note had the same row. Asserted after the
+  // branch above, because the button only renders once the page has hydrated — before that the
+  // name is right by accident.
+  await expect(diagnosis).toHaveAccessibleName(DIAGNOSIS_LABEL)
+  await expect(page.getByLabel(NOTE_LABEL, { exact: true })).toHaveAccessibleName(NOTE_LABEL)
 
   // The board row: the payer as a chip after the MRN, the diagnosis as its own line.
   await page.goto('/')
