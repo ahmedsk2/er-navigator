@@ -1,0 +1,39 @@
+{
+  "note": "Phase 9 (Slice 9C) Lighthouse runs, taken the way design/screens/phase7-lighthouse.json documents its own: mobile emulation (Lighthouse's default form factor), Chrome 152 headless, simulated throttling, signed in as the e2e navigator through a session cookie in --extra-headers, against `pnpm start` on the production build. The gate (locked plan section 8, Phase 7) is performance and accessibility >= 90 on the Board and the Case editor. `before` is the Phase 7 `after` column, so the two files line up; `after` is this slice on the same three routes.",
+  "tool": "lighthouse 13.4.1 via npx, no --preset (mobile is the default form factor; 13.x rejects --preset=default)",
+  "date": "2026-09-10",
+  "port": "http://localhost:3103 (the Slice 9C worktree's own server and database; the lead's chain was on 3000)",
+  "gate": { "performance": 90, "accessibility": 90 },
+  "runs": {
+    "/cases/new": {
+      "before": { "performance": 96, "accessibility": 100, "best-practices": 100, "seo": 63 },
+      "after": { "performance": 97, "accessibility": 100, "best-practices": 100, "seo": 63 },
+      "metrics": { "lcp": "1.8 s", "tbt": "190 ms", "cls": "0" }
+    },
+    "/cases/[id] (an open case)": {
+      "before": { "performance": 96, "accessibility": 100, "best-practices": 100, "seo": 63 },
+      "after": { "performance": 95, "accessibility": 100, "best-practices": 100, "seo": 63 },
+      "metrics": { "lcp": "2.9 s", "tbt": "70 ms", "cls": "0" }
+    },
+    "/ (board)": {
+      "before": { "performance": 98, "accessibility": 100, "best-practices": 100, "seo": 63 },
+      "after": { "performance": 97, "accessibility": 100, "best-practices": 100, "seo": 63 },
+      "metrics": { "lcp": "2.5 s", "tbt": "20 ms", "cls": "0" }
+    }
+  },
+  "what-slice-9c-changed": [
+    "Board rows are cards in a two-column grid on the phone and a five-column grid on a laptop, with the elapsed clock as a filled pill instead of a 6 px stripe. One element fewer per row, one class more; no measurable cost.",
+    "Cumulative layout shift is still 0 on all three routes. The dashboard's and the editor's sections became cards and the board's rows gained margins, all of it server-rendered in the first paint, so nothing arrives after hydration and moves anything (the Phase 7 fix that took the board from 0.121 to 0 is intact — the install banner is still below the list).",
+    "Twenty-four inline SVG icons entered the markup (section headings, tile squares, the search field, the export actions). They are drawn, not fetched: no request, no font, nothing for the CSP to refuse. Every one is aria-hidden, so no accessible name moved — the accessibility score is 100 on all three routes, as it was.",
+    "The three routes' performance moved by at most one point in each direction, which is inside this harness's run-to-run noise (a first attempt on /cases/new failed with Lighthouse's own NO_NAVSTART trace error and was re-run, as the tool instructs)."
+  ],
+  "not-fixed": {
+    "unused-javascript (93-95 KiB on the case editor, 29 KiB on the board)": "Unchanged from Phase 7: the React/Next runtime plus zod in the first client chunk. Slice 9C adds no dependency — the icon set is copied source, not a package — so this is the same figure it was.",
+    "legacy-javascript-insight (14 KiB)": "Next's own polyfills, chosen by the default browserslist. Phase 7's reasoning stands: narrowing the browser target would drop whatever the hospital's older devices run.",
+    "render-blocking-insight (50-130 ms)": "The single Tailwind stylesheet, which Slice 9C did not grow meaningfully — the new classes are utilities the build already emitted for other elements, plus one print rule.",
+    "bf-cache": "Every page is Cache-Control: no-store on purpose: a clinical board must never be restored from the back/forward cache with stale rows. Lighthouse marks both failure reasons \"Not actionable\".",
+    "seo 63 / is-crawlable / llms-txt": "The app sets robots noindex on purpose (a hospital tool behind a login). SEO is not a gate.",
+    "label-content-name-mismatch on the board (weight 0, accessibility still 100)": "The shell's overflow trigger draws the user's initials inside a button whose accessible name is \"Menu\" (Slice 9B; the name is pinned by tests/e2e/board.spec.ts and the Phase 9 contract list). The initials span already carries aria-hidden; axe computes \"visible text\" without honouring it, so the rule fires anyway. Lighthouse weights the audit 0 and the category is 100. Flagged for the lead rather than fixed here: the file belongs to Slice 9B and the accessible name is a contract.",
+    "forced-reflow-insight, network-dependency-tree-insight, max-potential-fid, interactive": "Lighthouse 13 insights and lab metrics outside the plan's gate; none names a change Slice 9C introduced."
+  }
+}

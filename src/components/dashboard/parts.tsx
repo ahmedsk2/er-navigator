@@ -13,11 +13,31 @@ import { sharePercent } from '@/src/lib/dashboard/panels'
 import { MIN_N, band, fmtHours } from '@/src/lib/domain/time'
 import { BAND_TEXT } from '@/src/components/bands'
 
-/** A full-bleed section with a hairline top and bottom — the prototype's `.section`. */
-export function DashSection({ title, children }: { title: string; children: ReactNode }) {
+/**
+ * One dashboard section. A card since Phase 9, where it was a full-bleed strip between two
+ * hairlines: twenty-odd of those read as one continuous page, and the reader's question is "which
+ * section am I in", which a card answers and a hairline does not.
+ *
+ * The structure is untouched and deliberately so — `tests/e2e/dashboard.spec.ts` reads the section
+ * titles in order off `.dash h3` and finds each table with `xpath=../table`, so the `<h3>` stays
+ * the section's first child and the children stay its siblings. `icon` goes inside the heading and
+ * is `aria-hidden`, which leaves the heading's accessible name exactly the title.
+ */
+export function DashSection({
+  title,
+  icon,
+  children,
+}: {
+  title: string
+  icon?: ReactNode
+  children: ReactNode
+}) {
   return (
-    <section className="mb-2.5 border-y border-line bg-panel p-4">
-      <h3 className="mb-2.5 text-section">{title}</h3>
+    <section className="mx-4 mb-2.5 rounded-card border border-line bg-panel p-4 shadow-card lg:mx-0">
+      <h3 className="mb-2.5 flex items-center gap-2 text-section">
+        {icon ? <span className="text-accent">{icon}</span> : null}
+        {title}
+      </h3>
       {children}
     </section>
   )
@@ -47,12 +67,14 @@ export function Tile({
   tone = 'ink',
   note,
   href,
+  icon,
 }: {
   label: string
   value: string
   tone?: 'ink' | 'danger'
   note?: string | null
   href?: string
+  icon?: ReactNode
 }) {
   const number = (
     <span
@@ -63,7 +85,18 @@ export function Tile({
     </span>
   )
   return (
-    <div className="min-w-0 flex-1 rounded-card border border-line bg-panel px-3 py-2.5 shadow-panel">
+    <div className="min-w-0 flex-1 rounded-card border border-line bg-panel px-3 py-2.5 shadow-card">
+      {/* Phase 9: a tinted square before the figure. It names the tile a second time, in a
+          channel the eye reaches before it reads — and it is `aria-hidden`, so the tile still
+          announces exactly its number and its label. */}
+      {icon ? (
+        <span
+          data-tile-icon={label}
+          className="mb-1 inline-grid h-7 w-7 place-items-center rounded-[8px] bg-accent-soft text-accent-ink"
+        >
+          {icon}
+        </span>
+      ) : null}
       <div>
         {href ? (
           <Link

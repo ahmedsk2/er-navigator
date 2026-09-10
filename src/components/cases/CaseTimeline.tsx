@@ -11,6 +11,7 @@
  * measured the intervals; `fmtStamp` and `fmtHours` only render them, in Asia/Riyadh, on both
  * sides of hydration.
  */
+import { Clock } from '@/src/components/icons'
 import { Section } from '@/src/components/ui'
 import { fmtStamp } from '@/src/lib/cases/local-time'
 import type { TimelineStepView } from '@/src/lib/cases/timeline'
@@ -22,7 +23,7 @@ export function CaseTimeline({ steps }: { steps: ReadonlyArray<TimelineStepView>
   if (steps.length === 0) return null
 
   return (
-    <Section title="Timeline">
+    <Section title="Timeline" icon={<Clock size={18} />}>
       <ol className="m-0 list-none p-0" data-timeline>
         {steps.map((step) => (
           <li

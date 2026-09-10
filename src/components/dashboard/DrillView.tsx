@@ -47,7 +47,7 @@ export function DrillView({
       </div>
 
       {sorted.length === 0 ? (
-        <p className="border-y border-line bg-panel p-7 text-center text-body text-muted">
+        <p className="mx-4 rounded-card border border-line bg-panel p-7 text-center text-body text-muted shadow-card lg:mx-0">
           These cases are no longer in this range.
         </p>
       ) : (
