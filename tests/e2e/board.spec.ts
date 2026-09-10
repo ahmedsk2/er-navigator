@@ -195,7 +195,7 @@ test('a filter that matches nothing says so rather than looking like an empty de
  * of the row's link and never a child of it, and three specs count the board by `a[data-mrn]`.
  */
 test('a row opens its summary without leaving the board, and adds no second link', async ({ page }) => {
-  await fromClientIp(page, '198.51.100.79')
+  await fromClientIp(page, '198.51.100.181')
   await signIn(page, E2E_USERS.navigator)
   await narrowToFixtures(page)
 

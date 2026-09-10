@@ -58,8 +58,26 @@ export function Section({
   )
 }
 
-/** A label + control pair. The label wraps the control, so screen readers and Playwright agree. */
-export function Field({ label, children }: { label: string; children: ReactNode }) {
+/**
+ * A label + control pair. The label wraps the control, so screen readers and Playwright agree.
+ *
+ * `htmlFor` is for a control that shares its row with a button (Phase 10: the microphone beside
+ * the working diagnosis and the resolution note). A <label> may hold one control, and wrapping
+ * the button too made it part of the input's name — "Working diagnosis (optional) Dictate". With
+ * `htmlFor` the label names the control by its id and the row sits beside the label, not inside
+ * it; the look is the same.
+ */
+export function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: ReactNode }) {
+  if (htmlFor) {
+    return (
+      <div className="mb-3.5 block">
+        <label htmlFor={htmlFor} className="mb-1 block text-label font-medium text-muted">
+          {label}
+        </label>
+        {children}
+      </div>
+    )
+  }
   return (
     <label className="mb-3.5 block">
       <span className="mb-1 block text-label font-medium text-muted">{label}</span>

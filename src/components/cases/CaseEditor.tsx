@@ -11,7 +11,7 @@
  * no Resolve, no Void.
  */
 import Link from 'next/link'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, useState, type ReactNode } from 'react'
 import {
   acknowledgeAlert as acknowledgeAlertAction,
   addCaseUpdate as addCaseUpdateAction,
@@ -77,7 +77,16 @@ import {
   TriangleAlert,
   Users,
 } from '@/src/components/icons'
-import { MRN_RE, phiWarnings, REGISTRATION_NUDGE_MINUTES, REGISTRATION_QUICK_HOURS } from '@/src/lib/domain/validation'
+import {
+  DIAGNOSIS_MAX,
+  MRN_RE,
+  NOTE_MAX,
+  OTHER_TEXT_MAX,
+  phiWarnings,
+  REGISTRATION_NUDGE_MINUTES,
+  REGISTRATION_QUICK_HOURS,
+  UPDATE_TEXT_MAX,
+} from '@/src/lib/domain/validation'
 import { timeWarnings } from '@/src/lib/domain/warnings'
 
 const CLOCK_TICK_MS = 30_000
@@ -99,9 +108,6 @@ const UPDATE_ACTIONS = Object.keys(UPDATE_ACTION_LABELS) as Array<keyof typeof U
 const CASE_MGMT_REFERRALS = ['CASE_MANAGER', 'COMPLEX_CARE'] as const
 const CASE_MGMT_CRITERIA = ['MEETS', 'NOT_MEETING'] as const
 const CASE_MGMT_ACTIONS = ['ENROLLED', 'FOR_ENROLLMENT'] as const
-
-/** Phase 10. The zod cap (`freeText(80)`), so the box and the rules say the same number. */
-const DIAGNOSIS_MAX = 80
 
 /**
  * One row for the pethidine question, because the two columns behind it are one clinical fact:
@@ -196,6 +202,9 @@ export function CaseEditor(props: CaseEditorProps) {
   const [voidOpen, setVoidOpen] = useState(false)
   const [now, setNow] = useState(() => new Date(props.nowIso))
   const [alert, setAlert] = useState(props.alert ?? null)
+  /** The two labelled boxes that share their row with the microphone (`Field` with `htmlFor`). */
+  const diagnosisId = useId()
+  const noteId = useId()
 
   // The clock ticks only while the case is open; a resolved case is frozen at its departure time.
   // `now` starts at the server's instant so the first client render matches the server's HTML.
@@ -682,12 +691,13 @@ export function CaseEditor(props: CaseEditorProps) {
             row and the weekly deck can say what the patient came in with. It is a clinical line
             and not an identifier — but it is free text, so `phiWarnings` reads it like every
             other box and the 10-digit warning applies. */}
-        <Field label="Working diagnosis (optional)">
+        <Field label="Working diagnosis (optional)" htmlFor={diagnosisId}>
           <DictationRow
             disabled={disabled}
             onText={(text) => set({ diagnosis: appendDictated(draft.diagnosis, text, DIAGNOSIS_MAX) })}
           >
             <Input
+              id={diagnosisId}
               maxLength={DIAGNOSIS_MAX}
               placeholder="one line, e.g. chest pain, for admission"
               disabled={disabled}
@@ -757,11 +767,16 @@ export function CaseEditor(props: CaseEditorProps) {
                   onText={(text) =>
                     setOtherText(
                       other.id,
-                      appendDictated(mine.find((r) => r.reasonId === other.id)?.otherText ?? '', text),
+                      appendDictated(
+                        mine.find((r) => r.reasonId === other.id)?.otherText ?? '',
+                        text,
+                        OTHER_TEXT_MAX,
+                      ),
                     )
                   }
                 >
                   <Input
+                    maxLength={OTHER_TEXT_MAX}
                     placeholder="Describe the other reason (goes to the review queue)"
                     disabled={disabled}
                     aria-label={`Other reason under ${stage.name}`}
@@ -1029,12 +1044,15 @@ export function CaseEditor(props: CaseEditorProps) {
                 onChange={setUpdateAction}
                 disabled={busy}
               />
-              <div className="flex gap-2">
+              {/* `items-start`: the microphone's line, when it shows, is under the box only, and the
+                  Add button keeps its height rather than stretching down beside it. */}
+              <div className="flex items-start gap-2">
                 <DictationRow
                   disabled={busy}
-                  onText={(text) => setUpdateText((current) => appendDictated(current, text))}
+                  onText={(text) => setUpdateText((current) => appendDictated(current, text, UPDATE_TEXT_MAX))}
                 >
                   <Input
+                    maxLength={UPDATE_TEXT_MAX}
                     aria-label="What changed?"
                     placeholder="What changed?"
                     disabled={busy}
@@ -1135,12 +1153,14 @@ export function CaseEditor(props: CaseEditorProps) {
               onChange={(next) => set({ departedAt: next })}
             />
           </Field>
-          <Field label="Resolution note (optional)">
+          <Field label="Resolution note (optional)" htmlFor={noteId}>
             <DictationRow
               disabled={disabled}
-              onText={(text) => set({ resolutionNote: appendDictated(draft.resolutionNote, text) })}
+              onText={(text) => set({ resolutionNote: appendDictated(draft.resolutionNote, text, NOTE_MAX) })}
             >
               <Input
+                id={noteId}
+                maxLength={NOTE_MAX}
                 disabled={disabled}
                 value={draft.resolutionNote}
                 onChange={(e) => set({ resolutionNote: e.target.value })}

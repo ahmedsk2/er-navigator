@@ -31,7 +31,7 @@ async function shoot(page: Page, name: string, suffix: string, fullPage = false)
 test('phase 10 summary gate screenshots', async ({ page }, testInfo) => {
   const mobile = testInfo.project.name === 'mobile'
   const suffix = mobile ? 'mobile-390x844' : 'desktop-1280x800'
-  await fromClientIp(page, mobile ? '198.51.100.91' : '198.51.100.92')
+  await fromClientIp(page, mobile ? '198.51.100.184' : '198.51.100.185')
   await signIn(page, E2E_USERS.supervisor)
 
   // The board, narrowed to the seeded fixtures, with the summary of the longest stay open.
