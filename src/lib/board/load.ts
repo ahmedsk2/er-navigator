@@ -40,6 +40,9 @@ const BOARD_ROW_SELECT = {
   disposition: true,
   createdAt: true,
   ctas: true,
+  // Phase 10: the payer's chip and the working-diagnosis line.
+  payer: true,
+  diagnosis: true,
   // Phase 8b, decision H: the row's "Reviewed" chip.
   reviewedAt: true,
   triageAt: true,
@@ -111,6 +114,8 @@ type SelectedRow = Milestones & {
   disposition: BoardRow['disposition']
   createdAt: Date
   ctas: number | null
+  payer: BoardRow['payer']
+  diagnosis: string | null
   reviewedAt: Date | null
   primaryReason: { name: string } | null
   ward: { code: string } | null
@@ -145,6 +150,8 @@ function toBoardRow(row: SelectedRow): BoardRow {
     resolvedAt: iso(row.resolvedAt),
     ctas: row.ctas,
     area: row.area?.code ?? null,
+    payer: row.payer,
+    diagnosis: row.diagnosis,
     primaryReason: row.primaryReason?.name ?? null,
     departments: row.consults.map((consult) => consult.department.name),
     disposition: row.disposition,

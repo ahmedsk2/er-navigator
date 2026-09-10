@@ -1,12 +1,12 @@
 /**
- * The app's icon set (Phase 9): twenty-four line icons, 24 × 24, stroke 2, round caps, drawn in
- * `currentColor`. Decorative by default (`aria-hidden`); pass `label` for the rare standalone
- * icon that carries meaning and it becomes `role="img"` with that name.
+ * The app's icon set (Phase 9, two more in Phase 10): twenty-six line icons, 24 × 24, stroke 2,
+ * round caps, drawn in `currentColor`. Decorative by default (`aria-hidden`); pass `label` for
+ * the rare standalone icon that carries meaning and it becomes `role="img"` with that name.
  *
  * Paths are copied from Lucide 1.43.0 (https://lucide.dev), ISC License, Copyright (c) 2026
  * Lucide Icons and Contributors: permission to use, copy, modify and distribute is granted
  * provided the notice appears, which it does here. Copied rather than installed: the locked plan
- * admits no new runtime dependency, and the app needs these twenty-four, not the library.
+ * admits no new runtime dependency, and the app needs these twenty-six, not the library.
  */
 import type { ReactNode, SVGProps } from 'react'
 
@@ -184,6 +184,29 @@ export const LogOut = (p: IconProps) =>
       <path d="m16 17 5-5-5-5" />
       <path d="M21 12H9" />
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+    </>,
+  )
+
+export const Mic = (p: IconProps) =>
+  icon(
+    p,
+    <>
+      <path d="M12 19v3" />
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+      <rect x="9" y="2" width="6" height="13" rx="3" />
+    </>,
+  )
+
+export const MicOff = (p: IconProps) =>
+  icon(
+    p,
+    <>
+      <path d="M12 19v3" />
+      <path d="M15 9.34V5a3 3 0 0 0-5.68-1.33" />
+      <path d="M16.95 16.95A7 7 0 0 1 5 12v-2" />
+      <path d="M18.89 13.23A7 7 0 0 0 19 12v-2" />
+      <path d="m2 2 20 20" />
+      <path d="M9 9v3a3 3 0 0 0 5.12 2.12" />
     </>,
   )
 

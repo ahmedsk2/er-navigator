@@ -16,6 +16,8 @@ function source(overrides: Partial<SnapshotSource> = {}): SnapshotSource {
     medAdminInformedAt: null,
     ctas: null,
     areaId: null,
+    diagnosis: null,
+    payer: null,
     triageAt: null,
     roomAt: null,
     roomType: null,

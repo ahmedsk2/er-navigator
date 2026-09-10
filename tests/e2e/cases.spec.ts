@@ -35,6 +35,11 @@ const RETIRED_TEAM = 'E2E Retired Team'
 const AREA_NAME = 'Rapid assessment zone'
 const AREA_CODE = 'RAZ'
 
+/** Phase 10: the working diagnosis and the payer (src/lib/domain/taxonomy.ts PAYER_LABELS). */
+const DIAGNOSIS_LABEL = 'Working diagnosis (optional)'
+const DIAGNOSIS = 'Chest pain, for admission'
+const PAYER_LABEL = 'Insured'
+
 test('a navigator opens a case, adds an update and resolves it as discharged home', async ({ page }) => {
   await fromClientIp(page, '198.51.100.41')
   const taps = await signIn(page, E2E_USERS.navigator)
@@ -344,6 +349,78 @@ test('CTAS and the ED area reach the board row and the export', async ({ page })
     }
   })
   expect(cells, `the workbook has one row for MRN ${mrn}`).toEqual(['3', AREA_NAME])
+})
+
+/**
+ * Phase 10, Slice 10A. Ahmed's second and sixth requests of 10 September: a one-line working
+ * diagnosis beside CTAS, and who pays for the visit. The same journey as the Phase 8 test above,
+ * because they are the same kind of field - set on the case screen, shown on the board row, and
+ * carried into the workbook's Cases sheet.
+ *
+ * The dictation button is checked here too, and the check branches: the Web Speech API is a
+ * browser fact, and Playwright's Chromium is not guaranteed to expose it. Where the API exists
+ * the microphone must be there; where it does not, nothing may render - which is exactly what an
+ * iPhone gets, and the keyboard's own microphone is what a nurse uses there.
+ */
+test('the working diagnosis and the payer reach the board row and the export', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.58')
+  // A supervisor, for `export.xlsx`, as the Phase 8 test above.
+  const taps = await signIn(page, E2E_USERS.supervisor)
+  const mrn = uniqueMrn()
+  const url = await openCase(page, mrn, STAGE, REASON, taps)
+
+  await page.getByLabel(DIAGNOSIS_LABEL).fill(DIAGNOSIS)
+  await page.getByRole('group', { name: 'Payer' }).getByRole('button', { name: PAYER_LABEL }).click()
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
+
+  // Both come back on a fresh load, so the values really were stored.
+  await page.goto(url)
+  await expect(page.getByLabel(DIAGNOSIS_LABEL)).toHaveValue(DIAGNOSIS)
+  await expect(
+    page.getByRole('group', { name: 'Payer' }).getByRole('button', { name: PAYER_LABEL }),
+  ).toHaveAttribute('aria-pressed', 'true')
+
+  // The microphone: present exactly where the browser offers the API, absent everywhere else.
+  const speechApi = await page.evaluate(
+    () => 'SpeechRecognition' in window || 'webkitSpeechRecognition' in window,
+  )
+  const dictate = page.getByRole('button', { name: 'Dictate' })
+  if (speechApi) {
+    await expect(dictate.first()).toBeVisible()
+    await expect(dictate.first()).toHaveAttribute('aria-pressed', 'false')
+  } else {
+    await expect(dictate).toHaveCount(0)
+  }
+  console.log(`[cases] the Web Speech API is ${speechApi ? 'present' : 'absent'} in this browser`)
+
+  // The board row: the payer as a chip after the MRN, the diagnosis as its own line.
+  await page.goto('/')
+  const boardRow = page.locator(`a[data-mrn="${mrn}"]`)
+  await expect(boardRow).toBeVisible()
+  await expect(boardRow.locator(`[data-chip="${PAYER_LABEL}"]`)).toBeVisible()
+  await expect(boardRow.locator('[data-diagnosis]')).toHaveText(DIAGNOSIS)
+
+  // And the workbook's Cases sheet has both in their own columns, after "ED area".
+  const today = riyadhDateKey(new Date())
+  const yesterday = riyadhDateKey(new Date(Date.now() - 24 * 60 * 60 * 1000))
+  const response = await page.request.get(`/api/export.xlsx?from=${yesterday}&to=${today}&status=all`)
+  expect(response.status()).toBe(200)
+  const book = new ExcelJS.Workbook()
+  await book.xlsx.load(Buffer.from(await response.body()) as unknown as ExcelJS.Buffer)
+  const sheet = book.getWorksheet('Cases')!
+
+  const header = (sheet.getRow(1).values as ExcelJS.CellValue[]).map((v) => String(v ?? ''))
+  expect(header.slice(1)).toEqual(CASES_HEADER)
+
+  const cells: string[] = []
+  sheet.eachRow((row, index) => {
+    if (index > 1 && String(row.getCell(header.indexOf('MRN')).value ?? '') === mrn) {
+      cells.push(String(row.getCell(header.indexOf('Working diagnosis')).value ?? ''))
+      cells.push(String(row.getCell(header.indexOf('Payer')).value ?? ''))
+    }
+  })
+  expect(cells, `the workbook has one row for MRN ${mrn}`).toEqual([DIAGNOSIS, PAYER_LABEL])
 })
 
 /**

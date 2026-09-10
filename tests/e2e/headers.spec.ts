@@ -23,9 +23,14 @@ test('the login page is served with the full security header set', async ({ requ
   expect(headers['x-frame-options']).toBe('DENY')
   expect(headers['x-content-type-options']).toBe('nosniff')
   expect(headers['referrer-policy']).toBe('strict-origin-when-cross-origin')
-  for (const feature of ['camera', 'microphone', 'geolocation', 'payment', 'usb', 'display-capture', 'browsing-topics']) {
+  for (const feature of ['camera', 'geolocation', 'payment', 'usb', 'display-capture', 'browsing-topics']) {
     expect(headers['permissions-policy'], feature).toContain(`${feature}=()`)
   }
+  // Phase 10: the one feature this app uses. `microphone=(self)` lets the dictation button's Web
+  // Speech API run on this origin — `microphone=()` denied it to the page itself — and grants it
+  // to nobody else, which the second assertion pins.
+  expect(headers['permissions-policy']).toContain('microphone=(self)')
+  expect(headers['permissions-policy']).not.toContain('microphone=*')
   // Security audit SPC-WEB-004: browsing-context isolation and no cross-origin embedding.
   expect(headers['cross-origin-opener-policy']).toBe('same-origin')
   expect(headers['cross-origin-resource-policy']).toBe('same-origin')

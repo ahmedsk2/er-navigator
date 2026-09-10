@@ -37,6 +37,7 @@ import {
   TimeRow,
   UNREACHABLE_MESSAGE,
 } from '@/src/components/ui'
+import { appendDictated, DictationRow } from '@/src/components/ui/DictationButton'
 import { fmtStamp, hoursAgo, nowLocalInput, shiftMinutes } from '@/src/lib/cases/local-time'
 import type {
   CaseDraft,
@@ -57,6 +58,8 @@ import {
   INVESTIGATION_LABELS,
   INVESTIGATION_STEPS,
   MILESTONES,
+  PAYER_LABELS,
+  PAYERS,
   PETHIDINE_DOSES,
   SHIFT_LABELS,
   TRANSFER_STEPS,
@@ -96,6 +99,9 @@ const UPDATE_ACTIONS = Object.keys(UPDATE_ACTION_LABELS) as Array<keyof typeof U
 const CASE_MGMT_REFERRALS = ['CASE_MANAGER', 'COMPLEX_CARE'] as const
 const CASE_MGMT_CRITERIA = ['MEETS', 'NOT_MEETING'] as const
 const CASE_MGMT_ACTIONS = ['ENROLLED', 'FOR_ENROLLMENT'] as const
+
+/** Phase 10. The zod cap (`freeText(80)`), so the box and the rules say the same number. */
+const DIAGNOSIS_MAX = 80
 
 /**
  * One row for the pethidine question, because the two columns behind it are one clinical fact:
@@ -286,6 +292,7 @@ export function CaseEditor(props: CaseEditorProps) {
         })),
         investigations: draft.investigations,
       }),
+      ...phiWarnings('The working diagnosis', draft.diagnosis),
       ...phiWarnings('The resolution note', draft.resolutionNote),
       ...otherTexts.flatMap((o) => phiWarnings(`The other reason under ${o.stage}`, o.text)),
     ],
@@ -661,6 +668,24 @@ export function CaseEditor(props: CaseEditorProps) {
             disabled={disabled}
           />
         </FieldGroup>
+        {/* Phase 10, Ahmed's second request of 10 September: one line, beside CTAS, so the board
+            row and the weekly deck can say what the patient came in with. It is a clinical line
+            and not an identifier — but it is free text, so `phiWarnings` reads it like every
+            other box and the 10-digit warning applies. */}
+        <Field label="Working diagnosis (optional)">
+          <DictationRow
+            disabled={disabled}
+            onText={(text) => set({ diagnosis: appendDictated(draft.diagnosis, text, DIAGNOSIS_MAX) })}
+          >
+            <Input
+              maxLength={DIAGNOSIS_MAX}
+              placeholder="one line, e.g. chest pain, for admission"
+              disabled={disabled}
+              value={draft.diagnosis}
+              onChange={(e) => set({ diagnosis: e.target.value })}
+            />
+          </DictationRow>
+        </Field>
         <FieldGroup label="ED area">
           <Chips
             groupLabel="ED area"
@@ -672,6 +697,16 @@ export function CaseEditor(props: CaseEditorProps) {
             disabled={disabled}
           />
         </FieldGroup>
+        {/* Phase 10, Ahmed's sixth request: who pays for the visit. Single-select with the same
+            gesture as every other chip row — tap again to clear. */}
+        <ChoiceRow
+          label="Payer"
+          options={PAYERS}
+          labelOf={(p) => PAYER_LABELS[p]}
+          value={draft.payer}
+          onChange={(v) => set({ payer: v })}
+          disabled={disabled}
+        />
       </Section>
 
       {/* 3. Where is the delay */}
@@ -707,13 +742,23 @@ export function CaseEditor(props: CaseEditorProps) {
                 disabled={disabled}
               />
               {otherSelected && other ? (
-                <Input
-                  placeholder="Describe the other reason (goes to the review queue)"
+                <DictationRow
                   disabled={disabled}
-                  aria-label={`Other reason under ${stage.name}`}
-                  value={mine.find((r) => r.reasonId === other.id)?.otherText ?? ''}
-                  onChange={(e) => setOtherText(other.id, e.target.value)}
-                />
+                  onText={(text) =>
+                    setOtherText(
+                      other.id,
+                      appendDictated(mine.find((r) => r.reasonId === other.id)?.otherText ?? '', text),
+                    )
+                  }
+                >
+                  <Input
+                    placeholder="Describe the other reason (goes to the review queue)"
+                    disabled={disabled}
+                    aria-label={`Other reason under ${stage.name}`}
+                    value={mine.find((r) => r.reasonId === other.id)?.otherText ?? ''}
+                    onChange={(e) => setOtherText(other.id, e.target.value)}
+                  />
+                </DictationRow>
               ) : null}
             </div>
           )
@@ -975,19 +1020,24 @@ export function CaseEditor(props: CaseEditorProps) {
                 disabled={busy}
               />
               <div className="flex gap-2">
-                <Input
-                  aria-label="What changed?"
-                  placeholder="What changed?"
+                <DictationRow
                   disabled={busy}
-                  value={updateText}
-                  onChange={(e) => setUpdateText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      void onAddUpdate()
-                    }
-                  }}
-                />
+                  onText={(text) => setUpdateText((current) => appendDictated(current, text))}
+                >
+                  <Input
+                    aria-label="What changed?"
+                    placeholder="What changed?"
+                    disabled={busy}
+                    value={updateText}
+                    onChange={(e) => setUpdateText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        void onAddUpdate()
+                      }
+                    }}
+                  />
+                </DictationRow>
                 <Button tone="main" className="shrink-0" disabled={busy} onClick={() => void onAddUpdate()}>
                   Add
                 </Button>
@@ -1076,11 +1126,16 @@ export function CaseEditor(props: CaseEditorProps) {
             />
           </Field>
           <Field label="Resolution note (optional)">
-            <Input
+            <DictationRow
               disabled={disabled}
-              value={draft.resolutionNote}
-              onChange={(e) => set({ resolutionNote: e.target.value })}
-            />
+              onText={(text) => set({ resolutionNote: appendDictated(draft.resolutionNote, text) })}
+            >
+              <Input
+                disabled={disabled}
+                value={draft.resolutionNote}
+                onChange={(e) => set({ resolutionNote: e.target.value })}
+              />
+            </DictationRow>
           </Field>
           {readOnly ? null : status === 'OPEN' ? (
             <Button

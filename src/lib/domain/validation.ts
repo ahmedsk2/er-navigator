@@ -87,6 +87,12 @@ export const investigationTypeSchema = z.enum(['LAB', 'CT', 'US', 'XR', 'MRI'])
 export const answerSchema = z.enum(['YES', 'NO', 'NOT_SURE'])
 export const answerYesNoSchema = z.enum(['YES', 'NO'])
 
+/**
+ * Phase 10 (Ahmed, 10 September): who pays for the visit. A vocabulary like every other, so an
+ * unknown value is refused here rather than reaching the column.
+ */
+export const payerSchema = z.enum(['GOVERNMENT', 'INSURED', 'SELF_PAY'])
+
 export const caseManagementReferralSchema = z.enum(['CASE_MANAGER', 'COMPLEX_CARE'])
 export const caseManagementCriteriaSchema = z.enum(['MEETS', 'NOT_MEETING'])
 export const caseManagementActionSchema = z.enum(['ENROLLED', 'FOR_ENROLLMENT'])
@@ -150,6 +156,11 @@ export function buildCaseSchemas(
     shift: shiftSchema.nullable().optional(),
     ctas: ctasSchema.nullable().optional(),
     areaId: z.string().nullable().optional(),
+    // Phase 10. The working diagnosis is a clinical line, not an identifier: it is free text
+    // capped at 80 characters, and `phiWarnings` warns on a 10-digit run in it as it does on
+    // every other free text. The payer is a vocabulary, so an unknown value is refused.
+    diagnosis: freeText(80).nullable().optional(),
+    payer: payerSchema.nullable().optional(),
     reasons: z.array(caseReasonInput).min(1, 'Select at least one delay reason.'),
     primaryReasonId: z.string().nullable().optional(),
     consults: z.array(consultInput).default([]),

@@ -115,6 +115,8 @@ function draft(overrides: Partial<CaseDraft> = {}): CaseDraft {
     shift: 'MORNING',
     ctas: null,
     areaId: null,
+    diagnosis: '',
+    payer: null,
     stages: [],
     reasons: [{ reasonId: reasonNamed('reg', 'Registration desk/system delay'), otherText: null }],
     primaryReasonId: null,
@@ -533,6 +535,85 @@ describe('CTAS, the ED area and the preliminary report time', () => {
       ok: false,
       error: 'validation',
     })
+  })
+})
+
+/**
+ * Phase 10, Slice 10A. The working diagnosis and the payer follow the CTAS precedent exactly:
+ * optional, written on a create, changed on a save, and cleared by a draft that no longer
+ * carries them — the last of which is the property that matters, because a chip row left
+ * untouched must not keep a stale value the navigator believes they removed.
+ */
+describe('the working diagnosis and the payer', () => {
+  it('creates a case with both, and the audit row carries them', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const id = await openCase(nurse, { diagnosis: 'Chest pain, for admission', payer: 'INSURED' })
+
+    const row = await prisma.case.findUniqueOrThrow({ where: { id } })
+    expect(row.diagnosis).toBe('Chest pain, for admission')
+    expect(row.payer).toBe('INSURED')
+
+    const created = await prisma.auditLog.findFirstOrThrow({ where: { entity: 'Case', entityId: id } })
+    expect(created.after).toMatchObject({ diagnosis: 'Chest pain, for admission', payer: 'INSURED' })
+  })
+
+  it('changes them on a save, and a draft that carries neither clears both', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const id = await openCase(nurse, { diagnosis: 'Query appendicitis', payer: 'GOVERNMENT' })
+
+    const changed = await saveCase(
+      nurse,
+      id,
+      draft({ diagnosis: 'Appendicitis', payer: 'SELF_PAY', version: 1 }),
+      ctxFor(nurse.id),
+    )
+    expect(changed).toMatchObject({ ok: true, version: 2 })
+    expect(await prisma.case.findUniqueOrThrow({ where: { id } })).toMatchObject({
+      diagnosis: 'Appendicitis',
+      payer: 'SELF_PAY',
+    })
+
+    // The bare draft has `diagnosis: ''` and `payer: null`: an untouched payer chip row and an
+    // emptied diagnosis box both mean "not recorded", and a blank string is a NULL column.
+    const cleared = await saveCase(nurse, id, draft({ version: 2 }), ctxFor(nurse.id))
+    expect(cleared).toMatchObject({ ok: true, version: 3 })
+    const afterClear = await prisma.case.findUniqueOrThrow({ where: { id } })
+    expect(afterClear.diagnosis).toBeNull()
+    expect(afterClear.payer).toBeNull()
+
+    const audits = await prisma.auditLog.findMany({
+      where: { entity: 'Case', entityId: id },
+      orderBy: { at: 'asc' },
+    })
+    expect(audits[1]!.before).toMatchObject({ diagnosis: 'Query appendicitis', payer: 'GOVERNMENT' })
+    expect(audits[1]!.after).toMatchObject({ diagnosis: 'Appendicitis', payer: 'SELF_PAY' })
+    expect(audits[2]!.after).toMatchObject({ diagnosis: null, payer: null })
+  })
+
+  it('refuses a payer outside the enum and writes nothing', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const id = await openCase(nurse)
+    const refused = await saveCase(
+      nurse,
+      id,
+      // The client is plain JSON across the server-action boundary, so a bad value is reachable.
+      draft({ payer: 'PRIVATE' as CaseDraft['payer'], version: 1 }),
+      ctxFor(nurse.id),
+    )
+    expect(refused).toMatchObject({ ok: false, error: 'validation' })
+    if (refused.ok || refused.error !== 'validation') throw new Error('unreachable')
+    expect(refused.issues.some((i) => i.path === 'payer')).toBe(true)
+    expect((await prisma.case.findUniqueOrThrow({ where: { id } })).version).toBe(1)
+  })
+
+  it('refuses a diagnosis longer than 80 characters and writes nothing', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const id = await openCase(nurse)
+    const refused = await saveCase(nurse, id, draft({ diagnosis: 'x'.repeat(81), version: 1 }), ctxFor(nurse.id))
+    expect(refused).toMatchObject({ ok: false, error: 'validation' })
+    if (refused.ok || refused.error !== 'validation') throw new Error('unreachable')
+    expect(refused.issues.some((i) => i.path === 'diagnosis')).toBe(true)
+    expect((await prisma.case.findUniqueOrThrow({ where: { id } })).version).toBe(1)
   })
 })
 

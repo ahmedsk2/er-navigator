@@ -14,6 +14,7 @@ import type {
   CaseManagementReferral,
   Disposition,
   InvestigationType,
+  Payer,
   RoomType,
   Shift,
   UpdateAction,
@@ -54,6 +55,14 @@ export type CaseDraft = {
   ctas: number | null
   /** The `EdArea` the patient was assigned to, or null (Phase 8). */
   areaId: string | null
+  /**
+   * The one-line working diagnosis (Phase 10). A string like every other free text the editor
+   * holds — blank is `''`, not null, because a controlled `<input>` cannot be given null — and
+   * `caseScalarData` is what turns a blank back into a NULL column.
+   */
+  diagnosis: string
+  /** Who pays for the visit (Phase 10), or null when it was not recorded. */
+  payer: Payer | null
   stages: string[]
   reasons: DraftReason[]
   primaryReasonId: string | null

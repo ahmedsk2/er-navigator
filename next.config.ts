@@ -14,9 +14,14 @@ const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
   {
+    // Phase 10: `microphone=(self)`, not `microphone=()`. The empty allowlist denied the feature
+    // to this page as well as to everybody else, which is what the in-app dictation button needs
+    // — the Web Speech API is gated on it. `(self)` is this origin and nothing more: no third
+    // party may listen, and with `frame-ancestors 'none'` and no cross-origin frame in the
+    // document there is no third party to grant it to. Every other feature stays fully denied.
     key: 'Permissions-Policy',
     value:
-      'camera=(), microphone=(), geolocation=(), payment=(), usb=(), display-capture=(), serial=(), bluetooth=(), hid=(), midi=(), xr-spatial-tracking=(), accelerometer=(), gyroscope=(), magnetometer=(), browsing-topics=(), interest-cohort=()',
+      'camera=(), microphone=(self), geolocation=(), payment=(), usb=(), display-capture=(), serial=(), bluetooth=(), hid=(), midi=(), xr-spatial-tracking=(), accelerometer=(), gyroscope=(), magnetometer=(), browsing-topics=(), interest-cohort=()',
   },
   // Security audit SPC-WEB-004: isolate the browsing context and stop cross-origin embedding
   // of our responses. Every asset is same-origin, so CORP same-origin costs nothing.

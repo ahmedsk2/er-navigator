@@ -35,6 +35,7 @@ const asExport = (c: CaseForStats, extra: Partial<CaseForExport> = {}): CaseForE
   reasonRows: c.primaryReasonName
     ? [{ stageName: c.stageNames[0] ?? 'Registration', reasonName: c.primaryReasonName }]
     : [],
+  diagnosis: null,
   medAdminInformedAt: null,
   triageAt: null,
   roomAt: null,
@@ -54,6 +55,8 @@ const asExport = (c: CaseForStats, extra: Partial<CaseForExport> = {}): CaseForE
 })
 
 const CASES: CaseForExport[] = FIXTURE.map((c) => {
+  // Phase 10: C1 is already the CTAS / ED area case, so it carries the two new fields too.
+  if (c.id === 'C1') return asExport(c, { diagnosis: 'Chest pain, for admission', payer: 'INSURED' })
   if (c.id === 'C5')
     return asExport(c, {
       wardCode: 'ICU',
@@ -189,6 +192,23 @@ describe('casesSheet', () => {
     const c2 = rowFor(sheet.rows, '100002')
     expect(c2[column(CASES_HEADER, 'CTAS')]).toBe('')
     expect(c2[column(CASES_HEADER, 'ED area')]).toBe('')
+  })
+
+  it('carries the working diagnosis and the payer right after the ED area (Phase 10)', () => {
+    expect(CASES_HEADER.slice(column(CASES_HEADER, 'ED area'), column(CASES_HEADER, 'ED area') + 3)).toEqual([
+      'ED area',
+      'Working diagnosis',
+      'Payer',
+    ])
+    const c1 = rowFor(sheet.rows, '100001')
+    expect(c1[column(CASES_HEADER, 'Working diagnosis')]).toBe('Chest pain, for admission')
+    // The label, not the enum name: the sheet is read by people, like every other label column.
+    expect(c1[column(CASES_HEADER, 'Payer')]).toBe('Insured')
+
+    // C2 has neither: two empty cells, as an unrecorded CTAS is an empty cell.
+    const c2 = rowFor(sheet.rows, '100002')
+    expect(c2[column(CASES_HEADER, 'Working diagnosis')]).toBe('')
+    expect(c2[column(CASES_HEADER, 'Payer')]).toBe('')
   })
 
   it('leaves the isolation column blank rather than writing "No"', () => {

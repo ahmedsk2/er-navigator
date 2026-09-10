@@ -25,6 +25,8 @@ export const CASE_EXPORT_SELECT = {
     },
   },
   openedBy: { select: { displayName: true, username: true } },
+  // Phase 10. The payer rides on `CASE_STATS_SELECT`; the diagnosis is the sheet's alone.
+  diagnosis: true,
   referralTrackingNo: true,
   transferFacility: true,
   isolation: true,
@@ -53,6 +55,7 @@ export function toCaseForExport(row: CaseExportRow): CaseForExport {
     ...toCaseForStats(row),
     navigatorName: row.openedBy.displayName,
     navigatorUsername: row.openedBy.username,
+    diagnosis: row.diagnosis,
     primaryReasonLabel: row.primaryReason ? label(row.primaryReason) : null,
     reasonLabels: reasons.map((r) => label(r.reason)),
     reasonRows: reasons.map((r) => ({ stageName: r.reason.stage.name, reasonName: r.reason.name })),

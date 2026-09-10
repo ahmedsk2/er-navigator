@@ -59,6 +59,11 @@ type Seed = {
   ctas?: 1 | 2 | 3 | 4 | 5
   /** An ED area code from prisma/seed.ts (RESUS, ACUTE, RAZ, POOL, ISO, NEGP). */
   area?: string
+  // --- Phase 10 --------------------------------------------------------------------------------
+  /** The one-line working diagnosis, which the board row and the Cases sheet show. */
+  diagnosis?: string
+  /** Who pays for the visit; the row shows its label as a chip and "By payer" counts it. */
+  payer?: 'GOVERNMENT' | 'INSURED' | 'SELF_PAY'
   /** The journey milestones the Adaa KPIs are measured between, hours after registration. */
   triage?: number
   physician?: number
@@ -114,6 +119,8 @@ export const PHASE8B_MRN = '3200013'
 export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
   {
     mrn: '3200001',
+    diagnosis: 'Sepsis, for ICU',
+    payer: 'GOVERNMENT',
     registeredHoursAgo: 700,
     losHours: 26,
     shift: 'MORNING',
@@ -135,6 +142,7 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
   },
   {
     mrn: '3200002',
+    payer: 'INSURED',
     registeredHoursAgo: 600,
     losHours: 14,
     shift: 'EVENING',
@@ -149,6 +157,8 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
   },
   {
     mrn: '3200003',
+    diagnosis: 'Abdominal pain, for surgical review',
+    payer: 'INSURED',
     registeredHoursAgo: 500,
     losHours: 9,
     shift: 'NIGHT',
@@ -167,6 +177,7 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
   },
   {
     mrn: '3200004',
+    payer: 'GOVERNMENT',
     registeredHoursAgo: 400,
     losHours: 7,
     shift: 'MORNING',
@@ -180,6 +191,7 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
   },
   {
     mrn: '3200005',
+    payer: 'SELF_PAY',
     registeredHoursAgo: 300,
     losHours: 5,
     shift: 'EVENING',
@@ -191,6 +203,7 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
   },
   {
     mrn: '3200006',
+    payer: 'GOVERNMENT',
     registeredHoursAgo: 200,
     losHours: 3,
     shift: 'NIGHT',
@@ -200,6 +213,7 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
   },
   {
     mrn: '3200007',
+    payer: 'INSURED',
     registeredHoursAgo: 100,
     losHours: 30,
     shift: 'MORNING',
@@ -218,6 +232,8 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
   // The open half of the board, one per band.
   {
     mrn: '3200008',
+    diagnosis: 'Fractured neck of femur',
+    payer: 'GOVERNMENT',
     registeredHoursAgo: 26,
     shift: 'EVENING',
     reason: { stage: 'adm', name: 'No bed available on accepting ward' },
@@ -233,6 +249,7 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
   },
   {
     mrn: '3200009',
+    payer: 'SELF_PAY',
     registeredHoursAgo: 13,
     shift: 'NIGHT',
     reason: { stage: 'inv', name: 'Lab: delay in processing' },
@@ -243,6 +260,8 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
   },
   {
     mrn: '3200010',
+    diagnosis: 'Query renal colic',
+    payer: 'INSURED',
     registeredHoursAgo: 7,
     shift: 'MORNING',
     reason: { stage: 'ref', name: 'Referral sent, awaiting acceptance' },
@@ -264,6 +283,7 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
   },
   {
     mrn: '3200012',
+    payer: 'GOVERNMENT',
     registeredHoursAgo: 2,
     shift: 'NIGHT',
     reason: { stage: 'dc', name: 'Awaiting patient transport home' },
@@ -285,6 +305,8 @@ export const DASHBOARD_CASES: ReadonlyArray<Seed> = [
    */
   {
     mrn: PHASE8B_MRN,
+    diagnosis: 'Sickle cell crisis',
+    payer: 'INSURED',
     registeredHoursAgo: 4,
     losHours: 2,
     shift: 'MORNING',
@@ -420,6 +442,9 @@ export async function seedDashboardCases(): Promise<void> {
           // targets and the per-case timeline are all measured between.
           ctas: seed.ctas ?? null,
           areaId: seed.area ? areaId(seed.area) : null,
+          // Phase 10: both optional, so a seed row that names neither is exactly what it was.
+          diagnosis: seed.diagnosis ?? null,
+          payer: seed.payer ?? null,
           triageAt: seed.triage == null ? null : after(seed.triage),
           physicianAt: seed.physician == null ? null : after(seed.physician),
           decisionAt: seed.decision == null ? null : after(seed.decision),

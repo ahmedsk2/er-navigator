@@ -88,6 +88,8 @@ function draft(overrides: Partial<CaseDraft> = {}): CaseDraft {
     shift: 'MORNING',
     ctas: null,
     areaId: null,
+    diagnosis: '',
+    payer: null,
     stages: [],
     reasons: [],
     primaryReasonId: null,
