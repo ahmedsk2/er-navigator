@@ -125,6 +125,9 @@ export function FilterBar({
   const [draft, setDraft] = useState<CaseFilter>(filter)
   const panel = useRef<HTMLDivElement | null>(null)
   const toggle = useRef<HTMLButtonElement | null>(null)
+  const dim = useRef<HTMLDivElement | null>(null)
+  /** Whether the press in progress began on the phone's dim: the only press its click may close on. */
+  const pressOnDim = useRef(false)
 
   const chips = useMemo(() => filterChips(filter, options), [filter, options])
   const active = !isEmptyFilter(filter)
@@ -149,7 +152,8 @@ export function FilterBar({
     setOpen(true)
   }
 
-  // Escape, and a tap anywhere that is neither the panel nor the button that opened it.
+  // Escape, and a press anywhere that is neither the panel nor the button that opened it — which
+  // is the laptop's popover. A press on the phone's dim is left to the dim's own click, below.
   useEffect(() => {
     if (!open) return
     const onKey = (event: KeyboardEvent) => {
@@ -157,7 +161,8 @@ export function FilterBar({
     }
     const onPointer = (event: PointerEvent) => {
       const target = event.target as Node | null
-      if (!target) return
+      if (!target || dim.current?.contains(target)) return
+      pressOnDim.current = false
       if (panel.current?.contains(target) || toggle.current?.contains(target)) return
       setOpen(false)
     }
@@ -255,8 +260,26 @@ export function FilterBar({
         <>
           {/* The phone's sheet covers the rows behind it, so it says so: a dim over the board is
               what makes "tap anywhere to close" a thing a thumb discovers. The laptop's popover
-              is small and anchored under its button and needs none. */}
-          <div aria-hidden="true" className="fixed inset-0 z-30 bg-ink/30 lg:hidden" />
+              is small and anchored under its button and needs none.
+
+              The dim closes the panel on its CLICK, the last event a tap makes, and only for a
+              press that began on it — the rule CaseSummarySheet's scrim keeps. Closing on the
+              press took the dim away with the finger still down, and the click the browser makes
+              after touchend was hit-tested afresh onto what the dim covered: the Filter button
+              (the panel opened again), a chip's × (the filter changed), "Clear filter" (Phase 10
+              review). Escape and the Close button are the keyboard's ways out. */}
+          <div
+            ref={dim}
+            aria-hidden="true"
+            data-filter-dim
+            onPointerDown={() => {
+              pressOnDim.current = true
+            }}
+            onClick={() => {
+              if (pressOnDim.current) setOpen(false)
+            }}
+            className="fixed inset-0 z-30 bg-ink/30 lg:hidden"
+          />
           <div
             id={panelId}
             ref={panel}
@@ -303,14 +326,18 @@ export function FilterBar({
               </Group>
 
               {/* The reasons under their own stage: forty-eight of them in one heap is a wall, and a
-                  nurse looks for "Lab: delay in processing" under Investigations. */}
+                  nurse looks for "Lab: delay in processing" under Investigations. A name several
+                  stages carry — every stage's "Other" — is one value to the filter, which keys a
+                  reason by its name, so it is offered once, after the stages, under "Any stage",
+                  rather than as ten chips that all light together (Phase 10 review). */}
               <Group label={FILTER_LABELS.reason}>
-                {options.stages
-                  .filter((stage) => stage.reasons.length > 0)
-                  .map((stage) => (
+                {options.stages.map((stage) => {
+                  const own = stage.reasons.filter((reason) => !options.anyStageReasons.includes(reason))
+                  if (own.length === 0) return null
+                  return (
                     <div key={stage.code} className="mb-1.5">
                       <span className="mb-1 block text-caption text-muted">{stage.name}</span>
-                      {stage.reasons.map((reason) => (
+                      {own.map((reason) => (
                         <OptionChip
                           key={reason}
                           label={reason}
@@ -319,7 +346,21 @@ export function FilterBar({
                         />
                       ))}
                     </div>
-                  ))}
+                  )
+                })}
+                {options.anyStageReasons.length > 0 ? (
+                  <div className="mb-1.5" data-reasons-any-stage>
+                    <span className="mb-1 block text-caption text-muted">Any stage</span>
+                    {options.anyStageReasons.map((reason) => (
+                      <OptionChip
+                        key={reason}
+                        label={reason}
+                        on={chosen('reason', reason)}
+                        onToggle={() => toggleIn('reason', reason)}
+                      />
+                    ))}
+                  </div>
+                ) : null}
               </Group>
 
               <Group label={FILTER_LABELS.dept}>

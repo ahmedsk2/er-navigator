@@ -15,7 +15,8 @@
  * No `@prisma/client` value is imported — only its types — so this module stays a pure unit.
  */
 import type { Prisma } from '@prisma/client'
-import type { CaseForStats } from '@/src/lib/domain/aggregates'
+import type { CaseForStats, Payer } from '@/src/lib/domain/aggregates'
+import type { FilterableCase } from '@/src/lib/domain/case-filter'
 
 /**
  * Exactly the columns and relations `dashboard()` reads. One query, four joins; nothing here
@@ -123,17 +124,52 @@ type StatsRowInput = Omit<CaseStatsRow, 'updates'> & {
   }>
 }
 
+/** The relations and columns `toFilterableCase` reads: a structural subset of both callers' rows. */
+export type FilterableRow = {
+  reasons: ReadonlyArray<{ reason: { name: string; stage: { code: string } } }>
+  consults: ReadonlyArray<{ department: { name: string } }>
+  area: { code: string } | null
+  ctas: number | null
+  payer: Payer | null
+  disposition: string | null
+}
+
+/**
+ * The seven fields `matchesFilter` reads (Phase 10 review). Two callers: `toCaseForStats` below,
+ * which is how the dashboard, the report and every workbook see a case, and `countCasesForExport`,
+ * which selects only these columns to count the rows the workbook would hold. The count used to
+ * build its own copy, and a slip in that copy alone made /export say "0 cases in range" and grey
+ * out Download over a file with rows in it; one adapter means the two cannot read a case apart.
+ *
+ * Both lists are distinct, in the order the reasons are handed over. Codes, never stage names: an
+ * Admin may rename a stage, and the filter's address must survive it. A case carrying one reason
+ * twice is one case to the filter, and the chips list a name once.
+ */
+export function toFilterableCase(row: FilterableRow): FilterableCase {
+  return {
+    stageCodes: [...new Set(row.reasons.map((r) => r.reason.stage.code))],
+    reasonNames: [...new Set(row.reasons.map((r) => r.reason.name))],
+    // `CaseConsult` is unique per (case, department), so this list is already distinct.
+    departmentNames: row.consults.map((c) => c.department.name),
+    areaCode: row.area?.code ?? null,
+    ctas: row.ctas,
+    payer: row.payer,
+    disposition: row.disposition,
+  }
+}
+
 export function toCaseForStats(row: StatsRowInput): CaseForStats {
   // Stage order is the taxonomy's, so a case's stage list reads Registration → Discharge; the
   // charts re-sort by count anyway, but a stable order keeps the drill-down labels predictable.
   const stagesInOrder = [...row.reasons].sort((a, b) => a.reason.stage.sortOrder - b.reason.stage.sortOrder)
   const stageNames = [...new Set(stagesInOrder.map((r) => r.reason.stage.name))]
-  // Phase 10: the codes beside the names, for the phase split (kpi.ts PHASES) and the filter,
-  // which must not depend on a display name an Admin may rename.
-  const stageCodes = [...new Set(stagesInOrder.map((r) => r.reason.stage.code))]
-  // Distinct for the same reason the stages are: a case carrying one reason twice is one case in
-  // the filter, and the chips list a name once.
-  const reasonNames = [...new Set(stagesInOrder.map((r) => r.reason.name))]
+  // Phase 10: the stage codes and the reason names, for the phase split (kpi.ts PHASES) and the
+  // filter, through the one adapter the export's count reads too. Handed the reasons in stage
+  // order, so both lists keep the order they had when they were built here.
+  const { stageCodes, reasonNames, departmentNames, areaCode } = toFilterableCase({
+    ...row,
+    reasons: stagesInOrder,
+  })
 
   // Order-independent on purpose: the dashboard's select takes the newest update only, the
   // export's takes all of them oldest-first, and both must yield the same "last update at".
@@ -169,8 +205,7 @@ export function toCaseForStats(row: StatsRowInput): CaseForStats {
     stageNames,
     stageCodes,
     reasonNames,
-    // `CaseConsult` is unique per (case, department), so this list is already distinct.
-    departmentNames: row.consults.map((c) => c.department.name),
+    departmentNames,
     disposition: row.disposition,
     consults: row.consults.map((c) => ({
       departmentName: c.department.name,
@@ -202,7 +237,7 @@ export function toCaseForStats(row: StatsRowInput): CaseForStats {
     wardCode: row.ward?.code ?? null,
     ctas: row.ctas,
     areaName: row.area?.name ?? null,
-    areaCode: row.area?.code ?? null,
+    areaCode,
     payer: row.payer,
     updatesCount: row._count.updates,
     lastUpdateAt,

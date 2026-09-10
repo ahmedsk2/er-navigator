@@ -197,6 +197,14 @@ export type FilterReference = {
  */
 export type FilterOptions = {
   stages: ReadonlyArray<{ code: string; name: string; reasons: ReadonlyArray<string> }>
+  /**
+   * The reason names more than one stage carries — in the seeded taxonomy, every stage's "Other".
+   * A reason is keyed by its name in the address and in `matchesFilter`, so `reason=Other` is one
+   * value that matches an Other under any stage, as "By primary reason" counts it as one row. The
+   * panel offers each of these once, under "Any stage", and not under each stage in `stages`, where
+   * ten chips were one value and lit all together (Phase 10 review).
+   */
+  anyStageReasons: ReadonlyArray<string>
   departments: ReadonlyArray<string>
   areas: ReadonlyArray<{ code: string; name: string }>
 }
@@ -207,12 +215,17 @@ export function filterOptionsOf(reference: {
   departments: ReadonlyArray<{ name: string }>
   areas: ReadonlyArray<{ code: string; name: string }>
 }): FilterOptions {
+  const stages = reference.stages.map((stage) => ({
+    code: stage.code,
+    name: stage.name,
+    reasons: stage.reasons.map((reason) => reason.name),
+  }))
+  // How many stages carry each name. A stage cannot carry one twice (`@@unique([stageId, name])`).
+  const carriers = new Map<string, number>()
+  for (const stage of stages) for (const name of stage.reasons) carriers.set(name, (carriers.get(name) ?? 0) + 1)
   return {
-    stages: reference.stages.map((stage) => ({
-      code: stage.code,
-      name: stage.name,
-      reasons: stage.reasons.map((reason) => reason.name),
-    })),
+    stages,
+    anyStageReasons: [...carriers].filter(([, count]) => count > 1).map(([name]) => name),
     departments: reference.departments.map((department) => department.name),
     areas: reference.areas.map((area) => ({ code: area.code, name: area.name })),
   }

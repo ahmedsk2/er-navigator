@@ -8,7 +8,7 @@
  * the wrong unit here.
  */
 import type { Prisma } from '@prisma/client'
-import { CASE_STATS_SELECT, toCaseForStats } from '@/src/lib/cases/stats-mapper'
+import { CASE_STATS_SELECT, toCaseForStats, toFilterableCase } from '@/src/lib/cases/stats-mapper'
 import { prisma } from '@/src/lib/db'
 import type { CaseForStats } from '@/src/lib/domain/aggregates'
 import { isEmptyFilter, matchesFilter, type CaseFilter } from '@/src/lib/domain/case-filter'
@@ -90,7 +90,10 @@ function filterOf(range: ExportRange): CaseFilter | undefined {
   return range.filter && !isEmptyFilter(range.filter) ? range.filter : undefined
 }
 
-/** Everything `matchesFilter` needs, and the least the database has to be asked for to answer it. */
+/**
+ * Everything `matchesFilter` needs, and the least the database has to be asked for to answer it:
+ * the columns `toFilterableCase` reads, which is also how `toCaseForStats` builds the same fields.
+ */
 const CASE_FILTER_SELECT = {
   id: true,
   ctas: true,
@@ -108,26 +111,13 @@ const CASE_FILTER_SELECT = {
  * cases the workbook would be written from — the predicate reads a case's reasons, teams and
  * area, which no `WHERE` clause here can decide — so it reads the seven columns behind it and
  * counts the matches. That is what makes the count on the page and the rows in the file the same
- * number: one predicate over the same window, never two.
+ * number: one predicate over the same window, through one adapter, never two.
  */
 export async function countCasesForExport(range: ExportRange): Promise<number> {
   const filter = filterOf(range)
   if (!filter) return prisma.case.count({ where: exportWhere(range) })
   const rows = await prisma.case.findMany({ where: exportWhere(range), select: CASE_FILTER_SELECT })
-  return rows.filter((row) =>
-    matchesFilter(
-      {
-        stageCodes: row.reasons.map((r) => r.reason.stage.code),
-        reasonNames: row.reasons.map((r) => r.reason.name),
-        departmentNames: row.consults.map((c) => c.department.name),
-        areaCode: row.area?.code ?? null,
-        ctas: row.ctas,
-        payer: row.payer,
-        disposition: row.disposition,
-      },
-      filter,
-    ),
-  ).length
+  return rows.filter((row) => matchesFilter(toFilterableCase(row), filter)).length
 }
 
 export async function loadCasesForExport(range: ExportRange): Promise<CaseForExport[]> {

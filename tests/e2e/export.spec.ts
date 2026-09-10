@@ -5,6 +5,7 @@ import { FILTER_DIMENSIONS } from '../../src/lib/domain/case-filter'
 import { countCasesForExport } from '../../src/lib/export/load'
 import { DEFAULT_REPORT_HEADER } from '../../src/lib/export/report-header'
 import { riyadhDateKey } from '../../src/lib/export/range'
+import type { ExportCountPayload } from '../../src/lib/export/service'
 import { fromClientIp, signIn } from './fixtures/case-flow'
 import { DASHBOARD_CASES, DASHBOARD_MRNS, PHASE8B_MRN } from './fixtures/dashboard-cases'
 import { E2E_USERS } from './fixtures/seed-users'
@@ -33,7 +34,7 @@ test.afterAll(async () => {
 })
 
 /** The Riyadh days the four oldest fixture cases registered on, straight from the database. */
-async function fixtureWindow(): Promise<{ from: string; to: string; mrns: string[] }> {
+async function fixtureWindow(): Promise<{ from: string; to: string; mrns: string[]; days: string[] }> {
   const rows = await prisma.case.findMany({
     where: { mrn: { in: [...DASHBOARD_MRNS] } },
     select: { mrn: true, registrationAt: true },
@@ -48,7 +49,7 @@ async function fixtureWindow(): Promise<{ from: string; to: string; mrns: string
   const oldest = rows.slice(0, 4)
   const from = riyadhDateKey(oldest[0]!.registrationAt)
   const to = riyadhDateKey(oldest[3]!.registrationAt)
-  return { from, to, mrns: oldest.map((r) => r.mrn) }
+  return { from, to, mrns: oldest.map((r) => r.mrn), days: oldest.map((r) => riyadhDateKey(r.registrationAt)) }
 }
 
 async function setRange(page: Page, from: string, to: string): Promise<void> {
@@ -151,6 +152,30 @@ test('a filter narrows the count, the workbook and the printed report together',
     'href',
     `/report?from=${window.from}&to=${window.to}&status=all&payer=INSURED`,
   )
+
+  // Phase 10 review: the count above is the server-rendered one, and the panel only asks
+  // /api/export/count once the range moves off it — so this is the route's own reading of the
+  // filter. To 3200003's day keeps both insured cases and drops 3200004; the narrower window
+  // still holds 3200001, which a route that ignored the filter would count as a third.
+  const insuredTo = window.days[window.mrns.indexOf('3200003')]!
+  expect(insuredTo > window.from && insuredTo < window.to, 'a day inside the window').toBe(true)
+  await page.getByLabel('To', { exact: true }).fill(insuredTo)
+  await expect(page.locator('[data-download]')).toHaveAttribute(
+    'href',
+    `/api/export.xlsx?from=${window.from}&to=${insuredTo}&status=all&format=navigator&payer=INSURED`,
+  )
+  await expect(page.locator('[data-export-count]')).toHaveText('2 cases in range')
+
+  // The same request the panel just made, and the same window without the filter beside it.
+  const countFor = async (query: string): Promise<ExportCountPayload> => {
+    const response = await page.request.get(`/api/export/count?${query}`)
+    expect(response.status(), query).toBe(200)
+    return (await response.json()) as ExportCountPayload
+  }
+  const narrowed = await countFor(`from=${window.from}&to=${insuredTo}&status=all&format=navigator&payer=INSURED`)
+  expect(narrowed.count).toBe(2)
+  expect(narrowed.filter?.payer).toEqual(['INSURED'])
+  expect((await countFor(`from=${window.from}&to=${insuredTo}&status=all&format=navigator`)).count).toBe(3)
 
   // The file itself: the count on the page is the number of rows in it, and they are the two.
   const response = await page.request.get(

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import type { BoardPayload } from '../../src/lib/board/types'
 import { inRange, type CaseForStats, type Range } from '../../src/lib/domain/aggregates'
 import { headline } from '../../src/lib/domain/kpi'
@@ -625,6 +625,59 @@ test('the filter narrows every figure on the page, and the page says so', async 
   await expect(payerCases('Government')).toHaveText('0')
 })
 
+/**
+ * Phase 10 review. The test above reaches its drill-down by `goto`, so a row link that dropped the
+ * filter went unnoticed. Two builders make those links: DashboardBody's own (thresholds, weeks,
+ * consults, investigations, shifts) and sections.tsx's (every other table), so a row of each is
+ * read, then clicked. The filter repeats a key and spans two dimensions, and it leaves 3200008 and
+ * 3200009 of the fixture, so both lists below differ from their unfiltered ones.
+ */
+test('a filtered dashboard’s rows open their drill-downs inside the same filter', async ({ page }, testInfo) => {
+  await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.215' : '198.51.100.216')
+  await signIn(page, E2E_USERS.navigator)
+  const query = 'r=all&ctas=3&payer=SELF_PAY&payer=GOVERNMENT'
+  await page.goto(`/dashboard?${query}`)
+  await expect(page.locator('[data-filter-note]')).toHaveText('Filtered: CTAS 3 · Payer: Self-pay or Government')
+
+  /** The row link's own href, held to the range, its drill key and every filter key and value. */
+  const hrefOf = async (link: Locator, drill: string): Promise<string> => {
+    const href = (await link.getAttribute('href')) ?? ''
+    const params = new URL(href, 'http://dashboard.invalid').searchParams
+    expect(params.get('r'), href).toBe('all')
+    expect(params.get('drill'), href).toBe(drill)
+    expect(params.getAll('ctas'), href).toEqual(['3'])
+    expect(params.getAll('payer'), href).toEqual(['SELF_PAY', 'GOVERNMENT'])
+    return href
+  }
+  const back = page.getByRole('link', { name: '‹ Dashboard' })
+
+  // A sections.tsx row. Of the two self-pay fixture cases only 3200009 is CTAS 3.
+  const byPayer = page.getByRole('heading', { name: 'By payer', exact: true }).locator('xpath=../table')
+  const selfPay = byPayer.getByRole('link', { name: 'Self-pay', exact: true })
+  const payerHref = await hrefOf(selfPay, 'payer:Self-pay')
+  await selfPay.click()
+  await expect(page).toHaveURL(payerHref)
+  await expect(page.locator('[data-drill-label]')).toHaveText('Payer: Self-pay')
+  await expect(rowFor(page, '3200009')).toHaveCount(1)
+  await expect(rowFor(page, '3200005')).toHaveCount(0)
+  await expect(back).toHaveAttribute('href', `/dashboard?${query}`)
+  await back.click()
+  await expect(page).toHaveURL(`/dashboard?${query}`)
+
+  // A DashboardBody row. Past six hours, CTAS 3 and not insured: 3200008 (26 h) and 3200009 (13 h);
+  // 3200001 (26 h) is CTAS 2, 3200002 (14 h) insured, and 3200005 stayed 5 h.
+  const over6 = page.getByRole('link', { name: 'Over 6h' })
+  const thresholdHref = await hrefOf(over6, 'threshold:6')
+  await over6.click()
+  await expect(page).toHaveURL(thresholdHref)
+  await expect(page.locator('[data-drill-label]')).toHaveText('Cases over 6h')
+  for (const mrn of ['3200008', '3200009']) await expect(rowFor(page, mrn), `${mrn} is listed`).toHaveCount(1)
+  for (const mrn of ['3200001', '3200002', '3200005']) {
+    await expect(rowFor(page, mrn), `${mrn} is outside the filter`).toHaveCount(0)
+  }
+  await expect(back).toHaveAttribute('href', `/dashboard?${query}`)
+})
+
 test('the filter panel applies from the dashboard itself', async ({ page }, testInfo) => {
   await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.115' : '198.51.100.116')
   await signIn(page, E2E_USERS.navigator)
@@ -645,6 +698,173 @@ test('the filter panel applies from the dashboard itself', async ({ page }, test
   await page.keyboard.press('Escape')
   await expect(panel).toHaveCount(0)
   await expect(page).toHaveURL('/dashboard?r=7&payer=INSURED')
+
+  // The two modes, which no browser test had pressed (Phase 10 review): a stage — a set a case can
+  // carry several of, which the lone finding holds to exactly — excluded, and alone.
+  await page.goto('/dashboard?r=7')
+  await page.getByRole('button', { name: 'Filter' }).click()
+  await panel.getByRole('group', { name: 'Stage' }).getByRole('button', { name: 'Admission process' }).click()
+  await panel.getByRole('button', { name: 'Exclude', exact: true }).click()
+  await panel.getByRole('button', { name: 'The lone finding', exact: true }).click()
+  await panel.getByRole('button', { name: 'Apply', exact: true }).click()
+  await expect(page).toHaveURL('/dashboard?r=7&stage=adm&not=1&lone=1')
+  // describeFilter's sentence for one dimension: "Excluding <part> · the lone finding".
+  await expect(page.locator('[data-filter-note]')).toHaveText(
+    'Filtered: Excluding Stage: Admission process · the lone finding',
+  )
+  // Opened again, the panel shows the modes the page is drawn with.
+  await page.getByRole('button', { name: /^Filter/ }).click()
+  await expect(panel.getByRole('button', { name: 'Exclude', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(panel.getByRole('button', { name: 'The lone finding', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+})
+
+/**
+ * Phase 10 review. The seed gives every stage a reason named "Other", and the filter keys a
+ * reason by its name — `reason=Other` matches an Other under any stage, as "By primary reason"
+ * counts it as one row. The panel used to offer it under each of the ten stages, and tapping any
+ * one lit all ten. It is one value, so it is one chip, in its own "Any stage" group after the
+ * stages. The team called "Other" and the outcome called "Other" are other dimensions.
+ */
+test('the panel offers "Other" once, under "Any stage", and it presses one chip', async ({ page }, testInfo) => {
+  await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.211' : '198.51.100.212')
+  await signIn(page, E2E_USERS.navigator)
+  await page.goto('/dashboard?r=all')
+
+  await page.getByRole('button', { name: 'Filter' }).click()
+  const panel = page.getByRole('dialog', { name: 'Filter cases' })
+  const reasons = panel.getByRole('group', { name: 'Reason', exact: true })
+  const other = reasons.getByRole('button', { name: 'Other', exact: true })
+  await expect(other).toHaveCount(1)
+
+  // Under "Any stage", which is the last of the reason sub-groups, after every stage's own.
+  const anyStage = reasons.locator('[data-reasons-any-stage]')
+  await expect(anyStage.getByRole('button', { name: 'Other', exact: true })).toHaveCount(1)
+  const captions = await reasons.evaluate((group) =>
+    [...group.children]
+      .filter((child) => child.tagName === 'DIV')
+      .map((child) => (child.querySelector('span')?.textContent ?? '').trim()),
+  )
+  expect(captions.length, 'a sub-group per stage, then "Any stage"').toBeGreaterThan(1)
+  expect(captions.at(-1)).toBe('Any stage')
+  expect(captions.slice(0, -1)).not.toContain('Any stage')
+
+  // One tap, one chip.
+  await other.click()
+  await expect(other).toHaveAttribute('aria-pressed', 'true')
+  await expect(reasons.locator('[aria-pressed="true"]')).toHaveCount(1)
+  await panel.getByRole('button', { name: 'Apply', exact: true }).click()
+  await expect(page).toHaveURL('/dashboard?r=all&reason=Other')
+  await expect(page.locator('[data-filter-chip="Reason: Other"]')).toBeVisible()
+})
+
+/**
+ * A point over `selector` that the phone's filter sheet leaves uncovered, where `elementFromPoint`
+ * is the dim and the stack beneath it holds `selector`: the tap is proven to land on the dim, over
+ * the control a ghost click would hit, so a green run cannot mean the tap simply missed.
+ */
+async function dimPointOver(page: Page, selector: string): Promise<{ x: number; y: number }> {
+  const target = await page.locator(selector).first().boundingBox()
+  const sheet = await page.locator('[data-filter-panel]').boundingBox()
+  const viewport = page.viewportSize()
+  if (!target || !sheet || !viewport) throw new Error(`no geometry for ${selector}, the sheet or the viewport`)
+  const inSheet = (x: number, y: number): boolean =>
+    x >= sheet.x && x <= sheet.x + sheet.width && y >= sheet.y && y <= sheet.y + sheet.height
+  for (const fy of [0.5, 0.25, 0.75]) {
+    for (const fx of [0.5, 0.3, 0.7, 0.1, 0.9]) {
+      const x = Math.round(target.x + target.width * fx)
+      const y = Math.round(target.y + target.height * fy)
+      if (x < 1 || y < 1 || x >= viewport.width - 1 || y >= viewport.height - 1 || inSheet(x, y)) continue
+      const hit = await page.evaluate(
+        ({ x, y, selector }) => ({
+          dim: document.elementFromPoint(x, y)?.hasAttribute('data-filter-dim') ?? false,
+          over: document.elementsFromPoint(x, y).some((element) => element.closest(selector) !== null),
+        }),
+        { x, y, selector },
+      )
+      if (hit.dim && hit.over) return { x, y }
+    }
+  }
+  throw new Error(`no point over ${selector} is left to the dim by the sheet`)
+}
+
+/**
+ * Phase 10 review. On a phone the filter panel is a bottom sheet over a dim, and the dim covers the
+ * Filter button, the chips' × and "Clear filter". The panel used to close on the press: React took
+ * the dim away with the finger still down, and the click the browser makes after touchend was
+ * hit-tested afresh onto whatever the dim had covered — the panel opened again, a chip was dropped,
+ * the filter was cleared. The dim now closes the panel from its own click. The laptop's popover
+ * has no dim, and a press outside it still closes it.
+ */
+test('a tap on the filter dim closes the panel and changes nothing under it', async ({ page }, testInfo) => {
+  const mobile = testInfo.project.name === 'mobile'
+  await fromClientIp(page, mobile ? '198.51.100.213' : '198.51.100.214')
+  await signIn(page, E2E_USERS.navigator)
+  const filtered = '/dashboard?r=all&payer=SELF_PAY'
+  await page.goto(filtered)
+  const toggle = page.locator('[data-filter-toggle]')
+  const panel = page.getByRole('dialog', { name: 'Filter cases' })
+  const chipLabels = () =>
+    page.locator('[data-filter-chip]').evaluateAll((els) => els.map((el) => el.getAttribute('data-filter-chip')))
+  await expect(page.locator('[data-filter-chip]')).toHaveCount(1)
+  const chips = await chipLabels()
+
+  if (!mobile) {
+    await toggle.click()
+    await expect(panel).toBeVisible()
+    await expect(page.locator('[data-filter-dim]')).toBeHidden()
+    await page.getByRole('heading', { name: 'Dashboard' }).click()
+    await expect(panel).toHaveCount(0)
+    await expect(page).toHaveURL(filtered)
+    expect(await chipLabels()).toEqual(chips)
+    return
+  }
+
+  // The bar to the top of the screen, where the sheet (at most 80 % of it) leaves only the dim.
+  await page.locator('[data-filter-bar]').evaluate((element) => element.scrollIntoView({ block: 'start' }))
+  // Every click from here on, by what it landed on: "dim", or the control's name.
+  await page.evaluate(() => {
+    const landed: string[] = []
+    Object.assign(window, { __filterClicks: landed })
+    document.addEventListener(
+      'click',
+      (event) => {
+        const target = event.target as Element
+        const control = target.closest('button, a')
+        landed.push(
+          target.hasAttribute('data-filter-dim')
+            ? 'dim'
+            : (control?.getAttribute('aria-label') ?? control?.textContent ?? target.tagName.toLowerCase()),
+        )
+      },
+      { capture: true },
+    )
+  })
+  type Recorded = { __filterClicks: string[] }
+  const clicks = () => page.evaluate(() => [...(window as unknown as Recorded).__filterClicks])
+  const forgetClicks = () => page.evaluate(() => void (window as unknown as Recorded).__filterClicks.splice(0))
+
+  for (const [what, selector] of [
+    ['the Filter button', '[data-filter-toggle]'],
+    ['a chip’s ×', '[data-filter-chip] button'],
+    ['Clear filter', '[data-filter-clear]'],
+  ] as const) {
+    await toggle.click()
+    await expect(panel, what).toBeVisible()
+    await forgetClicks()
+    const point = await dimPointOver(page, selector)
+    await page.touchscreen.tap(point.x, point.y)
+
+    await expect(panel, `a tap on the dim over ${what} closes the panel`).toHaveCount(0)
+    // The tap's one click was the dim's, not the control's under it...
+    await expect.poll(clicks, what).toEqual(['dim'])
+    // ...so the page is the same filtered dashboard, and the keyboard is back on the button.
+    expect(page.url(), what).toMatch(/\/dashboard\?r=all&payer=SELF_PAY$/)
+    expect(await chipLabels(), what).toEqual(chips)
+    await expect(toggle, what).toBeFocused()
+  }
 })
 
 /**
