@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { requireUser, UnauthorizedError } from '@/src/lib/auth/session'
 import { loadBoard } from '@/src/lib/board/load'
 import { parseFilter } from '@/src/lib/board/rows'
+import { parseCaseFilter } from '@/src/lib/domain/case-filter'
 
 /**
  * The board's 30 s poll. Same payload as the server-rendered first paint, so the client swaps one
@@ -25,7 +26,10 @@ export async function GET(request: Request): Promise<Response> {
     throw error
   }
 
-  const filter = parseFilter(new URL(request.url).searchParams.get('f'))
-  const payload = await loadBoard(filter, new Date())
+  // The poll carries the case filter too (Phase 10): a board narrowed to one stage must stay
+  // narrowed across the 30 s beat, and the counts strip must keep counting the same cases.
+  const params = new URL(request.url).searchParams
+  const filter = parseFilter(params.get('f'))
+  const payload = await loadBoard(filter, new Date(), parseCaseFilter(params))
   return NextResponse.json(payload, { headers: NO_STORE })
 }

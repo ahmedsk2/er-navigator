@@ -6,6 +6,7 @@
  * the first paint and the client recompute the same numbers on every 30 s tick without the two
  * ever disagreeing.
  */
+import type { FilterableCase } from '@/src/lib/domain/case-filter'
 import { DISPOSITION_LABELS, PAYER_LABELS } from '@/src/lib/domain/taxonomy'
 import { band, duration, elapsedHours, fmtHours, type Band, type CaseClock } from '@/src/lib/domain/time'
 import { BOARD_FILTERS, type BoardCounts, type BoardFilter, type BoardRow } from './types'
@@ -85,6 +86,23 @@ export function sortByElapsed(rows: ReadonlyArray<BoardRow>, now: Date): BoardRo
 /** The prototype's search box: every non-digit is dropped before the MRN is matched. */
 export function normalizeMrnQuery(query: string): string {
   return query.replace(/\D/g, '')
+}
+
+/**
+ * A board row as the case filter reads it (Phase 10). The row's own names for two of the seven
+ * fields differ — `area` is a code and `departments` is the team list — so this is the adapter,
+ * in one place, rather than a second copy of the predicate that understands board rows.
+ */
+export function filterableOf(row: BoardRow): FilterableCase {
+  return {
+    stageCodes: row.stageCodes,
+    reasonNames: row.reasonNames,
+    departmentNames: row.departments,
+    areaCode: row.area,
+    ctas: row.ctas,
+    payer: row.payer,
+    disposition: row.disposition,
+  }
 }
 
 /** Substring match on the MRN. A query with no digits in it filters nothing out. */

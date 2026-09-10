@@ -187,6 +187,37 @@ export type FilterReference = {
   areas: ReadonlyArray<{ code: string; name: string }>
 }
 
+/**
+ * What the panel offers, built once per request from `loadReference()` and handed to the bar as
+ * plain JSON. A slim shape on purpose: the editor's reference carries ids, `requiresDepartment`
+ * and the retired flags, none of which a filter has any use for, and all of which would cross the
+ * RSC boundary on three pages for nothing.
+ *
+ * It satisfies `FilterReference` structurally, so the same object labels the chips.
+ */
+export type FilterOptions = {
+  stages: ReadonlyArray<{ code: string; name: string; reasons: ReadonlyArray<string> }>
+  departments: ReadonlyArray<string>
+  areas: ReadonlyArray<{ code: string; name: string }>
+}
+
+/** `ReferenceData` → the options, structurally, so this module still imports nothing of the sort. */
+export function filterOptionsOf(reference: {
+  stages: ReadonlyArray<{ code: string; name: string; reasons: ReadonlyArray<{ name: string }> }>
+  departments: ReadonlyArray<{ name: string }>
+  areas: ReadonlyArray<{ code: string; name: string }>
+}): FilterOptions {
+  return {
+    stages: reference.stages.map((stage) => ({
+      code: stage.code,
+      name: stage.name,
+      reasons: stage.reasons.map((reason) => reason.name),
+    })),
+    departments: reference.departments.map((department) => department.name),
+    areas: reference.areas.map((area) => ({ code: area.code, name: area.name })),
+  }
+}
+
 /** One removable chip: which dimension it came from, its stored value, and what it reads as. */
 export type FilterChip = { dimension: FilterDimension; value: string; label: string }
 

@@ -5,6 +5,7 @@ import type { AuditContext } from '@/src/lib/audit'
 import type { AuthUser } from '@/src/lib/auth/session'
 import { loadBoard, loadBoardRows } from '@/src/lib/board/load'
 import { countsOf } from '@/src/lib/board/rows'
+import { EMPTY_FILTER } from '@/src/lib/domain/case-filter'
 import { loadReference } from '@/src/lib/cases/reference'
 import { addCaseUpdate, createCase, resolveCase, voidCase } from '@/src/lib/cases/service'
 import type { CaseDraft, ReferenceData } from '@/src/lib/cases/types'
@@ -263,6 +264,62 @@ describe('loadBoardRows', () => {
   })
 })
 
+/**
+ * Phase 10. The predicate itself is unit-tested (src/lib/domain/__tests__/case-filter.test.ts);
+ * what a database test can add is that the row really carries the two fields the filter reads —
+ * the stage codes and the reason names behind the case, which nothing on screen draws and which
+ * a forgotten `select` would silently leave empty.
+ */
+describe('loadBoardRows with a case filter', () => {
+  it('carries the stage codes and the reason names the filter matches on', async () => {
+    const nurse = await makeUser('NAVIGATOR')
+    const lab = reasonNamed('inv', 'Lab: delay in processing')
+    const bed = reasonNamed('adm', 'No bed available on accepting ward')
+    const opened = await openCase(nurse, {
+      reasons: [
+        { reasonId: lab, otherText: null },
+        { reasonId: bed, otherText: null },
+      ],
+      primaryReasonId: lab,
+    })
+
+    const row = mine(await loadBoardRows('open')).find((r) => r.mrn === opened.input.mrn)!
+    // Taxonomy order: Investigations (5) before Admission process (8).
+    expect(row.stageCodes).toEqual(['inv', 'adm'])
+    expect(row.reasonNames).toEqual(['Lab: delay in processing', 'No bed available on accepting ward'])
+  })
+
+  it('keeps the matching cases, drops the rest, and excludes them again under not', async () => {
+    const nurse = await makeUser('NAVIGATOR')
+    const lab = reasonNamed('inv', 'Lab: delay in processing')
+    const pharmacy = reasonNamed('dc', 'Awaiting pharmacy')
+    const waiting = await openCase(nurse, {
+      reasons: [{ reasonId: lab, otherText: null }],
+      primaryReasonId: lab,
+      payer: 'INSURED',
+    })
+    const other = await openCase(nurse, {
+      reasons: [{ reasonId: pharmacy, otherText: null }],
+      primaryReasonId: pharmacy,
+      payer: 'GOVERNMENT',
+    })
+
+    const mrns = async (over: Partial<typeof EMPTY_FILTER>): Promise<string[]> =>
+      mine(await loadBoardRows('open', { ...EMPTY_FILTER, ...over })).map((r) => r.mrn)
+
+    expect(await mrns({ stage: ['inv'] })).toContain(waiting.input.mrn)
+    expect(await mrns({ stage: ['inv'] })).not.toContain(other.input.mrn)
+    // Across dimensions the values are AND: the wrong payer takes the case out again.
+    expect(await mrns({ stage: ['inv'], payer: ['GOVERNMENT'] })).not.toContain(waiting.input.mrn)
+    // And `not` is the complement over the same population.
+    const excluded = await mrns({ stage: ['inv'], not: true })
+    expect(excluded).not.toContain(waiting.input.mrn)
+    expect(excluded).toContain(other.input.mrn)
+    // An empty filter is not a filter at all.
+    expect(await mrns({})).toEqual(expect.arrayContaining([waiting.input.mrn, other.input.mrn]))
+  })
+})
+
 describe('loadBoard', () => {
   it('counts the same open cases on the Resolved tab as on the Open tab', async () => {
     const nurse = await makeUser('NAVIGATOR')
@@ -285,5 +342,31 @@ describe('loadBoard', () => {
     expect(onOpen.now).toBe(now.toISOString())
     expect(onOpen.rows.every((row) => row.status === 'OPEN')).toBe(true)
     expect(onResolved.rows.every((row) => row.status === 'RESOLVED')).toBe(true)
+    // With no case filter the two open figures are the same number, so the bar draws no line.
+    expect(onOpen.totalOpen).toBe(onOpen.openRegistrations.length)
+  })
+
+  /**
+   * Phase 10. The counts strip has to describe the board on screen, so `openRegistrations` is the
+   * FILTERED set — and `totalOpen` is the only place the unfiltered denominator survives, which
+   * is what "{shown} of {total} open cases" is drawn from.
+   */
+  it('counts the filtered open cases, and keeps the unfiltered total beside them', async () => {
+    const nurse = await makeUser('NAVIGATOR')
+    const lab = reasonNamed('inv', 'Lab: delay in processing')
+    await openCase(nurse, { reasons: [{ reasonId: lab, otherText: null }], primaryReasonId: lab })
+    const now = new Date()
+
+    const all = await loadBoard('open', now)
+    const narrowed = await loadBoard('open', now, { ...EMPTY_FILTER, stage: ['inv'] })
+
+    expect(narrowed.rows.length).toBeLessThanOrEqual(all.rows.length)
+    expect(narrowed.openRegistrations.length).toBe(narrowed.rows.length)
+    // The denominator is the whole open board, whatever the filter kept.
+    expect(narrowed.totalOpen).toBeGreaterThanOrEqual(narrowed.openRegistrations.length)
+    expect(narrowed.totalOpen).toBe(all.openRegistrations.length)
+    // On the Resolved tab the strip is over the filtered OPEN cases, not the rows on screen.
+    const onResolved = await loadBoard('resolved', now, { ...EMPTY_FILTER, stage: ['inv'] })
+    expect(myOpen(onResolved.openRegistrations)).toEqual(myOpen(narrowed.openRegistrations))
   })
 })

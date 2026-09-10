@@ -39,6 +39,13 @@ export type BoardRow = {
   diagnosis: string | null
   /** The primary delay reason's name, or null when none was chosen. */
   primaryReason: string | null
+  /**
+   * Every delay reason the case carries, by stage code and by name, distinct and in stage order
+   * (Phase 10). The row draws neither: they are what `matchesFilter` reads, so the board's filter
+   * is the same predicate the dashboard and the export apply, run over the rows already in hand.
+   */
+  stageCodes: string[]
+  reasonNames: string[]
   /** Consulted department names, in the taxonomy's order. */
   departments: string[]
   disposition: Disposition | null
@@ -75,6 +82,14 @@ export type BoardPayload = {
    * prototype could take that from its in-memory list, a server-filtered board cannot.
    */
   openRegistrations: string[]
+  /**
+   * How many OPEN cases there are with no case filter applied (Phase 10). `openRegistrations` is
+   * the filtered set — the counts strip must describe the board on screen — so this is the only
+   * place the unfiltered denominator survives, and the filter bar's "{shown} of {total} open
+   * cases" line is the only thing that reads it. Equal to `openRegistrations.length` whenever no
+   * case filter is active, so the line says nothing new and is not drawn.
+   */
+  totalOpen: number
   /** The server's clock at render time, so the first client render matches the HTML exactly. */
   now: string
 }

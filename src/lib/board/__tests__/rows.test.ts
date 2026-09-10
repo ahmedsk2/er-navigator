@@ -3,6 +3,7 @@ import {
   bandOf,
   countsOf,
   elapsedOf,
+  filterableOf,
   identityChips,
   idleHours,
   isStale,
@@ -32,6 +33,10 @@ function row(over: Partial<BoardRow> & Pick<BoardRow, 'id' | 'mrn'>): BoardRow {
     payer: null,
     diagnosis: null,
     primaryReason: null,
+    // Phase 10: what the case filter matches on. The row draws neither, so the helpers tested
+    // here read neither; `filterableOf` is what puts them in front of the predicate.
+    stageCodes: [],
+    reasonNames: [],
     departments: [],
     disposition: null,
     ward: null,
@@ -44,6 +49,48 @@ function row(over: Partial<BoardRow> & Pick<BoardRow, 'id' | 'mrn'>): BoardRow {
     ...over,
   }
 }
+
+describe('filterableOf', () => {
+  it('renames the two fields the board spells differently and leaves the rest alone', () => {
+    expect(
+      filterableOf(
+        row({
+          id: 'r1',
+          mrn: '100001',
+          stageCodes: ['adm'],
+          reasonNames: ['No bed available on accepting ward'],
+          departments: ['ICU', 'MROD'],
+          area: 'RESUS',
+          ctas: 2,
+          payer: 'INSURED',
+          disposition: 'ADMITTED',
+        }),
+      ),
+    ).toEqual({
+      stageCodes: ['adm'],
+      reasonNames: ['No bed available on accepting ward'],
+      // The board calls them `departments`, the predicate `departmentNames`; the area is a code
+      // on both sides, which is what the filter's URL carries.
+      departmentNames: ['ICU', 'MROD'],
+      areaCode: 'RESUS',
+      ctas: 2,
+      payer: 'INSURED',
+      disposition: 'ADMITTED',
+    })
+  })
+
+  it('passes a case that recorded none of them straight through as nulls', () => {
+    expect(filterableOf(row({ id: 'r2', mrn: '100002' }))).toEqual({
+      stageCodes: [],
+      reasonNames: [],
+      departmentNames: [],
+      areaCode: null,
+      ctas: null,
+      payer: null,
+      disposition: null,
+    })
+  })
+})
 
 describe('parseFilter', () => {
   it('accepts the three the URL may carry and defaults everything else to open', () => {

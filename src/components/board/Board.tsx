@@ -22,7 +22,14 @@ import {
 } from '@/src/lib/board/rows'
 import { BOARD_FILTERS, type BoardFilter, type BoardPayload } from '@/src/lib/board/types'
 import { fmtClock } from '@/src/lib/cases/local-time'
+import {
+  caseFilterQuery,
+  isEmptyFilter,
+  type CaseFilter,
+  type FilterOptions,
+} from '@/src/lib/domain/case-filter'
 import { Search } from '@/src/components/icons'
+import { FilterBar } from '@/src/components/filter/FilterBar'
 import { InstallPrompt } from '@/src/components/shell/InstallPrompt'
 import { PageHeader } from '@/src/components/shell/PageHeader'
 import { Input } from '@/src/components/ui'
@@ -39,16 +46,37 @@ const FILTER_LABEL: Record<BoardFilter, string> = { open: 'Open', resolved: 'Res
  */
 const COLUMN_LABELS = ['MRN', 'Registered', 'Waiting on', 'Last update', 'Elapsed'] as const
 
-/** `/`, `/?f=all`, `/?f=resolved&q=8515` — the canonical URL for a filter and a query. */
-function boardHref(filter: BoardFilter, query: string): string {
+/**
+ * `/?f=` and `/?q=`, exactly as they were: `f` is omitted when it is the default Open board and
+ * `q` when nothing is typed. The Phase 10 case filter's keys are APPENDED after those two and
+ * emit nothing at all when the filter is empty, so `/`, `/?f=all` and `/?q=3100002` are the same
+ * strings this phase found them.
+ */
+function boardQuery(filter: BoardFilter, query: string): string {
   const params = new URLSearchParams()
   if (filter !== 'open') params.set('f', filter)
   if (query) params.set('q', query)
-  const search = params.toString()
+  return params.toString()
+}
+
+function boardHref(filter: BoardFilter, query: string, caseFilter: CaseFilter): string {
+  const search = [boardQuery(filter, query), caseFilterQuery(caseFilter)].filter(Boolean).join('&')
   return search ? `/?${search}` : '/'
 }
 
-export function Board({ initial, initialQuery, printedBy }: { initial: BoardPayload; initialQuery: string; printedBy: string }) {
+export function Board({
+  initial,
+  initialQuery,
+  caseFilter,
+  filterOptions,
+  printedBy,
+}: {
+  initial: BoardPayload
+  initialQuery: string
+  caseFilter: CaseFilter
+  filterOptions: FilterOptions
+  printedBy: string
+}) {
   const [payload, setPayload] = useState(initial)
   const [query, setQuery] = useState(initialQuery)
   const [now, setNow] = useState(() => new Date(initial.now))
@@ -57,6 +85,8 @@ export function Board({ initial, initialQuery, printedBy }: { initial: BoardPayl
   const [pollFailed, setPollFailed] = useState(false)
   const filter = initial.filter
   const alive = useRef(true)
+  const filtered = !isEmptyFilter(caseFilter)
+  const filterQuery = caseFilterQuery(caseFilter)
 
   useEffect(() => {
     alive.current = true
@@ -77,7 +107,7 @@ export function Board({ initial, initialQuery, printedBy }: { initial: BoardPayl
   useEffect(() => {
     const timer = setInterval(() => {
       setNow(new Date())
-      void fetch(`/api/board?f=${filter}`, { cache: 'no-store' })
+      void fetch(`/api/board?${['f=' + filter, filterQuery].filter(Boolean).join('&')}`, { cache: 'no-store' })
         .then(async (response) => {
           if (response.status === 401) {
             clearInterval(timer)
@@ -100,15 +130,16 @@ export function Board({ initial, initialQuery, printedBy }: { initial: BoardPayl
         })
     }, BOARD_POLL_MS)
     return () => clearInterval(timer)
-  }, [filter])
+  }, [filter, filterQuery])
 
   // Keep the address bar honest without a navigation: `q` never changes what the server loads.
+  // The case filter is carried through so typing an MRN does not silently drop it from the URL.
   useEffect(() => {
-    const href = boardHref(filter, query)
+    const href = boardHref(filter, query, caseFilter)
     if (window.location.pathname + window.location.search !== href) {
       window.history.replaceState(null, '', href)
     }
-  }, [filter, query])
+  }, [filter, query, caseFilter])
 
   const visible = useMemo(
     () => sortByElapsed(searchRows(payload.rows, query), now),
@@ -118,9 +149,11 @@ export function Board({ initial, initialQuery, printedBy }: { initial: BoardPayl
 
   const emptyMessage = query
     ? `No case matching ${query}.`
-    : filter === 'open'
-      ? 'No open cases. Tap New case when a patient passes the threshold.'
-      : 'Nothing here yet.'
+    : filtered
+      ? 'No case matches this filter. Change it, or clear it to see the whole board.'
+      : filter === 'open'
+        ? 'No open cases. Tap New case when a patient passes the threshold.'
+        : 'Nothing here yet.'
 
   return (
     <div>
@@ -177,7 +210,7 @@ export function Board({ initial, initialQuery, printedBy }: { initial: BoardPayl
           {BOARD_FILTERS.map((option) => (
             <Link
               key={option}
-              href={boardHref(option, query)}
+              href={boardHref(option, query, caseFilter)}
               aria-current={option === filter ? 'true' : undefined}
               className={`inline-flex min-h-11 items-center rounded-chip border px-3.5 text-[14px] ${
                 option === filter
@@ -190,6 +223,16 @@ export function Board({ initial, initialQuery, printedBy }: { initial: BoardPayl
           ))}
         </div>
       </div>
+
+      {/* Under the search and the three tabs, above the rows: the filter narrows what those two
+          are looking at, and the handover sheet prints whatever is left. */}
+      <FilterBar
+        basePath="/"
+        baseQuery={boardQuery(filter, query)}
+        filter={caseFilter}
+        options={filterOptions}
+        count={filtered ? `${counts.open} of ${payload.totalOpen} open cases` : undefined}
+      />
 
       <HandoverSheet rows={visible} now={now} printedBy={printedBy} />
 
