@@ -376,8 +376,12 @@ session for this app. Consequence for a local `pnpm start` on plain HTTP: only `
 works (browsers treat it as secure); an IP address or a LAN hostname will never sign in.
 
 Cloudflare-side settings that complete the picture (zone → SSL/TLS, founder account): minimum
-TLS version 1.2 and the Modern cipher profile. Both are zone-wide, so they apply to every
-towardpcc.com app at once; the origin only ever hears from Cloudflare.
+TLS version 1.2 (set; verified through the API on 10 September, with TLS 1.3 enabled) and, if
+ever wanted, a restricted cipher list. The cipher list is optional: customising it needs the paid
+Advanced Certificate Manager add-on, and with TLS 1.0/1.1 already refused the remaining default
+TLS 1.2 suites are the ECDHE ones every current browser uses. Both settings are zone-wide, so they
+apply to every proxied towardpcc.com hostname at once (the apex and www are DNS-only and
+unaffected); the origin only ever hears from Cloudflare, so nothing on the server changes.
 
 ```bash
 curl -sI https://nav.towardpcc.com/login | grep -i 'content-security-policy'
