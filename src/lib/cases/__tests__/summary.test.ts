@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { blankDraft } from '../load'
 import type { LoadedCase } from '../load'
+import { fmtStamp } from '../local-time'
 import { summaryOf, summaryText } from '../summary'
 import type { CaseDraft, ReferenceData } from '../types'
 
@@ -95,6 +96,7 @@ function loaded(over: Partial<LoadedCase> = {}, draftOver: Partial<CaseDraft> = 
     voidReason: null,
     openedByName: 'Nadia Navigator',
     openedAt: T(9),
+    resolvedAt: null,
     draft: d,
     updates: [
       { id: 'u1', createdAt: T(6), text: 'Rang the ward, Mrs Smith is next', author: 'Nadia', action: 'BED_MANAGEMENT' },
@@ -131,10 +133,31 @@ describe('summaryOf', () => {
   })
 
   it('clocks a resolved case to its departure time, whatever "now" is', () => {
-    const s = summaryOf(loaded({ status: 'RESOLVED' }, { departedAt: T(2) }), REFERENCE, NOW)
+    // `resolvedAt` an hour after the departure on purpose: "Left ED at" edited after the resolve
+    // moves only the departure, and the departure is the end of the stay (`endAt`).
+    const s = summaryOf(loaded({ status: 'RESOLVED', resolvedAt: T(1) }, { departedAt: T(2) }), REFERENCE, NOW)
     expect(s.leftAt).toBe(T(2))
     expect(s.elapsedHours).toBe(7)
     expect(s.band).toBe('h6')
+  })
+
+  it('clocks a resolved case whose departure time was cleared to its resolution, and freezes it there', () => {
+    // A navigator can clear "Left ED at" on a resolved case and save: the draft's departure is
+    // nullable and `saveCase` refuses only a voided case. The row is then RESOLVED with no
+    // departure and its resolvedAt intact — kpi.ts's "Resolved (no departure time recorded)" —
+    // and the board row stops its clock at resolvedAt. So must the summary.
+    const at = (now: Date) =>
+      summaryOf(loaded({ status: 'RESOLVED', resolvedAt: T(3) }, { departedAt: null }), REFERENCE, now)
+    const s = at(NOW)
+    expect(s.leftAt).toBe(T(3))
+    expect(s.elapsedHours).toBe(6)
+    expect(s.band).toBe('h6')
+    expect(summaryText(s)).toContain(`Left ED: ${fmtStamp(T(3))}`)
+    expect(summaryText(s)).not.toContain('still in the ED')
+    // A day later it reads exactly the same: the stay ended when the case was resolved.
+    const dayLater = at(new Date(NOW.getTime() + 24 * 3_600_000))
+    expect(dayLater.leftAt).toBe(T(3))
+    expect(dayLater.elapsedHours).toBe(6)
   })
 
   it('lists the reasons with the primary first and marked, each under its stage', () => {

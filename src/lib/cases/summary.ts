@@ -21,7 +21,7 @@
  */
 import { ACTION_KINDS, type ActionKind } from '@/src/lib/domain/kpi'
 import { DISPOSITION_LABELS, PAYER_LABELS } from '@/src/lib/domain/taxonomy'
-import { band, elapsedHours, fmtHours, type Band } from '@/src/lib/domain/time'
+import { band, elapsedHours, endAt, fmtHours, type Band } from '@/src/lib/domain/time'
 import { fmtStamp } from './local-time'
 import type { LoadedCase } from './load'
 import type { TimelineStepView } from './timeline'
@@ -164,16 +164,19 @@ export function summaryOf(loaded: LoadedCase, reference: ReferenceData, now: Dat
 
   const stageNames = [...new Set(reasons.map((r) => r.stageName))]
 
-  // The same clock the board row and the editor header show, so three readings of one case never
-  // disagree. `resolvedAt` is not on the loaded case because `resolveCase` always writes a
-  // departure time: for a RESOLVED case that IS the end of the clock.
+  // The same clock the board row shows (`clockOf` in rows.ts), so the two readings of one case
+  // never disagree. `resolveCase` always writes a departure time, but "Left ED at" can be cleared
+  // on a resolved case and saved afterwards; `endAt` then ends the stay at resolvedAt, which is
+  // why the loaded case carries it. `leftAt` below is that same end, so the line and the clock
+  // cannot tell two different stories.
   const clock = {
     status: loaded.status,
     registrationAt: new Date(draft.registrationAt),
     departedAt: draft.departedAt ? new Date(draft.departedAt) : null,
-    resolvedAt: null,
+    resolvedAt: loaded.resolvedAt ? new Date(loaded.resolvedAt) : null,
   }
   const elapsed = elapsedHours(clock, now)
+  const end = endAt(clock)
 
   const tagged = taggedCounts(loaded.updates)
   const actions: SummaryAction[] = SUMMARY_ACTION_KINDS.map(([kind, name]) => ({
@@ -197,8 +200,9 @@ export function summaryOf(loaded: LoadedCase, reference: ReferenceData, now: Dat
     diagnosis: draft.diagnosis.trim() === '' ? null : draft.diagnosis,
     registrationAt: draft.registrationAt,
     // Only a case that has left: an open case keeps its old departure time after a reopen, and
-    // `endAt` reads that as "still here" everywhere else in the app.
-    leftAt: loaded.status === 'RESOLVED' ? draft.departedAt : null,
+    // `endAt` reads that as "still here" everywhere else in the app. A resolved case left at its
+    // departure time or, with that cleared, at its resolution.
+    leftAt: end ? end.toISOString() : null,
     elapsedHours: elapsed,
     band: band(elapsed),
     stageNames,

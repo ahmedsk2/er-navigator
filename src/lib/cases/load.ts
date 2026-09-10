@@ -23,6 +23,12 @@ export type LoadedCase = {
   voidReason: string | null
   openedByName: string
   openedAt: string
+  /**
+   * When the case was last resolved, or null (a reopen clears it). Not part of the draft: only
+   * resolve writes it. The summary needs it for the one case `departedAt` does not cover — a
+   * RESOLVED case whose "Left ED at" was cleared and saved, whose stay ends here (`endAt`).
+   */
+  resolvedAt: string | null
   draft: CaseDraft
   updates: CaseUpdateView[]
   /**
@@ -250,6 +256,7 @@ export async function loadCaseForEditor(id: string, reference: ReferenceData): P
     voidReason: row.voidReason,
     openedByName: row.openedBy.displayName,
     openedAt: row.openedAt.toISOString(),
+    resolvedAt: iso(row.resolvedAt),
     draft: draftFromCase(row, reference),
     updates: row.updates.map((u) => ({
       id: u.id,
