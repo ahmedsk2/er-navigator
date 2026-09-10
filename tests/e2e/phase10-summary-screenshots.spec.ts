@@ -42,7 +42,11 @@ test('phase 10 summary gate screenshots', async ({ page }, testInfo) => {
   await page.locator(`[data-summary-for="${LONGEST.mrn}"]`).click()
   const dialog = page.getByRole('dialog', { name: 'Case summary' })
   await expect(dialog).toBeVisible()
-  await expect(dialog).toContainText(LONGEST.reason.name)
+  // On the visible "Waiting on" row: the dialog also carries the copy text in a hidden <pre>,
+  // and `toContainText` on the whole dialog reads that too.
+  await expect(
+    dialog.getByRole('row').filter({ has: page.getByRole('rowheader', { name: 'Waiting on', exact: true }) }),
+  ).toContainText(LONGEST.reason.name)
   await shoot(page, 'row', suffix)
 
   await page.keyboard.press('Escape')

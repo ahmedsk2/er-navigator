@@ -637,6 +637,15 @@ test('a stopped session that ends late does not stop the one started after it', 
 })
 
 /**
+ * One row of the summary's table, found by its row header. The dialog also carries the whole copy
+ * text in a hidden `<pre data-summary-text>`, and `toContainText` on the dialog reads hidden nodes
+ * too, so a check that the panel shows something is made on the row that shows it.
+ */
+function summaryRow(dialog: Locator, label: string): Locator {
+  return dialog.getByRole('row').filter({ has: dialog.page().getByRole('rowheader', { name: label, exact: true }) })
+}
+
+/**
  * Phase 10, Slice 10C. The case summary: the panel a nurse opens to answer "what is happening
  * with 851557?" and the block of text she pastes into the handover message.
  *
@@ -659,11 +668,13 @@ test('the case summary opens over the case, names it, and copies itself as text'
   await page.getByRole('button', { name: 'Summary', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Case summary' })
   await expect(dialog).toBeVisible()
-  await expect(dialog).toContainText(mrn)
-  await expect(dialog).toContainText(REASON)
-  await expect(dialog).toContainText('Registration')
+  // What the panel shows, row by row: see `summaryRow`.
+  await expect(summaryRow(dialog, 'MRN')).toContainText(mrn)
+  await expect(summaryRow(dialog, 'Waiting on')).toContainText(REASON)
+  await expect(dialog.locator('[data-summary-timeline]')).toContainText('Registration')
   // The panel is a reading of the case, not a second editor: the note is counted, never quoted.
-  await expect(dialog).toContainText('Updates')
+  // The negative check is on the whole dialog, so it covers the hidden copy text as well.
+  await expect(summaryRow(dialog, 'Updates')).toBeVisible()
   await expect(dialog).not.toContainText('Mrs Haddad')
 
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
