@@ -106,13 +106,16 @@ absent there (check `window.SpeechRecognition` in the test and branch). Screensh
   "After the decision" = decision → leaving (`adm`, `dc`, `admin`). The three intervals are the
   existing `kpi1Minutes`, `kpi2Minutes`, `kpi3Minutes` in hours; `after` exists only for RESOLVED
   cases (leaving is `endAt`), stated in the module header and the section footnote.
-- `phaseSplit(cases, now)` returns, per phase: `n` (cases with the interval measured), `ids`,
-  `med` (guarded median hours), `share` (that phase's summed hours over the summed stay, over the
-  cases with all three measured; null below MIN_N such cases), `longestN` / `longestIds` (cases
-  with all three measured where this phase is the longest; ties to the earlier phase), and
-  `reasonsByPhase`: for each phase the stage rows (`StatRow`-like `{ name, n, ids }`) of its
-  stages, counting cases carrying at least one reason in that stage, in stage order, zero rows
-  kept.
+- `phaseSplit(cases)` (no `now`: every interval ends at a recorded time) returns `completeN`,
+  `completeIds` and, per phase: `n` (cases with the interval measured), `ids`, `med` (guarded
+  median hours on that phase's own n), `share` (that phase's summed hours over the summed
+  three-phase stay, over the cases with all three measured; null below MIN_N such cases; the
+  three add up to one), `longestN` / `longestIds` (cases with all three measured where this phase
+  is the longest; ties to the earlier phase; every complete case charged exactly once), and
+  `stages`: the phase's stage rows as `IdRow` `{ name, value, ids }`, counting cases carrying at
+  least one reason in that stage, in stage order, zero rows kept. Built and verified 10 September
+  (two independent recomputations agreed on every figure; their test-strength findings were
+  applied).
 - `byPayer(cases, now)`: `StatRow[]` like `byArea` over `PAYER_LABELS`, "Not recorded" last.
 - Hand-computed unit tests on the existing fixture (the map lists the expected front / decision /
   after hours for b, c, d, e), plus an independent recomputation by two verifier agents before the

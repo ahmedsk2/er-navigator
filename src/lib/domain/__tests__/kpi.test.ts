@@ -801,7 +801,20 @@ describe('voided cases are in nothing', () => {
  * Complete cases c, d, e: sums front 1.75, decision 6.25, after 12.5, total 20.5.
  */
 describe('Phase 10: where the time goes, by payer', () => {
-  const ALL = [a, b, c, d, e, v]
+  // A voided case that CARRIES times, stages and a payer, so a phase, stage or payer row that
+  // forgot live() would show it (the shared `v` carries nothing and proves nothing here).
+  const vv = base('vv', {
+    status: 'VOIDED',
+    registrationAt: T(13),
+    departedAt: T(3),
+    resolvedAt: T(3),
+    triageAt: T(12.75),
+    physicianAt: T(12.5),
+    decisionAt: T(10),
+    stageCodes: ['reg', 'inv', 'adm'],
+    payer: 'INSURED',
+  })
+  const ALL = [a, b, c, d, e, v, vv]
 
   it('measures the three phases of a case in hours', () => {
     expect(phaseHours(b)).toEqual({ front: 0.5, decision: 6, after: null })
@@ -823,6 +836,8 @@ describe('Phase 10: where the time goes, by payer', () => {
     expect(decision.share).toBeCloseTo(6.25 / 20.5, 12)
     expect(after.share).toBeCloseTo(12.5 / 20.5, 12)
     expect(front.share! + decision.share! + after.share!).toBeCloseTo(1, 12)
+    // Every complete case is charged to exactly one phase.
+    expect(s.phases.reduce((n, p) => n + p.longestN, 0)).toBe(s.completeN)
     // The stages under each phase, every case that carries a reason there, zero rows kept.
     expect(front.stages.map((r) => [r.name, r.value])).toEqual([['Registration', 0], ['Triage', 0], ['Resus room', 0], ['Exam room', 0]])
     expect(decision.stages).toEqual([
@@ -841,10 +856,31 @@ describe('Phase 10: where the time goes, by payer', () => {
     const two = phaseSplit([a, b, c, d])
     expect(two.completeN).toBe(2)
     expect(two.phases.map((p) => p.share)).toEqual([null, null, null])
+    // The medians are guarded per phase, on that phase's own n: front and decision have b, c, d
+    // (0.5, 0.5, 1 → 0.5 and 6, 2.5, 1 → 2.5), after has only c and d.
+    expect(two.phases.map((p) => p.med)).toEqual([0.5, 2.5, null])
+    expect(two.phases.map((p) => [p.longestN, p.longestIds])).toEqual([[0, []], [0, []], [2, ['c', 'd']]])
     const tie = base('t', { status: 'RESOLVED', registrationAt: T(3), physicianAt: T(2), decisionAt: T(1), departedAt: T(0), resolvedAt: T(0) })
     const s = phaseSplit([c, d, e, tie])
     expect(phaseHours(tie)).toEqual({ front: 1, decision: 1, after: 1 })
-    expect(s.phases[0]!.longestIds).toEqual(['t'])
+    // Charged once, to the front end; nowhere else.
+    expect(s.phases.map((p) => p.longestIds)).toEqual([['t'], ['e'], ['c', 'd']])
+    expect(s.phases.reduce((n, p) => n + p.longestN, 0)).toBe(s.completeN)
+    // A tie between decision and after with a shorter front end goes to the decision.
+    const later = base('u', { status: 'RESOLVED', registrationAt: T(5), physicianAt: T(4.5), decisionAt: T(2.5), departedAt: T(0.5), resolvedAt: T(0.5) })
+    expect(phaseHours(later)).toEqual({ front: 0.5, decision: 2, after: 2 })
+    expect(phaseSplit([c, d, later]).phases.map((p) => p.longestIds)).toEqual([[], ['u'], ['c', 'd']])
+  })
+
+  it('keeps a voided case out of every phase, stage and payer row', () => {
+    const s = phaseSplit([vv])
+    expect(s.completeN).toBe(0)
+    expect(s.phases.map((p) => [p.n, p.longestN, p.stages.map((r) => r.value)])).toEqual([
+      [0, 0, [0, 0, 0, 0]],
+      [0, 0, [0, 0, 0]],
+      [0, 0, [0, 0, 0]],
+    ])
+    expect(byPayer([vv], NOW).map((r) => [r.name, r.n])).toEqual([['Government', 0], ['Insured', 0], ['Self-pay', 0]])
   })
 
   it('groups the cases by payer in a fixed order, with Not recorded last', () => {
