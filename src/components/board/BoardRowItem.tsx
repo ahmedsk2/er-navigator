@@ -22,26 +22,10 @@ import {
 } from '@/src/lib/board/rows'
 import type { BoardRow } from '@/src/lib/board/types'
 import { fmtStamp } from '@/src/lib/cases/local-time'
-import { fmtHours, spokenHours, type Band } from '@/src/lib/domain/time'
+import { fmtHours, spokenHours } from '@/src/lib/domain/time'
+import { BAND_BG, BAND_TEXT } from '@/src/components/bands'
 
-const BAND_BG: Record<Band, string> = {
-  none: 'bg-band-none',
-  ok: 'bg-band-ok',
-  h4: 'bg-band-h4',
-  h6: 'bg-band-h6',
-  h12: 'bg-band-h12',
-  h24: 'bg-band-h24',
-}
-
-/** The 4 h band is the one token too light for text; its ink variant is the text colour. */
-const BAND_TEXT: Record<Band, string> = {
-  none: 'text-muted',
-  ok: 'text-band-ok',
-  h4: 'text-band-h4-ink',
-  h6: 'text-band-h6',
-  h12: 'text-band-h12',
-  h24: 'text-band-h24',
-}
+// Band → class maps live in src/components/bands.ts since Phase 9 (one copy for the three readers).
 
 export function BoardRowItem({ row, now }: { row: BoardRow; now: Date }) {
   const hours = elapsedOf(row, now)

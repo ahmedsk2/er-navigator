@@ -44,6 +44,16 @@ describe('design tokens', () => {
     expect(contrast(tokens[t]!, tokens[g]!)).toBeGreaterThanOrEqual(3)
   })
 
+  it('keeps the rail text readable on the navy rail (Phase 9)', () => {
+    expect(tokens['color-navy']).toBeDefined()
+    expect(tokens['color-rail-ink']).toBeDefined()
+    expect(contrast(tokens['color-rail-ink']!, tokens['color-navy']!)).toBeGreaterThanOrEqual(4.5)
+    // White text on the hero gradient's three stops, and on the header's two.
+    for (const stop of ['color-accent', 'color-accent-ink', 'color-accent-deep'] as const) {
+      expect(contrast('#ffffff', tokens[stop]!)).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
   it('has a neutral no-data band distinct from ok', () => {
     expect(tokens['color-band-none']).toBeDefined()
     expect(tokens['color-band-none']).not.toBe(tokens['color-band-ok'])

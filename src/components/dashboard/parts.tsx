@@ -10,7 +10,8 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { CHART_RAMP } from '@/src/components/dashboard/charts/theme'
 import { sharePercent } from '@/src/lib/dashboard/panels'
-import { MIN_N, band, fmtHours, type Band } from '@/src/lib/domain/time'
+import { MIN_N, band, fmtHours } from '@/src/lib/domain/time'
+import { BAND_TEXT } from '@/src/components/bands'
 
 /** A full-bleed section with a hairline top and bottom — the prototype's `.section`. */
 export function DashSection({ title, children }: { title: string; children: ReactNode }) {
@@ -112,14 +113,7 @@ export function Median({ value, n }: { value: number | null; n: number }) {
   return <>{fmtHours(value)}</>
 }
 
-const BAND_TEXT: Record<Band, string> = {
-  none: 'text-muted',
-  ok: 'text-band-ok',
-  h4: 'text-band-h4-ink',
-  h6: 'text-band-h6',
-  h12: 'text-band-h12',
-  h24: 'text-band-h24',
-}
+// BAND_TEXT comes from src/components/bands.ts (Phase 9): one map for the board, the dashboard and the editor.
 
 /** "Over 6h" in the colour of the band it opens — the prototype's `bandColor(t)` on the label. */
 export function ThresholdLabel({ hours }: { hours: number }) {

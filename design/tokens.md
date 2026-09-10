@@ -66,3 +66,37 @@ Left threshold band on rows; tabular numerals for all times; no all-caps labels 
 ## Not adopted
 
 Sidebars (desktop admin only, Phase 6, and then as a plain list); Tailwick's blue primary and violet secondary; LuminaHealth's coloured avatars; any dark theme in v1; illustration, marketing hero blocks, KPI tiles with sparklines on the board (the dashboard has three plain tiles, as the prototype does).
+
+## Phase 9 (10 September 2026): identity and chrome
+
+Ahmed's decision after seeing the live app: "the design looks so plain". Direction A of the
+proposal (`scratchpad/er-navigator-visual-refresh.html`): a teal hero and white sheet for
+sign-in, a coloured header with the mark and the user's initials, a tab bar with icons on the
+phone, a navy left rail and full-width rows on desktop, rows as cards with the elapsed time in a
+band-coloured pill, tinted icon tiles on the dashboard. This reverses four lines of "Kept from the
+prototype" and "Not adopted" above on purpose: the band stripe becomes a pill, the board rows and
+the editor sections become cards, desktop gets a sidebar, and the dashboard tiles get an icon.
+Everything else in this file holds; the information design is unchanged.
+
+| Token | Value | Contrast | Use |
+| --- | --- | --- | --- |
+| `--color-navy` | `#10202f` | ground | the desktop rail |
+| `--color-accent-deep` | `#0f4d5c` | white on it 9.9:1 | the dark end of the hero gradient |
+| `--color-rail-ink` | `#cfe0e6` | 12.2:1 on navy | rail text and icons |
+| `--color-rail-active` | `#5fc3d3` | decorative | the active rail icon |
+| `--radius-sheet` | 28 px | | the sign-in sheet's top corners |
+| `--shadow-card` | `0 2px 8px rgb(16 36 59 / .05)` | | row cards, section cards, tiles |
+| `--shadow-sheet` | `0 -10px 30px rgb(15 77 92 / .18)` | | the sheet rising over the hero |
+| `.bg-hero` | accent → accent-ink → accent-deep, 160° | white text ≥ 4.97:1 at every stop | sign-in hero and panel |
+| `.bg-header` | accent → accent-ink, 135° | white text ≥ 4.97:1 | the signed-in header |
+
+The elapsed-time pill uses `src/components/bands.ts` `BAND_PILL`: white on `band-ok` 5.0:1, on
+`band-h4-ink` 6.3:1 (never on `band-h4`, 3.6:1), on `band-h6` 5.7:1, on `band-h12` 10.6:1, on
+`band-h24` 13.9:1; "no data" is muted text on `line-soft`. `src/components/__tests__/bands.test.ts`
+recomputes these from the token block.
+
+Mark: `src/components/brand/Mark.tsx`, a heart with an ECG trace, three tones (white tile on
+teal, teal tile on white, bare teal strokes). Placeholder until the hospital or the ED sends a
+logo. Icons: `src/components/icons.tsx`, twenty-four Lucide 1.43.0 line icons copied in under
+the ISC licence (no dependency), 20 px in chrome, 18 px in chips, always `aria-hidden` beside
+text.

@@ -62,21 +62,15 @@ import {
   TRANSFER_STEPS,
   UPDATE_ACTION_LABELS,
 } from '@/src/lib/domain/taxonomy'
-import { band, elapsedHours, fmtHours, spokenHours, type Band } from '@/src/lib/domain/time'
+import { band, elapsedHours, fmtHours, spokenHours } from '@/src/lib/domain/time'
+import { BAND_TEXT } from '@/src/components/bands'
 import { MRN_RE, phiWarnings, REGISTRATION_NUDGE_MINUTES, REGISTRATION_QUICK_HOURS } from '@/src/lib/domain/validation'
 import { timeWarnings } from '@/src/lib/domain/warnings'
 
 const CLOCK_TICK_MS = 30_000
 
-/** The 4 h band is the one token that is too light for text; its ink variant is the text colour. */
-const BAND_TEXT: Record<Band, string> = {
-  none: 'text-band-none',
-  ok: 'text-band-ok',
-  h4: 'text-band-h4-ink',
-  h6: 'text-band-h6',
-  h12: 'text-band-h12',
-  h24: 'text-band-h24',
-}
+// BAND_TEXT comes from src/components/bands.ts (Phase 9). Its `none` was `text-band-none` here and
+// `text-muted` on the board and the dashboard; the shared map settles on `text-muted`.
 
 const INVESTIGATION_TYPES = ['LAB', 'CT', 'US', 'XR', 'MRI'] as const
 const DISPOSITIONS = Object.keys(DISPOSITION_LABELS) as Array<keyof typeof DISPOSITION_LABELS>
