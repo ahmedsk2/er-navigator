@@ -13,6 +13,20 @@
  * can be empty say so where they are defined.
  */
 import type { ReactNode } from 'react'
+import {
+  Activity,
+  BarChart3,
+  Bell,
+  Check,
+  ClipboardList,
+  Clock,
+  FileText,
+  History,
+  LayoutList,
+  ListChecks,
+  TriangleAlert,
+  Users,
+} from '@/src/components/icons'
 import { HBar, type HBarColor, type HBarRow } from '@/src/components/dashboard/charts/HBar'
 import { StackedBar, type StackRow } from '@/src/components/dashboard/charts/StackedBar'
 import {
@@ -52,15 +66,17 @@ export function BarSection({
   color,
   unit = 'cases',
   footnote,
+  icon,
 }: {
   title: string
   rows: HBarRow[]
   color: HBarColor
   unit?: string
   footnote?: ReactNode
+  icon?: ReactNode
 }) {
   return (
-    <DashSection title={title}>
+    <DashSection title={title} icon={icon}>
       <HBar rows={rows} color={color} unit={unit} />
       <BarLinks caption={title} rows={rows} unit={unit} />
       {footnote ? <Footnote>{footnote}</Footnote> : null}
@@ -86,12 +102,26 @@ function PanelLabel({ children }: { children: ReactNode }) {
  * The seven headline tiles that replace the Phase 4 three, each with its delta against the period
  * of the same length before this one. Two columns on a phone, four on a laptop.
  */
+/**
+ * One icon per headline tile (Phase 9). Keyed on `HeadlineTile.key` here rather than carried on
+ * the tile itself, because `src/lib/dashboard/panels.ts` computes numbers and holds no JSX.
+ */
+const TILE_ICONS: Record<string, ReactNode> = {
+  cases: <LayoutList size={16} />,
+  episodes: <Users size={16} />,
+  median: <Clock size={16} />,
+  mean: <Activity size={16} />,
+  range: <BarChart3 size={16} />,
+  atLeast10: <TriangleAlert size={16} />,
+  longest: <History size={16} />,
+}
+
 export function HeadlineTiles({ kpi, range }: Props) {
   const tiles = headlineTiles(kpi, range)
   const h = kpi.headline
   return (
     <>
-      <div className="grid grid-cols-2 gap-2 px-4 pb-2 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 px-4 pb-2 sm:grid-cols-4 lg:px-0">
         {tiles.map((tile) => (
           <Tile
             key={tile.key}
@@ -100,11 +130,12 @@ export function HeadlineTiles({ kpi, range }: Props) {
             note={tile.delta}
             href={tile.href}
             tone={tile.tone}
+            icon={TILE_ICONS[tile.key]}
           />
         ))}
       </div>
       {h.measured < h.cases ? (
-        <p className="px-4 pb-3 text-caption text-muted" data-headline-note>
+        <p className="px-4 pb-3 text-caption text-muted lg:px-0" data-headline-note>
           {h.cases - h.measured} {h.cases - h.measured === 1 ? 'case has' : 'cases have'} no computable stay
           (leaving time recorded before registration).
         </p>
@@ -120,6 +151,7 @@ export function StayBandsSection({ kpi, range }: Props) {
   return (
     <BarSection
       title="Stay bands"
+      icon={<BarChart3 size={18} />}
       rows={hbarRows(kpi.stayBands, range, 'stayband')}
       color="accent"
       footnote="Total ED stay: registration to leaving, or to now for a case that is still open."
@@ -136,7 +168,7 @@ export function AdaaPanel({ kpi, range }: Props) {
   // been recorded on one case: four zero bands beside three zero doses is not a finding.
   const pain = painkillerYesN > 0 || pethidineYesN > 0
   return (
-    <DashSection title="Adaa KPIs, tracked cases only">
+    <DashSection title="Adaa KPIs, tracked cases only" icon={<ListChecks size={18} />}>
       <DataTable
         head={['KPI', 'n', 'Value']}
         rows={rows.map((row) => ({
@@ -202,7 +234,7 @@ export function AdaaPanel({ kpi, range }: Props) {
 export function WorkingTargets({ kpi, range }: Props) {
   if (!kpi.targets.some((t) => t.n > 0)) return null
   return (
-    <DashSection title="Working targets">
+    <DashSection title="Working targets" icon={<Check size={18} />}>
       {/* "Within / n" is one column, not two: at 390 px two right-aligned numeric columns have no
           air between them, and the pair is read as a fraction anyway. */}
       <DataTable
@@ -235,7 +267,7 @@ export function AdmissionToUnit({ kpi, range }: Props) {
   const groups = kpi.admissionToUnit.filter((g) => anyValue(g.bands))
   if (groups.length === 0) return null
   return (
-    <DashSection title="Admission to unit">
+    <DashSection title="Admission to unit" icon={<ClipboardList size={18} />}>
       {groups.map((group) => (
         <div key={group.unit}>
           <PanelLabel>{UNIT_LABELS[group.unit] ?? group.unit}</PanelLabel>
@@ -279,7 +311,7 @@ export function TurnaroundSection({ kpi, range }: Props) {
   )
 
   return (
-    <DashSection title="Turnaround: order to result">
+    <DashSection title="Turnaround: order to result" icon={<Clock size={18} />}>
       <StackedBar bands={bands} rows={rows} unit="tests" />
       <BandLegend bands={bands} />
       <BarLinks caption="Turnaround: order to result" rows={links} unit="tests" />
@@ -294,7 +326,7 @@ export function TurnaroundSection({ kpi, range }: Props) {
 export function ExamToConsultSection({ kpi, range }: Props) {
   if (kpi.examToConsult.length === 0) return null
   return (
-    <DashSection title="Exam to consult, median">
+    <DashSection title="Exam to consult, median" icon={<Users size={18} />}>
       <DataTable
         head={['Team', 'Consults', 'Median']}
         rows={kpi.examToConsult.map((row) => ({
@@ -337,7 +369,7 @@ export function LongestStays({ kpi }: Props) {
     ],
   }))
   return (
-    <DashSection title="Longest stays">
+    <DashSection title="Longest stays" icon={<History size={18} />}>
       <DataTable head={['# MRN', 'Stay', 'Outcome', 'Last update']} rows={rows} />
       <Footnote>The ten longest stays in this range. Tap a row to open the case.</Footnote>
     </DashSection>
@@ -350,7 +382,7 @@ export function ActionsDocumented({ kpi, range }: Props) {
   const { any, none, byKind } = kpi.actions
   if (any.value === 0 && none.value === 0) return null
   return (
-    <DashSection title="Actions documented">
+    <DashSection title="Actions documented" icon={<ListChecks size={18} />}>
       <DataTable head={['Action', 'Cases']} rows={countRows([any, none, ...byKind], range, 'action')} />
       <Footnote>
         Of the {kpi.headline.cases} {kpi.headline.cases === 1 ? 'case' : 'cases'} in this range. A case can carry
@@ -369,6 +401,7 @@ export function OutcomesSection({ kpi, range }: Props) {
   return (
     <BarSection
       title="Outcomes"
+      icon={<Check size={18} />}
       rows={hbarRows(kpi.outcomes, range, 'outcome')}
       color="ok"
       footnote="Resolved cases by disposition, then the cases still open."
@@ -385,7 +418,7 @@ export function OutcomesSection({ kpi, range }: Props) {
 export function DischargeCommunication({ kpi, range }: Props) {
   if (!kpi.communication.some((row) => row.n > 0)) return null
   return (
-    <DashSection title="Discharge communication">
+    <DashSection title="Discharge communication" icon={<Bell size={18} />}>
       <DataTable
         head={['Question', 'Yes / n', 'Share']}
         rows={kpi.communication.map((row) => ({
@@ -412,7 +445,7 @@ export function DischargeCommunication({ kpi, range }: Props) {
 export function ByCtasSection({ kpi, range }: Props) {
   if (!kpi.byCtas.some((r) => r.n > 0)) return null
   return (
-    <DashSection title="By CTAS">
+    <DashSection title="By CTAS" icon={<LayoutList size={18} />}>
       <DataTable
         head={['CTAS', 'Cases', 'Median stay']}
         rows={kpi.byCtas.map((row) => ({
@@ -430,7 +463,7 @@ export function ByAreaSection({ kpi, range }: Props) {
   // "Not recorded" tells the reader nothing they did not already know.
   if (!kpi.byArea.some((r) => r.name !== NOT_RECORDED && r.n > 0)) return null
   return (
-    <DashSection title="By ED area">
+    <DashSection title="By ED area" icon={<LayoutList size={18} />}>
       <DataTable
         head={['Area', 'Cases', 'Median stay']}
         rows={kpi.byArea.map((row) => ({
@@ -446,7 +479,7 @@ export function ByAreaSection({ kpi, range }: Props) {
 export function RepeatVisits({ kpi, range }: Props) {
   if (kpi.repeats.length === 0) return null
   return (
-    <DashSection title="Repeat visits">
+    <DashSection title="Repeat visits" icon={<History size={18} />}>
       <DataTable
         head={['MRN', 'Cases in range']}
         rows={kpi.repeats.map((row) => ({
@@ -463,7 +496,7 @@ export function RepeatVisits({ kpi, range }: Props) {
 export function DocumentationSection({ kpi, range }: Props) {
   if (!anyValue(kpi.completeness)) return null
   return (
-    <DashSection title="Documentation">
+    <DashSection title="Documentation" icon={<FileText size={18} />}>
       <DataTable head={['Check', 'Cases']} rows={countRows(kpi.completeness, range, 'quality')} />
       <Footnote>What is missing or contradictory on the record, so it can be fixed while the case is fresh.</Footnote>
     </DashSection>

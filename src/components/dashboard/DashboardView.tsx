@@ -9,6 +9,16 @@
  * so leadership can read this page with JavaScript off and print it.
  */
 import Link from 'next/link'
+import {
+  Activity,
+  BarChart3,
+  ClipboardList,
+  Clock,
+  Ellipsis,
+  History,
+  TriangleAlert,
+  Users,
+} from '@/src/components/icons'
 import { WeeklyChart, type WeekPoint } from '@/src/components/dashboard/charts/WeeklyChart'
 import {
   BarLinks,
@@ -66,8 +76,10 @@ export function DashboardView({ data, range }: { data: DashboardData; range: Ran
             key={option}
             href={dashboardHref(option)}
             aria-current={option === range ? 'true' : undefined}
-            className={`inline-flex min-h-11 items-center rounded-chip border px-3 text-[14px] ${
-              option === range ? 'border-accent bg-accent font-semibold text-white' : 'border-line bg-panel text-ink'
+            className={`inline-flex min-h-11 items-center rounded-chip border px-3.5 text-[14px] ${
+              option === range
+                ? 'border-accent bg-accent font-semibold text-white'
+                : 'border-line bg-panel text-ink-2'
             }`}
           >
             {RANGE_LABELS[option]}
@@ -159,7 +171,7 @@ export function DashboardBody({
       {variant === 'report' ? lead : null}
 
       {data.inRange > 0 && (
-        <DashSection title="Cases past each threshold">
+        <DashSection title="Cases past each threshold" icon={<Clock size={18} />}>
           <DataTable head={['Threshold', 'Open now', 'All cases']} rows={thresholdRows} />
           <Footnote>
             Tap a row to see the cases. Open now counts wait so far; All cases counts total stay
@@ -169,7 +181,7 @@ export function DashboardBody({
       )}
 
       {data.inRange === 0 ? (
-        <section className="mb-2.5 border-y border-line bg-panel p-6 text-center">
+        <section className="mx-4 mb-2.5 rounded-card border border-line bg-panel p-6 text-center shadow-card lg:mx-0">
           <p className="m-0 text-body text-muted">
             {data.total ? 'No cases registered in this range.' : 'No cases yet.'}
           </p>
@@ -179,7 +191,7 @@ export function DashboardBody({
           {variant === 'screen' ? <StayBandsSection kpi={kpi} range={range} /> : null}
 
           {data.weeks.length > 1 && (
-            <DashSection title="By week: cases and median stay">
+            <DashSection title="By week: cases and median stay" icon={<Activity size={18} />}>
               <WeeklyChart weeks={weekPoints} />
               <BarLinks
                 caption="By week"
@@ -193,17 +205,28 @@ export function DashboardBody({
             </DashSection>
           )}
 
-          <BarSection title="Primary delay reason" rows={hbarRows(data.byPrimary, range, 'primary')} color="accent" />
+          <BarSection
+            title="Primary delay reason"
+            icon={<TriangleAlert size={18} />}
+            rows={hbarRows(data.byPrimary, range, 'primary')}
+            color="accent"
+          />
           {/* The weekly deck's "delay pathway" classification, expressed through the locked stage
               taxonomy rather than a second one (brief, section 6). */}
           <BarSection
             title="Pathways"
+            icon={<Activity size={18} />}
             rows={hbarRows(data.byStage, range, 'stage')}
             color="ink"
             unit={`of ${data.inRange} cases`}
             footnote="The journey stage each delay reason belongs to. A case whose reasons span several stages is counted in each, so the bars add to more than the number of cases."
           />
-          <BarSection title="Departments involved" rows={hbarRows(data.byDept, range, 'dept')} color="plum" />
+          <BarSection
+            title="Departments involved"
+            icon={<Users size={18} />}
+            rows={hbarRows(data.byDept, range, 'dept')}
+            color="plum"
+          />
 
           {variant === 'screen' ? (
             <>
@@ -216,7 +239,7 @@ export function DashboardBody({
           <TurnaroundSection kpi={kpi} range={range} />
           <ExamToConsultSection kpi={kpi} range={range} />
 
-          <DashSection title="Consulted team response, median">
+          <DashSection title="Consulted team response, median" icon={<Users size={18} />}>
             {consultRows.length ? (
               <DataTable head={['Team', 'n', 'To seen', 'To reply']} rows={consultRows} />
             ) : (
@@ -224,7 +247,7 @@ export function DashboardBody({
             )}
           </DashSection>
 
-          <DashSection title="Investigation turnaround, median from order">
+          <DashSection title="Investigation turnaround, median from order" icon={<Activity size={18} />}>
             {investigationRows.length ? (
               <DataTable head={['Test', 'n', 'To done', 'To result']} rows={investigationRows} />
             ) : (
@@ -232,7 +255,7 @@ export function DashboardBody({
             )}
           </DashSection>
 
-          <DashSection title="Admission chain, median">
+          <DashSection title="Admission chain, median" icon={<ClipboardList size={18} />}>
             {admission.n ? (
               <DataTable
                 head={['Step', 'Hours']}
@@ -269,7 +292,7 @@ export function DashboardBody({
           <ActionsDocumented kpi={kpi} range={range} />
 
           {shiftRows.length > 0 && (
-            <DashSection title="By shift">
+            <DashSection title="By shift" icon={<History size={18} />}>
               <DataTable head={['Shift', 'Cases', 'Median stay']} rows={shiftRows} />
             </DashSection>
           )}
@@ -277,6 +300,7 @@ export function DashboardBody({
           {data.byWeekday.length > 1 && (
             <BarSection
               title="By day of week"
+              icon={<BarChart3 size={18} />}
               rows={hbarRows(data.byWeekday, range, 'weekday')}
               color="muted"
             />
@@ -289,7 +313,7 @@ export function DashboardBody({
           <RepeatVisits kpi={kpi} range={range} />
           <DocumentationSection kpi={kpi} range={range} />
 
-          <DashSection title={`Other reasons awaiting review (${data.otherQueue.length})`}>
+          <DashSection title={`Other reasons awaiting review (${data.otherQueue.length})`} icon={<Ellipsis size={18} />}>
             {data.otherQueue.length === 0 ? (
               <EmptyNote>
                 Nothing queued. Anything typed into an &quot;Other&quot; box shows up here so it can be

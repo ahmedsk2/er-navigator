@@ -37,8 +37,11 @@ export function ReportView({
   requestedBy: string
 }) {
   return (
-    <div className="dash mx-auto max-w-[900px]">
-      <header className="flex flex-wrap items-start justify-between gap-3 px-4 pt-4 pb-3">
+    // The sections inside DashboardBody drop their phone inset at `lg`, because in the signed-in
+    // shell the content column supplies one. /report has no shell, so it gives the same inset
+    // itself and the masthead gives its own back: the two edges stay on one line at both widths.
+    <div className="dash mx-auto max-w-[900px] lg:px-4">
+      <header className="flex flex-wrap items-start justify-between gap-3 px-4 pt-4 pb-3 lg:px-0">
         <div className="min-w-0">
           <h1 className="text-title" data-report-header>
             {header}
