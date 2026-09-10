@@ -567,6 +567,85 @@ test('a dictated phrase stops at the cap of the box it lands in', async ({ page 
 })
 
 /**
+ * A stand-in that listens until it is told to stop, and then takes its time about ending, as the
+ * real one can: `stop()` returns at once, and the stopped session's error and end arrive only
+ * after the audio it already had has been to the speech service and back. It logs every start,
+ * stop and ending, so a test can see that an ending landed after the next session started.
+ */
+async function lateEndingRecogniser(page: Page, endAfterMs: number): Promise<void> {
+  await page.addInitScript((delay: number) => {
+    const log: string[] = []
+    let sessions = 0
+    class FakeRecognition {
+      lang = ''
+      continuous = false
+      interimResults = false
+      onresult: ((event: unknown) => void) | null = null
+      onerror: ((event: { error: string }) => void) | null = null
+      onend: (() => void) | null = null
+      session = (sessions += 1)
+      start(): void {
+        log.push(`start ${this.session}`)
+      }
+      stop(): void {
+        log.push(`stop ${this.session}`)
+        setTimeout(() => {
+          this.onerror?.({ error: 'network' })
+          this.onend?.()
+          log.push(`ended ${this.session}`)
+        }, delay)
+      }
+      abort(): void {}
+    }
+    Object.assign(window, {
+      SpeechRecognition: FakeRecognition,
+      webkitSpeechRecognition: FakeRecognition,
+      recogniserLog: log,
+    })
+  }, endAfterMs)
+}
+
+/**
+ * Phase 10 review: a quick re-tap. `stop()` let go of the session at once, but the stopped
+ * session's own error and end came later, and they turned the button back to "Dictate" (with
+ * their line under it) while the session started after them was still listening. A session's
+ * ending now counts only while it is still the current one.
+ */
+test('a stopped session that ends late does not stop the one started after it', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.222')
+  await lateEndingRecogniser(page, 1_000)
+  const taps = await signIn(page, E2E_USERS.navigator)
+  await openCase(page, uniqueMrn(), STAGE, REASON, taps)
+
+  const mic = micBeside(page, page.getByLabel(DIAGNOSIS_LABEL, { exact: true }))
+  await mic.click()
+  await mic.click()
+  await expect(mic).toHaveAccessibleName('Dictate')
+  // Tapped again inside the second the first session takes to end.
+  await mic.click()
+  await expect(mic).toHaveAccessibleName('Stop dictating')
+
+  // The first session's error and end arrive after the second session has started ...
+  const log = () =>
+    page.evaluate(() => (window as unknown as { recogniserLog: string[] }).recogniserLog.join(', '))
+  await expect.poll(log).toBe('start 1, stop 1, start 2, ended 1')
+  // ... and once React has had two frames to act on them, the second session is still listening.
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  await expect(mic).toHaveAccessibleName('Stop dictating')
+  await expect(mic).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('[data-dictate-status]')).toHaveCount(0)
+})
+
+/**
+ * One row of the summary's table, found by its row header. The dialog also carries the whole copy
+ * text in a hidden `<pre data-summary-text>`, and `toContainText` on the dialog reads hidden nodes
+ * too, so a check that the panel shows something is made on the row that shows it.
+ */
+function summaryRow(dialog: Locator, label: string): Locator {
+  return dialog.getByRole('row').filter({ has: dialog.page().getByRole('rowheader', { name: label, exact: true }) })
+}
+
+/**
  * Phase 10, Slice 10C. The case summary: the panel a nurse opens to answer "what is happening
  * with 851557?" and the block of text she pastes into the handover message.
  *
@@ -589,11 +668,16 @@ test('the case summary opens over the case, names it, and copies itself as text'
   await page.getByRole('button', { name: 'Summary', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Case summary' })
   await expect(dialog).toBeVisible()
-  await expect(dialog).toContainText(mrn)
-  await expect(dialog).toContainText(REASON)
-  await expect(dialog).toContainText('Registration')
+  // What the panel shows, row by row: see `summaryRow`.
+  await expect(summaryRow(dialog, 'MRN')).toContainText(mrn)
+  await expect(summaryRow(dialog, 'Waiting on')).toContainText(REASON)
+  await expect(dialog.locator('[data-summary-timeline]')).toContainText('Registration')
   // The panel is a reading of the case, not a second editor: the note is counted, never quoted.
-  await expect(dialog).toContainText('Updates')
+  // The count comes first. The page rendered this summary before the note existed, and it holds
+  // the note only once the update's own revalidation has rendered the page again; until then the
+  // check that the note is not quoted passes whatever the summary does with it. That check is on
+  // the whole dialog, so it covers the hidden copy text as well.
+  await expect(summaryRow(dialog, 'Updates').getByRole('cell')).toHaveText(/^1, last \d\d\/\d\d \d\d:\d\d$/)
   await expect(dialog).not.toContainText('Mrs Haddad')
 
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
@@ -607,12 +691,72 @@ test('the case summary opens over the case, names it, and copies itself as text'
   expect(copied).toContain(`* ${REASON} (Admission process)`)
   expect(copied).toContain('Time sequence:')
   expect(copied).toContain('Registration')
+  // The same reading of the case: the note counted, and not quoted.
+  expect(copied).toMatch(/^Updates: 1, last \d\d\/\d\d \d\d:\d\d$/m)
   expect(copied).not.toContain('Mrs Haddad')
 
   // Escape leaves the panel and puts the keyboard back on the button that opened it.
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Summary', exact: true })).toBeFocused()
+})
+
+/**
+ * Phase 10 review. The editor's own clock on the one case whose departure time does not end the
+ * stay: resolved, then "Left ED at" cleared and saved (the draft's departure time is nullable, and
+ * a save refuses only a voided case). The board row and the summary stop at the resolution; the
+ * header built its clock without it and counted on to every page load. It reads `caseClockOf`
+ * now, as the summary does, and a departure time typed while the page is open still moves it.
+ *
+ * Every time is typed from one instant, in the browser's zone as `toLocalInput` writes it, so the
+ * stay is exactly three hours and the clock can be read to the minute.
+ */
+test('a resolved case whose departure time is cleared keeps its clock stopped at the resolution', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.221')
+  const taps = await signIn(page, E2E_USERS.navigator)
+  const url = await openCase(page, uniqueMrn(), STAGE, REASON, taps)
+
+  const at = await page.evaluate(() => {
+    const now = Date.now()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const local = (hours: number) => {
+      const d = new Date(now - hours * 3_600_000)
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+    }
+    return { registered: local(10), left: local(7), corrected: local(8) }
+  })
+  const registration = page.getByLabel('Registration time (clock starts here)', { exact: true })
+  const leftAt = page.getByLabel('Left ED at (defaults to now)', { exact: true })
+  const clock = page.getByRole('img', { name: /^Time in the Emergency Department/ })
+
+  // Registered ten hours ago and left seven hours ago; `resolveCase` writes that departure time
+  // as the resolution too. (The registration box is empty until the page has hydrated.)
+  await expect(registration).not.toHaveValue('')
+  await registration.fill(at.registered)
+  await leftAt.fill(at.left)
+  await page.getByLabel('Final disposition').selectOption('DISCHARGED_HOME')
+  await page.getByRole('button', { name: 'Mark resolved' }).click()
+  await expect(page.getByText('Resolved: Discharged home')).toBeVisible()
+  await expect(clock).toHaveText('3h 00m')
+
+  // "Left ED at" cleared: the stay still ended at the resolution, before the save and after it.
+  await leftAt.fill('')
+  await expect(clock).toHaveText('3h 00m')
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
+
+  await page.goto(url)
+  await expect(registration).toHaveValue(at.registered)
+  await expect(leftAt).toHaveValue('')
+  await expect(clock).toHaveText('3h 00m')
+  await expect(clock).toHaveAccessibleName('Time in the Emergency Department: 3 hours')
+
+  // A departure time typed on the page moves the clock at once, and clearing it again puts the
+  // end back at the resolution, which is where the board row has it.
+  await leftAt.fill(at.corrected)
+  await expect(clock).toHaveText('2h 00m')
+  await leftAt.fill('')
+  await expect(clock).toHaveText('3h 00m')
 })
 
 /**

@@ -14,14 +14,15 @@
  *     is built to be shared, and free text is where a name gets typed by accident. The working
  *     diagnosis and an "Other" reason box are the two exceptions, and they are here because they
  *     are the clinical line the summary is about; both are identifier-warned in the editor.
- *   - Nothing is computed twice. The elapsed clock is `elapsedHours` (the board's and the
- *     editor's), the time sequence is `timeline()`'s (already on the loaded case), and the
- *     documented actions follow `actionsDocumented` in `kpi.ts` exactly: a kind counts when a
- *     navigator tagged an update with it OR when the case carries the timestamp that records it.
+ *   - Nothing is computed twice. The elapsed clock is `elapsedHours` over `caseClockOf` (the
+ *     board's formula, and the clock the editor's header reads), the time sequence is
+ *     `timeline()`'s (already on the loaded case), and the documented actions follow
+ *     `actionsDocumented` in `kpi.ts` exactly: a kind counts when a navigator tagged an update
+ *     with it OR when the case carries the timestamp that records it.
  */
 import { ACTION_KINDS, type ActionKind } from '@/src/lib/domain/kpi'
 import { DISPOSITION_LABELS, PAYER_LABELS } from '@/src/lib/domain/taxonomy'
-import { band, elapsedHours, endAt, fmtHours, type Band } from '@/src/lib/domain/time'
+import { band, elapsedHours, endAt, fmtHours, type Band, type CaseClock } from '@/src/lib/domain/time'
 import { fmtStamp } from './local-time'
 import type { LoadedCase } from './load'
 import type { TimelineStepView } from './timeline'
@@ -131,6 +132,27 @@ function taggedCounts(updates: LoadedCase['updates']): Map<string, number> {
   return counts
 }
 
+/**
+ * The clock of a loaded case: what `clockOf` in rows.ts is for a board row, so the summary and the
+ * editor's header read a case exactly as its board row does. It takes only what it reads, because
+ * the editor calls it with its own state: the status and the resolution it holds beside the draft,
+ * and the draft's departure time as the nurse edits it.
+ *
+ * `resolvedAt` is the part that is easy to leave out. `resolveCase` always writes a departure
+ * time, but "Left ED at" can be cleared on a resolved case and saved afterwards; `endAt` then ends
+ * the stay at the resolution, and a clock built without it counts on to "now" for ever.
+ */
+export function caseClockOf(
+  c: Pick<LoadedCase, 'status' | 'resolvedAt'> & { draft: Pick<CaseDraft, 'registrationAt' | 'departedAt'> },
+): CaseClock {
+  return {
+    status: c.status,
+    registrationAt: new Date(c.draft.registrationAt),
+    departedAt: c.draft.departedAt ? new Date(c.draft.departedAt) : null,
+    resolvedAt: c.resolvedAt ? new Date(c.resolvedAt) : null,
+  }
+}
+
 /** The timestamp on the case that documents a kind on its own (`actionKindsOf` in kpi.ts). */
 function recordedStep(draft: CaseDraft, kind: ActionKind): boolean {
   if (kind === 'LEADERSHIP_ESCALATION') return draft.medAdminInformedAt !== null
@@ -164,17 +186,10 @@ export function summaryOf(loaded: LoadedCase, reference: ReferenceData, now: Dat
 
   const stageNames = [...new Set(reasons.map((r) => r.stageName))]
 
-  // The same clock the board row shows (`clockOf` in rows.ts), so the two readings of one case
-  // never disagree. `resolveCase` always writes a departure time, but "Left ED at" can be cleared
-  // on a resolved case and saved afterwards; `endAt` then ends the stay at resolvedAt, which is
-  // why the loaded case carries it. `leftAt` below is that same end, so the line and the clock
-  // cannot tell two different stories.
-  const clock = {
-    status: loaded.status,
-    registrationAt: new Date(draft.registrationAt),
-    departedAt: draft.departedAt ? new Date(draft.departedAt) : null,
-    resolvedAt: loaded.resolvedAt ? new Date(loaded.resolvedAt) : null,
-  }
+  // The same clock the board row shows, so the two readings of one case never disagree.
+  // `leftAt` below is that clock's own end, so the line and the elapsed time cannot tell two
+  // different stories either.
+  const clock = caseClockOf(loaded)
   const elapsed = elapsedHours(clock, now)
   const end = endAt(clock)
 

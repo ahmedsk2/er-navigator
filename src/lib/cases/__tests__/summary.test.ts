@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import { elapsedHours, endAt } from '@/src/lib/domain/time'
 import { blankDraft } from '../load'
 import type { LoadedCase } from '../load'
 import { fmtStamp } from '../local-time'
-import { summaryOf, summaryText } from '../summary'
+import { caseClockOf, summaryOf, summaryText } from '../summary'
 import type { CaseDraft, ReferenceData } from '../types'
 
 /**
@@ -111,6 +112,47 @@ function loaded(over: Partial<LoadedCase> = {}, draftOver: Partial<CaseDraft> = 
     ...over,
   }
 }
+
+/**
+ * The clock of a loaded case: the one the summary and the editor's header both read, as the board
+ * row reads `clockOf` in rows.ts. The editor used to build its own with `resolvedAt: null`, so a
+ * resolved case whose "Left ED at" was cleared and saved counted on to every page load there while
+ * the board row and the summary stood still at the resolution.
+ */
+describe('caseClockOf', () => {
+  it('ends a resolved case whose departure time was cleared at its resolution', () => {
+    const clock = caseClockOf(loaded({ status: 'RESOLVED', resolvedAt: T(3) }, { departedAt: null }))
+    expect(clock).toEqual({
+      status: 'RESOLVED',
+      registrationAt: new Date(T(9)),
+      departedAt: null,
+      resolvedAt: new Date(T(3)),
+    })
+    expect(endAt(clock)).toEqual(new Date(T(3)))
+    expect(elapsedHours(clock, NOW)).toBe(6)
+    // And a day later it has not moved.
+    expect(elapsedHours(clock, new Date(NOW.getTime() + 24 * 3_600_000))).toBe(6)
+  })
+
+  it('ends a resolved case at its departure time, even when the resolution is later', () => {
+    const clock = caseClockOf(loaded({ status: 'RESOLVED', resolvedAt: T(1) }, { departedAt: T(2) }))
+    expect(endAt(clock)).toEqual(new Date(T(2)))
+    expect(elapsedHours(clock, NOW)).toBe(7)
+  })
+
+  it('gives a reopened case no end, although it keeps its old departure time', () => {
+    const clock = caseClockOf(loaded({ status: 'OPEN', resolvedAt: null }, { departedAt: T(2) }))
+    expect(endAt(clock)).toBeNull()
+    expect(elapsedHours(clock, NOW)).toBe(9)
+  })
+
+  it("reads the editor's state as well as a loaded case", () => {
+    // The editor holds the status, the resolution and the draft apart, and a departure time
+    // typed while the page is open is in the draft before anything is saved.
+    const clock = caseClockOf({ status: 'RESOLVED', resolvedAt: T(3), draft: { registrationAt: T(9), departedAt: T(5) } })
+    expect(endAt(clock)).toEqual(new Date(T(5)))
+  })
+})
 
 describe('summaryOf', () => {
   it('names the case: MRN, CTAS, area, payer and the working diagnosis', () => {

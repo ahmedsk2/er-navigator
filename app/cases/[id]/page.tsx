@@ -54,6 +54,7 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
       initial={loaded.draft}
       caseId={loaded.id}
       initialStatus={loaded.status}
+      initialResolvedAt={loaded.resolvedAt}
       voidReason={loaded.voidReason}
       navigatorName={loaded.openedByName}
       initialUpdates={loaded.updates}

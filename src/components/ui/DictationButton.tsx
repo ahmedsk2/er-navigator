@@ -92,6 +92,11 @@ const BLOCKED_LINE =
  * nurse who had once refused the prompt was left tapping it. The codes that name something she
  * can act on get a line; "aborted" (the page stopping its own session) and any code not listed
  * here get none, because a line that explains nothing is worse than no line.
+ *
+ * "network" says the speech service could not be reached, not that the phone is offline: a
+ * Chromium build without Google's speech service (Playwright's own, some forks) fails every
+ * session with it on a working connection, and "needs a network connection" sent the nurse to
+ * check a wifi that was fine.
  */
 export function dictationErrorLine(code: string | undefined): string | null {
   switch (code) {
@@ -101,7 +106,7 @@ export function dictationErrorLine(code: string | undefined): string | null {
     case 'audio-capture':
       return 'No microphone was found on this device.'
     case 'network':
-      return 'Dictation needs a network connection.'
+      return 'Dictation could not reach the speech service. Check the connection, or type instead.'
     case 'no-speech':
       return 'Nothing was heard. Tap the microphone and speak again.'
     default:
@@ -178,11 +183,20 @@ export function DictationButton({
     // silence timeout all land here or in `onend`. Either way the button goes back to idle
     // rather than sitting pressed over a microphone that stopped listening minutes ago, and an
     // error says why in the line under the row.
+    //
+    // Only while this is still the current session, though. `stop()` lets go of it at once, but
+    // its own error and end arrive later, and a quick second tap has started another session by
+    // then: an ending that did not check whose it was turned the button back to "Dictate", with
+    // its line under it, over a microphone that was still listening. `onresult` is not held to
+    // this: the words a stopped session hands back were spoken before the tap, and belong in
+    // the box.
     session.onend = () => {
+      if (recognition.current !== session) return
       recognition.current = null
       setListening(false)
     }
     session.onerror = (event) => {
+      if (recognition.current !== session) return
       recognition.current = null
       setListening(false)
       report.current?.(dictationErrorLine(event.error))
