@@ -1,3 +1,4 @@
+import { PageHeader } from '@/src/components/shell/PageHeader'
 import { requireRole } from '@/src/lib/auth/session'
 import { AdminNav } from './nav'
 
@@ -22,10 +23,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   await requireRole('ADMIN')
 
   return (
-    <div data-wide className="px-4 pt-4 pb-6">
-      <h2 className="text-title">Administration</h2>
-      <AdminNav />
-      {children}
+    <div data-wide className="pb-6">
+      <PageHeader title="Administration" />
+      <div className="px-4 lg:px-0">
+        <AdminNav />
+        {children}
+      </div>
     </div>
   )
 }

@@ -28,7 +28,7 @@ export function DrillView({
 
   return (
     <div className="dash">
-      <div className="no-print px-4 pt-3.5 pb-1.5">
+      <div className="no-print px-4 pt-3.5 pb-1.5 lg:px-0 lg:pt-5">
         <Link
           href={dashboardHref(range)}
           className="inline-flex min-h-11 items-center rounded-button border border-line bg-panel px-3 text-body font-semibold text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -37,7 +37,7 @@ export function DrillView({
         </Link>
       </div>
 
-      <div className="px-4 pt-1 pb-2.5">
+      <div className="px-4 pt-1 pb-2.5 lg:px-0">
         <h2 className="text-title" data-drill-label>
           {label}
         </h2>

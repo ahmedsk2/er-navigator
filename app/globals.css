@@ -114,6 +114,16 @@ body { background: var(--color-bg); color: var(--color-ink); font-family: var(--
     it stops advertising itself and reads as plain text, and every section is kept — including
     the charts, which are SVG and print as drawn. Nothing is hidden that carries a number.
   */
+  /*
+    Phase 9: on a screen the signed-in shell is a two-column grid — a 232 px rail and a content
+    column with a width of its own — and on paper it is a sheet. The rail is already `.no-print`,
+    so all that is left is to let the container and the column go back to plain full-width blocks.
+    Two named classes rather than `print:` utilities on the elements: the grid and the column
+    width are `lg:` rules, and which of two media variants wins is a question of stylesheet order
+    rather than of intent. These rules are outside every `@layer`, so they beat both.
+  */
+  .shell-grid, .shell-main { display: block; max-width: none; margin-inline: 0; padding-inline: 0; }
+
   .dash a { color: inherit !important; text-decoration: none; }
   .dash section { break-inside: avoid; border-width: 1px 0; }
   .dash .shadow-panel { box-shadow: none; }

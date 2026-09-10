@@ -15,6 +15,7 @@
  */
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { PageHeader } from '@/src/components/shell/PageHeader'
 import { Field, Select } from '@/src/components/ui'
 import {
   EXPORT_FORMATS,
@@ -72,9 +73,7 @@ export function ExportPanel({
 
   return (
     <div>
-      <div className="px-4 pt-4 pb-2.5">
-        <h2 className="text-title">Export and print</h2>
-      </div>
+      <PageHeader title="Export and print" />
 
       <section className="mb-2.5 border-y border-line bg-panel p-4">
         {/*

@@ -4,13 +4,20 @@
  * The header's overflow menu, not a sidebar (spec: phase3-board.md). It holds what Phase 1 put in
  * the header bar — the signed-in name, which still taps through to `/account`, and Log out — plus
  * "Print handover", which is just `window.print()` against the board's print stylesheet.
+ *
+ * Phase 9 changed only what the trigger looks like: the user's initials in a circle instead of
+ * "⋯", because the coloured header needed something of the person in it and the initials are the
+ * one thing a nurse recognises at arm's length. They are `aria-hidden`; the button's accessible
+ * name is still "Menu", and every item keeps its exact name.
  */
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { logout } from '@/app/(app)/actions'
+import { LogOut, Printer, User } from '@/src/components/icons'
+import { initialsOf } from './initials'
 
 const ITEM =
-  'flex min-h-11 w-full items-center px-4 text-left text-body text-ink hover:bg-accent-soft focus:bg-accent-soft focus:outline-none'
+  'flex min-h-11 w-full items-center gap-2.5 px-4 text-left text-body text-ink hover:bg-accent-soft focus:bg-accent-soft focus:outline-none'
 
 export function OverflowMenu({ displayName, roleLabel }: { displayName: string; roleLabel: string }) {
   const [open, setOpen] = useState(false)
@@ -43,9 +50,14 @@ export function OverflowMenu({ displayName, roleLabel }: { displayName: string; 
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((was) => !was)}
-        className="flex min-h-11 min-w-11 items-center justify-center rounded-button border border-line text-[20px] leading-none text-ink"
+        className="flex min-h-11 min-w-11 items-center justify-center rounded-chip"
       >
-        <span aria-hidden>⋯</span>
+        <span
+          aria-hidden
+          className="grid size-9 place-items-center rounded-chip bg-white/20 text-label font-semibold text-white"
+        >
+          {initialsOf(displayName)}
+        </span>
       </button>
 
       {open ? (
@@ -55,6 +67,7 @@ export function OverflowMenu({ displayName, roleLabel }: { displayName: string; 
           className="absolute right-0 top-full z-20 mt-1 w-64 overflow-hidden rounded-card border border-line bg-panel py-1 shadow-float"
         >
           <Link role="menuitem" href="/account" className={ITEM} onClick={() => setOpen(false)}>
+            <User size={18} className="shrink-0 text-muted" />
             <span className="truncate">
               {displayName} · {roleLabel}
             </span>
@@ -68,10 +81,12 @@ export function OverflowMenu({ displayName, roleLabel }: { displayName: string; 
               window.print()
             }}
           >
+            <Printer size={18} className="shrink-0 text-muted" />
             Print handover
           </button>
           <form action={logout}>
             <button type="submit" role="menuitem" className={ITEM}>
+              <LogOut size={18} className="shrink-0 text-muted" />
               Log out
             </button>
           </form>

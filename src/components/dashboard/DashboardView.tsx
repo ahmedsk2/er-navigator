@@ -39,6 +39,7 @@ import {
   WorkingTargets,
   hbarRows,
 } from '@/src/components/dashboard/sections'
+import { PageHeader } from '@/src/components/shell/PageHeader'
 import { RANGE_LABELS, dashboardHref, drillKey, type DrillSection } from '@/src/lib/dashboard/drill'
 import { RANGES, type Range, type dashboard } from '@/src/lib/domain/aggregates'
 import { SHIFT_LABELS } from '@/src/lib/domain/taxonomy'
@@ -50,14 +51,16 @@ type DashboardData = ReturnType<typeof dashboard>
 export function DashboardView({ data, range }: { data: DashboardData; range: Range }) {
   return (
     <div className="dash">
-      <div className="px-4 pt-4 pb-2.5">
-        <h2 className="text-title">Dashboard</h2>
-        <p className="num mt-0.5 text-[14px] text-muted" data-subtitle>
-          {data.inRange} of {data.total} cases
-        </p>
-      </div>
+      <PageHeader
+        title="Dashboard"
+        subtitle={
+          <p className="num mt-0.5 text-[14px] text-muted" data-subtitle>
+            {data.inRange} of {data.total} cases
+          </p>
+        }
+      />
 
-      <div className="no-print flex flex-wrap gap-2 px-4 pb-3" role="group" aria-label="Date range">
+      <div className="no-print flex flex-wrap gap-2 px-4 pb-3 lg:px-0" role="group" aria-label="Date range">
         {RANGES.map((option) => (
           <Link
             key={option}
