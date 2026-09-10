@@ -23,6 +23,7 @@ import {
 import { BOARD_FILTERS, type BoardFilter, type BoardPayload } from '@/src/lib/board/types'
 import { fmtClock } from '@/src/lib/cases/local-time'
 import { InstallPrompt } from '@/src/components/shell/InstallPrompt'
+import { PageHeader } from '@/src/components/shell/PageHeader'
 import { BoardRowItem } from './BoardRowItem'
 import { HandoverSheet } from './HandoverSheet'
 
@@ -113,25 +114,29 @@ export function Board({ initial, initialQuery, printedBy }: { initial: BoardPayl
 
   return (
     <div>
-      <div className="px-4 pt-4 pb-2.5">
-        <h2 className="text-title">ER board</h2>
-        <p className="num mt-0.5 text-[14px] text-muted">
-          {counts.open} open · {counts.past6} past 6h · {counts.past12} past 12h
-        </p>
-        {/* How old the rows are. Riyadh time, 24 h, the same string on the server's first paint
-            and on every client tick. A nurse reading a frozen board must be able to see that it
-            is frozen; the rows stay on screen either way. */}
-        <p
-          data-board-freshness={pollFailed ? 'stale' : 'fresh'}
-          className="mt-0.5 text-caption text-muted"
-        >
-          {pollFailed
-            ? `Not updating since ${fmtClock(updatedAt)}. Check the connection.`
-            : `Updated ${fmtClock(updatedAt)}`}
-        </p>
-      </div>
+      <PageHeader
+        title="ER board"
+        subtitle={
+          <>
+            <p className="num mt-0.5 text-[14px] text-muted">
+              {counts.open} open · {counts.past6} past 6h · {counts.past12} past 12h
+            </p>
+            {/* How old the rows are. Riyadh time, 24 h, the same string on the server's first
+                paint and on every client tick. A nurse reading a frozen board must be able to see
+                that it is frozen; the rows stay on screen either way. */}
+            <p
+              data-board-freshness={pollFailed ? 'stale' : 'fresh'}
+              className="mt-0.5 text-caption text-muted"
+            >
+              {pollFailed
+                ? `Not updating since ${fmtClock(updatedAt)}. Check the connection.`
+                : `Updated ${fmtClock(updatedAt)}`}
+            </p>
+          </>
+        }
+      />
 
-      <div className="no-print px-4 pb-2.5">
+      <div className="no-print px-4 pb-2.5 lg:px-0">
         <label htmlFor="board-search" className="sr-only">
           Search MRN
         </label>
