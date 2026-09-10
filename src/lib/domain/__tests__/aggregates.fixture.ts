@@ -44,6 +44,8 @@ const c = (p: Seed): CaseForStats => ({
   wardCode: null,
   ctas: null,
   areaName: null,
+  payer: null,
+  stageCodes: [],
   updatesCount: 0,
   lastUpdateAt: null,
   // Phase 8b's collection fields. Defaulted to "not recorded" here on purpose: every

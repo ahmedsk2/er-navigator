@@ -89,6 +89,8 @@ function clocksOf(payload: BoardPayload): CaseForStats[] {
         reviewedByName: null,
         updateActions: [],
         untaggedUpdatesCount: 0,
+        payer: null,
+        stageCodes: [],
         otherTexts: [],
       }) satisfies CaseForStats,
   )

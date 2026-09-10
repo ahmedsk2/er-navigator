@@ -47,6 +47,9 @@ const NOT_READ = {
   reviewedByName: null,
   updateActions: [] as ReadonlyArray<KpiCase['updateActions'][number]>,
   untaggedUpdatesCount: 0,
+  // Phase 10: neither the payer nor the stage codes are a step on the timeline.
+  payer: null,
+  stageCodes: [] as ReadonlyArray<string>,
 } satisfies Partial<KpiCase>
 
 /** Exactly the fields the time sequence is built from. */

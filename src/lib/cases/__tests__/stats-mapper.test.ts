@@ -34,6 +34,7 @@ function row(over: Partial<CaseStatsRow> = {}): CaseStatsRow {
     transportArrivedAt: null,
     medAdminInformedAt: null,
     ctas: null,
+    payer: null,
     painkillerPrescribed: null,
     pethidinePrescribed: null,
     pethidineDoseMg: null,
@@ -62,7 +63,7 @@ function row(over: Partial<CaseStatsRow> = {}): CaseStatsRow {
 
 const reason = (stage: string, sortOrder: number, otherText: string | null = null) => ({
   otherText,
-  reason: { stage: { name: stage, sortOrder } },
+  reason: { stage: { code: stage.toLowerCase().replace(/[^a-z]+/g, '-'), name: stage, sortOrder } },
 })
 
 describe('CASE_STATS_SELECT', () => {
@@ -93,6 +94,7 @@ describe('CASE_STATS_SELECT', () => {
         'mrn',
         'painkillerAt',
         'painkillerPrescribed',
+        'payer',
         'pethidineDoseMg',
         'pethidinePrescribed',
         'physicianAt',
@@ -172,6 +174,7 @@ describe('toCaseForStats', () => {
       primaryReasonName: 'No bed available on accepting ward',
       // Taxonomy order: Referral (6) before Admission (8), whatever order the rows came back in.
       stageNames: ['Referral / consulted team', 'Admission process'],
+      stageCodes: ['referral-consulted-team', 'admission-process'],
       departmentNames: ['MROD', 'General Surgery'],
       disposition: 'ADMITTED',
       consults: [
@@ -214,6 +217,7 @@ describe('toCaseForStats', () => {
       wardCode: null,
       ctas: null,
       areaName: null,
+      payer: null,
       updatesCount: 0,
       lastUpdateAt: null,
       painkillerPrescribed: null,

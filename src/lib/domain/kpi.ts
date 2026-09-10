@@ -41,6 +41,7 @@ export type KpiConsult = {
 export type KpiInvestigationType = 'LAB' | 'CT' | 'US' | 'XR' | 'MRI'
 
 export type Answer = 'YES' | 'NO' | 'NOT_SURE'
+export type Payer = 'GOVERNMENT' | 'INSURED' | 'SELF_PAY'
 
 /** The weekly deck's operational-response categories, as recorded on an update (decision C). */
 export type UpdateActionKind =
@@ -80,7 +81,11 @@ export type KpiCase = CaseClock & {
   wardCode: string | null
   ctas: number | null
   areaName: string | null
+  /** Phase 10: who pays for the visit. */
+  payer: Payer | null
   stageNames: ReadonlyArray<string>
+  /** The same stages by code, in stage order (Phase 10: the phase split reads these). */
+  stageCodes: ReadonlyArray<string>
   updatesCount: number
   lastUpdateAt: Date | null
   consults: ReadonlyArray<KpiConsult>

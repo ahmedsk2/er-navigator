@@ -38,6 +38,8 @@ export const BASE_CASE: CaseForExport = {
   wardCode: null,
   ctas: null,
   areaName: null,
+  payer: null,
+  stageCodes: [],
   updatesCount: 0,
   lastUpdateAt: null,
   painkillerPrescribed: null,

@@ -73,6 +73,14 @@ enum Answer {
   NOT_SURE
 }
 
+/// Phase 10 (Ahmed, 10 September): who pays for the visit. An addition, like every Phase 8b
+/// vocabulary; nothing is renamed. "Self-pay" is the patient paying (cash).
+enum Payer {
+  GOVERNMENT
+  INSURED
+  SELF_PAY
+}
+
 /**
  * Case management (decision B): who the case was referred to, and what came of it.
  */
@@ -174,8 +182,12 @@ model Case {
   // one leaves it blank. `ctas` is 1..5, checked by zod (validation.ts) rather than by a database
   // constraint, so an Admin is never locked out by a schema migration; `areaId` points at the
   // Admin-editable `EdArea` list. Neither can hold a patient identifier.
-  ctas   Int?
-  areaId String?
+  ctas      Int?
+  areaId    String?
+  // Phase 10: a one-line working diagnosis (free text, at most 80 characters by zod; the same
+  // 10-digit identifier warning as every free text) and the payer. Both optional, no default.
+  diagnosis String?
+  payer     Payer?
 
   // general journey milestones (single events)
   triageAt    DateTime?

@@ -262,6 +262,10 @@ export const UPDATE_ACTION_LABELS = {
 /** Yes / No / Not sure. The pain-management questions offer only the first two (decision F). */
 export const ANSWER_LABELS = { YES: 'Yes', NO: 'No', NOT_SURE: 'Not sure' } as const
 
+/** Phase 10 (Ahmed, 10 September): who pays for the visit. An addition; nothing renamed. */
+export const PAYER_LABELS = { GOVERNMENT: 'Government', INSURED: 'Insured', SELF_PAY: 'Self-pay' } as const
+export const PAYERS = ['GOVERNMENT', 'INSURED', 'SELF_PAY'] as const
+
 /** Case management (decision B): who it went to, what the coordinator found, what they did. */
 export const CASE_MANAGEMENT_LABELS = {
   referral: { CASE_MANAGER: 'Case manager', COMPLEX_CARE: 'Complex-care coordinator' },

@@ -74,6 +74,8 @@ export type InvestigationForStats = {
  * `CaseForStats` satisfies `KpiCase` structurally, as it already does for everything else here.
  */
 export type Answer = 'YES' | 'NO' | 'NOT_SURE'
+/** Phase 10: who pays for the visit (prisma `Payer`, restated so this module never imports the client). */
+export type Payer = 'GOVERNMENT' | 'INSURED' | 'SELF_PAY'
 export type UpdateActionKind =
   | 'LEADERSHIP_ESCALATION'
   | 'BED_MANAGEMENT'
@@ -101,6 +103,8 @@ export type CaseForStats = CaseClock & {
   shift: 'MORNING' | 'EVENING' | 'NIGHT' | null
   primaryReasonName: string | null
   stageNames: ReadonlyArray<string>
+  /** The same stages by code (reg, triage, …), for the phase split and the filter (Phase 10). */
+  stageCodes: ReadonlyArray<string>
   departmentNames: ReadonlyArray<string>
   disposition: string | null
   consults: ReadonlyArray<ConsultForStats>
@@ -124,6 +128,8 @@ export type CaseForStats = CaseClock & {
   /** Phase 8 collection fields: the triage acuity, and the name of the ED area. */
   ctas: number | null
   areaName: string | null
+  /** Phase 10: who pays for the visit. */
+  payer: Payer | null
   /** How many updates the case has, and when the newest was written. */
   updatesCount: number
   lastUpdateAt: Date | null
