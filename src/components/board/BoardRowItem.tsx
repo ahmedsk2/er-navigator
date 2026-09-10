@@ -99,8 +99,19 @@ export function BoardRowItem({ row, now }: { row: BoardRow; now: Date }) {
           <span className="num text-caption text-muted">reg {fmtStamp(row.registrationAt)}</span>
         </span>
 
-        <span className={`col-start-1 row-start-2 mt-[3px] block truncate text-label text-ink lg:mt-0 ${CELL_RESET}`}>
-          {reasonText(row)}
+        {/*
+          The "Waiting on" cell: the working diagnosis above the reason, both truncated to one
+          line. They share one grid child on purpose — the laptop's five columns fill themselves
+          in source order, so a second top-level child here would push the last update and the
+          clock one column along.
+        */}
+        <span className={`col-start-1 row-start-2 mt-[3px] block min-w-0 lg:mt-0 ${CELL_RESET}`}>
+          {row.diagnosis ? (
+            <span data-diagnosis={row.diagnosis} className="block truncate text-caption text-ink-2">
+              {row.diagnosis}
+            </span>
+          ) : null}
+          <span className="block truncate text-label text-ink">{reasonText(row)}</span>
         </span>
 
         {row.status === 'RESOLVED' ? (

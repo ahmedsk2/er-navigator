@@ -91,6 +91,14 @@ export function HandoverSheet({
                     {chip}
                   </span>
                 ))}
+                {/* Phase 10: the working diagnosis under the MRN rather than in a column of its
+                    own. The sheet's seven headers are pinned and a ward printer's page is
+                    already full; the MRN cell is where a reader looks for "who is this". */}
+                {row.diagnosis ? (
+                  <span data-diagnosis={row.diagnosis} className="block font-normal">
+                    {row.diagnosis}
+                  </span>
+                ) : null}
               </td>
               <td className={`num ${CELL}`}>{fmtStamp(row.registrationAt)}</td>
               <td className={`num ${CELL}`}>{fmtHours(elapsedOf(row, now))}</td>

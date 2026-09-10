@@ -6,7 +6,7 @@
  * the first paint and the client recompute the same numbers on every 30 s tick without the two
  * ever disagreeing.
  */
-import { DISPOSITION_LABELS } from '@/src/lib/domain/taxonomy'
+import { DISPOSITION_LABELS, PAYER_LABELS } from '@/src/lib/domain/taxonomy'
 import { band, duration, elapsedHours, fmtHours, type Band, type CaseClock } from '@/src/lib/domain/time'
 import { BOARD_FILTERS, type BoardCounts, type BoardFilter, type BoardRow } from './types'
 
@@ -108,14 +108,16 @@ export function countsOf(openRegistrations: ReadonlyArray<string>, now: Date): B
 }
 
 /**
- * The small chips a row carries beside its MRN (Phase 8): the CTAS level and the ED area code,
- * each only when it was recorded. One function so the screen row and the printed handover sheet
- * cannot drift apart, and so a case with neither shows nothing at all rather than two dashes.
+ * The small chips a row carries beside its MRN (Phase 8, the payer added in Phase 10): the CTAS
+ * level, the ED area code and who pays, each only when it was recorded. One function so the
+ * screen row and the printed handover sheet cannot drift apart, and so a case with none of them
+ * shows nothing at all rather than three dashes.
  */
 export function identityChips(row: BoardRow): string[] {
   const chips: string[] = []
   if (row.ctas != null) chips.push(`CTAS ${row.ctas}`)
   if (row.area) chips.push(row.area)
+  if (row.payer) chips.push(PAYER_LABELS[row.payer])
   return chips
 }
 

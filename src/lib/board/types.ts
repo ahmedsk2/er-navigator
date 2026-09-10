@@ -5,7 +5,7 @@
  * Plain JSON on purpose: every timestamp is an ISO-8601 UTC string, exactly as
  * `src/lib/cases/types.ts` does it, because this crosses both the RSC boundary and `fetch`.
  */
-import type { Disposition } from '@prisma/client'
+import type { Disposition, Payer } from '@prisma/client'
 import type { TimelineStepView } from '@/src/lib/cases/timeline'
 
 export const BOARD_FILTERS = ['open', 'resolved', 'all'] as const
@@ -29,6 +29,14 @@ export type BoardRow = {
    * reason `ward` is a code: it is what fits on a phone row beside the MRN.
    */
   area: string | null
+  /** Who pays for the visit (Phase 10), or null. The row shows its label as a chip. */
+  payer: Payer | null
+  /**
+   * The one-line working diagnosis (Phase 10), or null. One truncated line under the MRN: it is
+   * what a charge nurse scanning the board wants after the clock — what is this patient here for
+   * — and it is the only clinical line on the row.
+   */
+  diagnosis: string | null
   /** The primary delay reason's name, or null when none was chosen. */
   primaryReason: string | null
   /** Consulted department names, in the taxonomy's order. */

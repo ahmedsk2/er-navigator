@@ -3,6 +3,7 @@ import {
   bandOf,
   countsOf,
   elapsedOf,
+  identityChips,
   idleHours,
   isStale,
   lastActivityAt,
@@ -28,6 +29,8 @@ function row(over: Partial<BoardRow> & Pick<BoardRow, 'id' | 'mrn'>): BoardRow {
     resolvedAt: null,
     ctas: null,
     area: null,
+    payer: null,
+    diagnosis: null,
     primaryReason: null,
     departments: [],
     disposition: null,
@@ -51,6 +54,22 @@ describe('parseFilter', () => {
     expect(parseFilter('')).toBe('open')
     expect(parseFilter('voided')).toBe('open')
     expect(parseFilter('VOIDED')).toBe('open')
+  })
+})
+
+describe('identityChips', () => {
+  it('shows the CTAS level, the ED area code and the payer, in that order', () => {
+    expect(identityChips(row({ id: 'a', mrn: '1', ctas: 3, area: 'RAZ', payer: 'INSURED' }))).toEqual([
+      'CTAS 3',
+      'RAZ',
+      'Insured',
+    ])
+  })
+
+  it('shows only what was recorded, and nothing at all when none of the three was', () => {
+    expect(identityChips(row({ id: 'a', mrn: '1', payer: 'SELF_PAY' }))).toEqual(['Self-pay'])
+    expect(identityChips(row({ id: 'a', mrn: '1', ctas: 1 }))).toEqual(['CTAS 1'])
+    expect(identityChips(row({ id: 'a', mrn: '1' }))).toEqual([])
   })
 })
 
