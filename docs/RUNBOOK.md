@@ -38,6 +38,8 @@ curl -s https://nav.towardpcc.com/api/ready
 APP=$(sudo docker ps --format '{{.Names}}' | grep '^app-jqcjqhmcmizxs1u51wnqlfwv'); sudo docker exec "$APP" sh -c 'tr "\0" "\n" < /proc/1/environ | grep -c -E "^(POSTGRES_PASSWORD|ADMIN_PASSWORD)="'
 ```
 
+A screen that stayed open across the deploy (the board on a phone, the login page) posts Server Action ids the new build does not know; the app log says `Failed to find Server Action` and the audit log shows no attempt. Since 10 September such a screen reloads itself: the root layout stamps every page with the build fingerprint, the error boundary compares it with `/api/health` and reloads when they differ, saying "ER Navigator was updated". The cost of a deploy to an open screen is therefore one reload and nothing typed on an earlier screen.
+
 Force a redeploy without a push (from the host):
 
 ```bash

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { IBM_Plex_Sans } from 'next/font/google'
+import { buildFingerprint } from '@/src/lib/fingerprint'
 import './globals.css'
 
 // Self-hosted at build time by next/font: no runtime request to Google, so it works on the
@@ -39,7 +40,9 @@ export const viewport: Viewport = { width: 'device-width', initialScale: 1, them
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={plex.variable}>
+    // data-build: the fingerprint of the build that rendered this page. app/error.tsx compares it
+    // with the live one and reloads a screen that stayed open across a deploy (src/lib/build-check.ts).
+    <html lang="en" className={plex.variable} data-build={buildFingerprint()}>
       <body className="min-h-dvh antialiased">{children}</body>
     </html>
   )
