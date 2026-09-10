@@ -537,6 +537,41 @@ describe('GET /api/export.xlsx as a SUPERVISOR', () => {
     expect(labels.get('Status filter')).toBe('All')
     expect(labels.get('Cases in range')).toBe('3')
     expect(labels.get('Resolved')).toBe('1')
+    // Phase 10: no case filter, so no row naming one.
+    expect(labels.has('Case filter')).toBe(false)
+  })
+
+  /**
+   * Phase 10. A filtered workbook is not the department's whole range, and once it has been
+   * downloaded nothing but the file itself can say so: its name, and the row under the status
+   * filter on the sheet each format opens its notes on. The stage is written by NAME, which is the
+   * proof that the handler read the reference lists to write it.
+   */
+  it('names a filtered workbook as filtered, and says which filter under the status filter', async () => {
+    const filter = { ...EMPTY_FILTER, stage: ['adm'], ctas: [3] }
+    const notes: Record<ExportRange['format'], { file: string; sheet: string }> = {
+      navigator: { file: 'ER_Navigator', sheet: 'Summary' },
+      adaa: { file: 'adaa-ed-kpis', sheet: 'Read me' },
+      qch: { file: 'qch-navigator-sheet', sheet: 'Read me' },
+    }
+    for (const format of ['navigator', 'adaa', 'qch'] as const) {
+      const response = await exportWorkbookResponse(
+        supervisor,
+        { ...RANGE, format, filter },
+        ctxFor(supervisor.id),
+        new Date(),
+      )
+      expect(response.headers.get('content-disposition')).toBe(
+        `attachment; filename="${notes[format].file}_${DAY_ONE}_to_${DAY_TWO}_filtered.xlsx"`,
+      )
+      const rows: string[][] = []
+      ;(await workbookOf(response)).getWorksheet(notes[format].sheet)!.eachRow((row) => {
+        rows.push([String(row.getCell(1).value ?? ''), String(row.getCell(2).value ?? '')])
+      })
+      const status = rows.findIndex(([label]) => label === 'Status filter')
+      expect(status, `${format} states its status filter`).toBeGreaterThanOrEqual(0)
+      expect(rows[status + 1], format).toEqual(['Case filter', 'Stage: Admission process · CTAS 3'])
+    }
   })
 
   it('gets the same count the page shows', async () => {

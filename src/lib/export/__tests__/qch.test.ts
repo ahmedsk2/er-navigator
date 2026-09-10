@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { EMPTY_FILTER } from '@/src/lib/domain/case-filter'
 import { fmtHm } from '../format'
 import {
   QCH_COLUMNS,
@@ -515,5 +516,27 @@ describe('the Read me', () => {
     expect(text).toContain('Asia/Riyadh')
     expect(text).toContain('h:mm')
     expect(text).toContain('A reason belongs to the case, not to one image or one consult')
+  })
+
+  /**
+   * Phase 10. The navigators' sheet from a filtered export holds part of their log, and the Read
+   * me says which part: the case filter right under the status filter, and no such row without one.
+   */
+  it('names the case filter under the status filter, and only when there is one', () => {
+    const generatedAt = new Date('2026-09-01T12:00:00Z')
+    const plain = qchReadMeRows({ cases: [FULL], range: RANGE, generatedAt })
+    const labels = plain.map((r) => r.cells[0])
+    expect(labels).not.toContain('Case filter')
+    expect(labels[labels.indexOf('Status filter') + 1]).toBe('Rows written')
+
+    const narrowed = qchReadMeRows({
+      cases: [FULL],
+      range: { ...RANGE, filter: { ...EMPTY_FILTER, dept: ['ICU'] } },
+      generatedAt,
+      filterLine: 'Team: ICU',
+    })
+    const status = narrowed.findIndex((r) => r.cells[0] === 'Status filter')
+    expect(narrowed[status + 1]?.cells).toEqual(['Case filter', 'Team: ICU'])
+    expect(narrowed.filter((_, i) => i !== status + 1)).toEqual(plain)
   })
 })

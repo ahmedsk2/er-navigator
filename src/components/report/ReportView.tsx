@@ -72,8 +72,12 @@ export function ReportView({
       {/* `variant="report"` changes the order and nothing else: the headline, the stay bands, the
           Adaa panel and the working targets come first on paper, because that is the block a
           reader of the monthly deck looks for, and every other section follows in the order the
-          screen shows it (Phase 8 spec, Slice E). */}
-      <DashboardBody data={data} range="all" variant="report" />
+          screen shows it (Phase 8 spec, Slice E).
+
+          The filter goes in too (Phase 10), so a row tapped on a filtered report opens the cases
+          it was counted over rather than the whole department. `range.filter` is absent when there
+          is none, which leaves every link on an unfiltered report the string it always was. */}
+      <DashboardBody data={data} range="all" variant="report" filter={range.filter} />
     </div>
   )
 }

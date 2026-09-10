@@ -224,4 +224,20 @@ describe('exportFilename', () => {
       'qch-navigator-sheet_2026-09-01_to_2026-09-08.xlsx',
     )
   })
+
+  /**
+   * Phase 10. The name is all the receiving side sees before it opens the file, so a filtered
+   * workbook says so in it. An empty filter is no filter, and keeps the name it always had.
+   */
+  it('marks a filtered workbook in its name, whatever the format, and only a filtered one', () => {
+    const filter = { ...EMPTY_FILTER, payer: ['INSURED' as const] }
+    expect(exportFilename({ ...range, filter })).toBe('ER_Navigator_2026-09-01_to_2026-09-08_filtered.xlsx')
+    expect(exportFilename({ ...range, format: 'adaa', filter })).toBe(
+      'adaa-ed-kpis_2026-09-01_to_2026-09-08_filtered.xlsx',
+    )
+    expect(exportFilename({ ...range, format: 'qch', filter })).toBe(
+      'qch-navigator-sheet_2026-09-01_to_2026-09-08_filtered.xlsx',
+    )
+    expect(exportFilename({ ...range, filter: EMPTY_FILTER })).toBe('ER_Navigator_2026-09-01_to_2026-09-08.xlsx')
+  })
 })

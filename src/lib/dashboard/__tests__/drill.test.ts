@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { FIXTURE, NOW } from '@/src/lib/domain/__tests__/aggregates.fixture'
+import { FIXTURE, NOW, h } from '@/src/lib/domain/__tests__/aggregates.fixture'
 import { dashboard } from '@/src/lib/domain/aggregates'
 import { EMPTY_FILTER } from '@/src/lib/domain/case-filter'
+// A case that records nothing, so each phase case below names exactly the times the split reads.
+import { caseWith } from '@/src/lib/export/__tests__/phase8.fixture'
 import {
   DEFAULT_RANGE,
   DRILL_SECTIONS,
@@ -300,5 +302,98 @@ describe('Phase 10 drill-downs', () => {
   it('resolves a payer row, naming the missing one plainly', () => {
     expect(resolveDrill(data, { section: 'payer', name: 'Not recorded' })).toMatchObject({ label: 'Payer not recorded' })
     expect(resolveDrill(data, { section: 'payer', name: 'Government' })).toMatchObject({ label: 'Payer: Government', ids: [] })
+  })
+})
+
+/**
+ * The phase rows' ids. The dashboard fixture records no physician or decision time and no stage
+ * code, so every phase resolution above hands back an empty list and would still pass with its
+ * id lists swapped. These five cases are the kpi.test.ts phase fixture (a–e) on this file's
+ * clock, hand-computed there: front end b 0.5 h, c 0.5, d 1, e 0.25; decision b 6, c 2.5, d 1,
+ * e 2.75; after c 7, d 4, e 1.5 (b is still open). So the longest phase is the decision for e and
+ * what comes after it for c and d, and the Investigations reason is carried by a and e.
+ *
+ * At every row asked for below, the three lists a resolution could hand back — the measured
+ * cases, the longest-phase cases and the stage row — differ, so each assertion fails if
+ * `resolveDrill` answers with the wrong one.
+ */
+describe('Phase 10 drill-downs, over cases the phase split can measure', () => {
+  const phased = dashboard(
+    [
+      caseWith({ id: 'a', mrn: '3300001', registrationAt: h(8), stageCodes: ['inv'] }),
+      caseWith({
+        id: 'b',
+        mrn: '3300002',
+        registrationAt: h(26.5),
+        triageAt: h(26.25),
+        physicianAt: h(26),
+        decisionAt: h(20),
+        stageCodes: ['ref', 'adm'],
+      }),
+      caseWith({
+        id: 'c',
+        mrn: '3300003',
+        status: 'RESOLVED',
+        registrationAt: h(13),
+        triageAt: h(12.75),
+        physicianAt: h(12.5),
+        decisionAt: h(10),
+        departedAt: h(3),
+        resolvedAt: h(3),
+        stageCodes: ['adm'],
+      }),
+      caseWith({
+        id: 'd',
+        mrn: '3300004',
+        status: 'RESOLVED',
+        registrationAt: h(30),
+        physicianAt: h(29),
+        decisionAt: h(28),
+        departedAt: h(24),
+        resolvedAt: h(24),
+        stageCodes: ['dc'],
+      }),
+      caseWith({
+        id: 'e',
+        mrn: '3300005',
+        status: 'RESOLVED',
+        registrationAt: h(20),
+        physicianAt: h(19.75),
+        decisionAt: h(17),
+        departedAt: h(15.5),
+        resolvedAt: h(15.5),
+        stageCodes: ['inv'],
+      }),
+    ],
+    'all',
+    NOW,
+  )
+  const phase = (name: string) => resolveDrill(phased, { section: 'phase', name })
+
+  it('front|median lists every case whose front end was measured, and no longest-phase list', () => {
+    // The front end is the longest phase of no case here, so a swapped list would be empty.
+    expect(phase(gridKey('front', 'median'))).toEqual({
+      key: { section: 'phase', name: 'front|median' },
+      label: 'Front end: cases with the interval measured',
+      ids: ['b', 'c', 'd', 'e'],
+    })
+  })
+
+  it('after|longest lists the cases where leaving took longest, not every case that left', () => {
+    // e left too (1.5 h after the decision), but its decision phase was the longer.
+    expect(phase(gridKey('after', 'longest'))).toEqual({
+      key: { section: 'phase', name: 'after|longest' },
+      label: 'After the decision: the longest phase of the stay',
+      ids: ['c', 'd'],
+    })
+  })
+
+  it('a decision-phase stage row lists the cases carrying that stage, measured or not', () => {
+    // a has no interval measured at all and is still on the row; b, c and d carry no such reason.
+    expect(phase(gridKey('decision', 'Investigations'))).toEqual({
+      key: { section: 'phase', name: 'decision|Investigations' },
+      label: 'Investigations (decision)',
+      ids: ['a', 'e'],
+    })
   })
 })

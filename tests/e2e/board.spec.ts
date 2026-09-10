@@ -145,9 +145,15 @@ test('the filter narrows the board, says so, and the poll keeps it', async ({ pa
   await expect(rowFor(page, LONGEST.mrn)).toHaveCount(0)
   await expect(page.locator('a[data-mrn]')).toHaveCount(1)
 
-  // The chip names the stage by its NAME, and the count line gives the denominator back.
+  // The chip names the stage by its NAME, and the count line gives the denominator back: the
+  // whole open board, which holds seeded cases the filter dropped (3100001 among them), so it is
+  // strictly the larger. Both figures are read off one render rather than against a count read
+  // earlier, because the other workers open cases while this test runs.
   await expect(page.locator('[data-filter-chip="Stage: Investigations"]')).toBeVisible()
   await expect(page.locator('[data-filter-count]')).toHaveText(/^\d+ of \d+ open cases$/)
+  const countLine = await page.locator('[data-filter-count]').innerText()
+  const [, shown, total] = /^(\d+) of (\d+) open cases$/.exec(countLine) ?? []
+  expect(Number(total), countLine).toBeGreaterThan(Number(shown))
 
   // The 30 s poll carries the filter: a board narrowed to one stage must stay narrowed.
   const polled = await page.waitForRequest((request) => /\/api\/board\?/.test(request.url()), {

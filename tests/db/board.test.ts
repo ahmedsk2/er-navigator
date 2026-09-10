@@ -354,22 +354,46 @@ describe('loadBoard', () => {
   it('counts the filtered open cases, and keeps the unfiltered total beside them', async () => {
     const nurse = await makeUser('NAVIGATOR')
     const lab = reasonNamed('inv', 'Lab: delay in processing')
-    await openCase(nurse, { reasons: [{ reasonId: lab, otherText: null }], primaryReasonId: lab })
+    const pharmacy = reasonNamed('dc', 'Awaiting pharmacy')
+    // Both sides of the filter are this test's own, so it does not lean on whatever the tests
+    // before it happened to leave open: one case the filter keeps, and one it drops.
+    const kept = await openCase(nurse, {
+      registrationAt: new Date(Date.now() - 7 * HOUR).toISOString(),
+      reasons: [{ reasonId: lab, otherText: null }],
+      primaryReasonId: lab,
+    })
+    const dropped = await openCase(nurse, {
+      registrationAt: new Date(Date.now() - 8 * HOUR).toISOString(),
+      reasons: [{ reasonId: pharmacy, otherText: null }],
+      primaryReasonId: pharmacy,
+    })
+    const stamp = (opened: { input: CaseDraft }): string => new Date(opened.input.registrationAt).toISOString()
+    const inv = { ...EMPTY_FILTER, stage: ['inv'] }
     const now = new Date()
 
-    const all = await loadBoard('open', now)
-    const narrowed = await loadBoard('open', now, { ...EMPTY_FILTER, stage: ['inv'] })
+    // `totalOpen` counts the whole database, which the other db files open and close cases in
+    // while this one runs: one of their writes between the two loads moves one figure and not the
+    // other. So the pair is read again until they agree — which they never do when the
+    // denominator is really the filtered count, because `dropped` is open and outside the filter.
+    let all = await loadBoard('open', now)
+    let narrowed = await loadBoard('open', now, inv)
+    for (let attempt = 1; attempt < 5 && narrowed.totalOpen !== all.openRegistrations.length; attempt += 1) {
+      all = await loadBoard('open', now)
+      narrowed = await loadBoard('open', now, inv)
+    }
 
-    // Narrowed to this file's own rows: the suite shares one database, and another spec file
-    // opening a case between the two loads would move a whole-database figure without saying
-    // anything about what the filter did.
-    expect(myOpen(narrowed.openRegistrations).length).toBeLessThan(myOpen(all.openRegistrations).length)
+    // The numerator, narrowed to this file's own rows: the filter kept one and dropped the other.
+    expect(myOpen(narrowed.openRegistrations)).toContain(stamp(kept))
+    expect(myOpen(narrowed.openRegistrations)).not.toContain(stamp(dropped))
+    expect(myOpen(all.openRegistrations)).toEqual(expect.arrayContaining([stamp(kept), stamp(dropped)]))
     for (const iso of myOpen(narrowed.openRegistrations)) expect(myOpen(all.openRegistrations)).toContain(iso)
     expect(narrowed.openRegistrations.length).toBe(narrowed.rows.length)
-    // The denominator is the whole open board, whatever the filter kept.
-    expect(narrowed.totalOpen).toBeGreaterThanOrEqual(narrowed.openRegistrations.length)
+    // The denominator is the whole open board — the unfiltered load's own count — and so strictly
+    // more than the filter kept while a case it dropped is open.
+    expect(narrowed.totalOpen).toBe(all.openRegistrations.length)
+    expect(narrowed.totalOpen).toBeGreaterThan(narrowed.openRegistrations.length)
     // On the Resolved tab the strip is over the filtered OPEN cases, not the rows on screen.
-    const onResolved = await loadBoard('resolved', now, { ...EMPTY_FILTER, stage: ['inv'] })
+    const onResolved = await loadBoard('resolved', now, inv)
     expect(myOpen(onResolved.openRegistrations)).toEqual(myOpen(narrowed.openRegistrations))
   })
 })

@@ -221,24 +221,36 @@ export function filterOptionsOf(reference: {
 /** One removable chip: which dimension it came from, its stored value, and what it reads as. */
 export type FilterChip = { dimension: FilterDimension; value: string; label: string }
 
-function labelFor(dimension: FilterDimension, value: string, reference: FilterReference): string {
+/** What a chip says before its value — shorter than the panel's group names where a chip is narrow. */
+const CHIP_PREFIX: Record<FilterDimension, string> = {
+  stage: 'Stage: ',
+  reason: 'Reason: ',
+  dept: 'Team: ',
+  area: 'Area: ',
+  ctas: 'CTAS ',
+  payer: 'Payer: ',
+  dispo: 'Outcome: ',
+}
+
+/** The dimensions a case can carry several values in, and so the three `lone` holds to a set. */
+const MULTI_VALUED: ReadonlySet<FilterDimension> = new Set(['stage', 'reason', 'dept'])
+
+function nameFor(dimension: FilterDimension, value: string, reference: FilterReference): string {
   switch (dimension) {
     // A code is what the URL carries and a name is what a nurse reads; a code with no row left in
     // the reference (an Admin deactivated it) still shows, as itself, rather than vanishing.
     case 'stage':
-      return `Stage: ${reference.stages.find((s) => s.code === value)?.name ?? value}`
+      return reference.stages.find((s) => s.code === value)?.name ?? value
     case 'area':
-      return `Area: ${reference.areas.find((a) => a.code === value)?.name ?? value}`
+      return reference.areas.find((a) => a.code === value)?.name ?? value
     case 'reason':
-      return `Reason: ${value}`
     case 'dept':
-      return `Team: ${value}`
     case 'ctas':
-      return `CTAS ${value}`
+      return value
     case 'payer':
-      return `Payer: ${PAYER_LABELS[value as Payer] ?? value}`
+      return PAYER_LABELS[value as Payer] ?? value
     case 'dispo':
-      return `Outcome: ${DISPOSITION_LABELS[value as Disposition] ?? value}`
+      return DISPOSITION_LABELS[value as Disposition] ?? value
   }
 }
 
@@ -248,18 +260,38 @@ export function filterChips(filter: CaseFilter, reference: FilterReference): Fil
   for (const dimension of FILTER_DIMENSIONS) {
     for (const value of filter[dimension]) {
       const text = String(value)
-      chips.push({ dimension, value: text, label: labelFor(dimension, text, reference) })
+      const label = `${CHIP_PREFIX[dimension]}${nameFor(dimension, text, reference)}`
+      chips.push({ dimension, value: text, label })
     }
   }
   return chips
 }
 
-/** One sentence for the dashboard's footnote and the printed report's filter line. */
+/**
+ * One sentence for the dashboard's footnote, the printed report's filter line and the workbook's
+ * "Case filter" row. It has to say what `matchesFilter` does, so it is grouped the way the
+ * predicate is rather than chip by chip:
+ *
+ *   - one part per dimension, in dimension order, its values joined by "or" — or by "and" under
+ *     `lone` for stage, reason and team, where the case's own set must be exactly those;
+ *   - the parts joined by " · ", as the chips read;
+ *   - `not` over one part is "Excluding Stage: …"; over two or more it is "Excluding cases with
+ *     … and …", because only a case matching ALL of them is left out, and "Excluding A · B" read
+ *     as two exclusions.
+ */
 export function describeFilter(filter: CaseFilter, reference: FilterReference): string {
   if (isEmptyFilter(filter)) return ''
-  const parts = filterChips(filter, reference).map((chip) => chip.label)
-  if (filter.lone) parts.push('the lone finding')
-  return `${filter.not ? 'Excluding ' : ''}${parts.join(' · ')}`
+  const parts = FILTER_DIMENSIONS.filter((dimension) => filter[dimension].length > 0).map((dimension) => {
+    const names = filter[dimension].map((value) => nameFor(dimension, String(value), reference))
+    const joiner = filter.lone && MULTI_VALUED.has(dimension) ? ' and ' : ' or '
+    return `${CHIP_PREFIX[dimension]}${names.join(joiner)}`
+  })
+  const sentence = !filter.not
+    ? parts.join(' · ')
+    : parts.length === 1
+      ? `Excluding ${parts[0]}`
+      : `Excluding cases with ${parts.join(' and ')}`
+  return filter.lone ? `${sentence} · the lone finding` : sentence
 }
 
 /**
