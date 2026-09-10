@@ -71,6 +71,7 @@ function clocksOf(payload: BoardPayload): CaseForStats[] {
         wardCode: null,
         ctas: null,
         areaName: null,
+        areaCode: null,
         updatesCount: 0,
         lastUpdateAt: null,
         painkillerPrescribed: null,
@@ -91,6 +92,7 @@ function clocksOf(payload: BoardPayload): CaseForStats[] {
         untaggedUpdatesCount: 0,
         payer: null,
         stageCodes: [],
+        reasonNames: [],
         otherTexts: [],
       }) satisfies CaseForStats,
   )

@@ -108,6 +108,12 @@ export type CaseForStats = CaseClock & {
   stageNames: ReadonlyArray<string>
   /** The same stages by code (reg, triage, …), for the phase split and the filter (Phase 10). */
   stageCodes: ReadonlyArray<string>
+  /**
+   * Every delay reason the case carries, by name, distinct and in stage order (Phase 10). The
+   * filter matches on it: `primaryReasonName` is one reason of possibly several, and "cases
+   * waiting on a lab" must find a case whose primary reason is something else.
+   */
+  reasonNames: ReadonlyArray<string>
   departmentNames: ReadonlyArray<string>
   disposition: string | null
   consults: ReadonlyArray<ConsultForStats>
@@ -131,6 +137,8 @@ export type CaseForStats = CaseClock & {
   /** Phase 8 collection fields: the triage acuity, and the name of the ED area. */
   ctas: number | null
   areaName: string | null
+  /** The ED area's short code (RESUS, RAZ …), which is what the filter's URL carries (Phase 10). */
+  areaCode: string | null
   /** Phase 10: who pays for the visit. */
   payer: Payer | null
   /** How many updates the case has, and when the newest was written. */

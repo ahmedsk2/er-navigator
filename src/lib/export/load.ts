@@ -21,7 +21,10 @@ export const CASE_EXPORT_SELECT = {
   reasons: {
     select: {
       otherText: true,
-      reason: { select: { name: true, stage: { select: { name: true, sortOrder: true } } } },
+      // `code` is not the sheet's business: it is `toCaseForStats`', which this override feeds
+      // (Phase 10). Without it the phase split's stage rows would be empty on every workbook the
+      // Summary sheet is computed for, and the filter would match no case at all.
+      reason: { select: { name: true, stage: { select: { code: true, name: true, sortOrder: true } } } },
     },
   },
   openedBy: { select: { displayName: true, username: true } },

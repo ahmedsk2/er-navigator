@@ -61,9 +61,15 @@ function row(over: Partial<CaseStatsRow> = {}): CaseStatsRow {
   }
 }
 
-const reason = (stage: string, sortOrder: number, otherText: string | null = null) => ({
+/** One `CaseReason` row: the reason's own name (Phase 10) under its stage, with its Other text. */
+const reason = (
+  stage: string,
+  sortOrder: number,
+  otherText: string | null = null,
+  name = `${stage} reason`,
+) => ({
   otherText,
-  reason: { stage: { code: stage.toLowerCase().replace(/[^a-z]+/g, '-'), name: stage, sortOrder } },
+  reason: { name, stage: { code: stage.toLowerCase().replace(/[^a-z]+/g, '-'), name: stage, sortOrder } },
 })
 
 describe('CASE_STATS_SELECT', () => {
@@ -175,6 +181,8 @@ describe('toCaseForStats', () => {
       // Taxonomy order: Referral (6) before Admission (8), whatever order the rows came back in.
       stageNames: ['Referral / consulted team', 'Admission process'],
       stageCodes: ['referral-consulted-team', 'admission-process'],
+      // The same taxonomy order, by the reason's own name: what the filter matches on.
+      reasonNames: ['Referral / consulted team reason', 'Admission process reason'],
       departmentNames: ['MROD', 'General Surgery'],
       disposition: 'ADMITTED',
       consults: [
@@ -217,6 +225,7 @@ describe('toCaseForStats', () => {
       wardCode: null,
       ctas: null,
       areaName: null,
+      areaCode: null,
       payer: null,
       updatesCount: 0,
       lastUpdateAt: null,
@@ -246,9 +255,15 @@ describe('toCaseForStats', () => {
   it('collapses three reasons in one stage into one stage name', () => {
     const mapped = toCaseForStats({
       ...row(),
-      reasons: [reason('Investigations', 5), reason('Investigations', 5), reason('Investigations', 5)],
+      reasons: [
+        reason('Investigations', 5, null, 'Lab: delay in processing'),
+        reason('Investigations', 5, null, 'Lab: delay in processing'),
+        reason('Investigations', 5, null, 'Imaging: report delay'),
+      ],
     })
     expect(mapped.stageNames).toEqual(['Investigations'])
+    // Three rows, two distinct reasons: the filter counts a name once however often it was typed.
+    expect(mapped.reasonNames).toEqual(['Lab: delay in processing', 'Imaging: report delay'])
     expect(dashboard([mapped], 'all', at('2026-09-08T12:00:00Z')).byStage).toEqual([
       { name: 'Investigations', value: 1, ids: ['c1'] },
     ])
@@ -275,6 +290,8 @@ describe('toCaseForStats', () => {
     expect(mapped.shift).toBeNull()
     expect(mapped.disposition).toBeNull()
     expect(mapped.stageNames).toEqual([])
+    expect(mapped.reasonNames).toEqual([])
+    expect(mapped.areaCode).toBeNull()
     expect(mapped.departmentNames).toEqual([])
   })
 
@@ -288,7 +305,7 @@ describe('toCaseForStats', () => {
       row({
         ctas: 2,
         ward: { code: 'ICU' },
-        area: { name: 'Resuscitation area' },
+        area: { name: 'Resuscitation area', code: 'RESUS' },
         triageAt: at('2026-09-08T06:10:00Z'),
         physicianAt: at('2026-09-08T06:40:00Z'),
         decisionAt: at('2026-09-08T09:00:00Z'),
@@ -302,6 +319,8 @@ describe('toCaseForStats', () => {
     expect(mapped.ctas).toBe(2)
     expect(mapped.wardCode).toBe('ICU')
     expect(mapped.areaName).toBe('Resuscitation area')
+    // The code beside the name: the filter's URL carries it, so a renamed area keeps its links.
+    expect(mapped.areaCode).toBe('RESUS')
     expect(mapped.triageAt).toEqual(at('2026-09-08T06:10:00Z'))
     expect(mapped.physicianAt).toEqual(at('2026-09-08T06:40:00Z'))
     expect(mapped.decisionAt).toEqual(at('2026-09-08T09:00:00Z'))
