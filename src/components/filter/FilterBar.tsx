@@ -303,14 +303,18 @@ export function FilterBar({
               </Group>
 
               {/* The reasons under their own stage: forty-eight of them in one heap is a wall, and a
-                  nurse looks for "Lab: delay in processing" under Investigations. */}
+                  nurse looks for "Lab: delay in processing" under Investigations. A name several
+                  stages carry — every stage's "Other" — is one value to the filter, which keys a
+                  reason by its name, so it is offered once, after the stages, under "Any stage",
+                  rather than as ten chips that all light together (Phase 10 review). */}
               <Group label={FILTER_LABELS.reason}>
-                {options.stages
-                  .filter((stage) => stage.reasons.length > 0)
-                  .map((stage) => (
+                {options.stages.map((stage) => {
+                  const own = stage.reasons.filter((reason) => !options.anyStageReasons.includes(reason))
+                  if (own.length === 0) return null
+                  return (
                     <div key={stage.code} className="mb-1.5">
                       <span className="mb-1 block text-caption text-muted">{stage.name}</span>
-                      {stage.reasons.map((reason) => (
+                      {own.map((reason) => (
                         <OptionChip
                           key={reason}
                           label={reason}
@@ -319,7 +323,21 @@ export function FilterBar({
                         />
                       ))}
                     </div>
-                  ))}
+                  )
+                })}
+                {options.anyStageReasons.length > 0 ? (
+                  <div className="mb-1.5" data-reasons-any-stage>
+                    <span className="mb-1 block text-caption text-muted">Any stage</span>
+                    {options.anyStageReasons.map((reason) => (
+                      <OptionChip
+                        key={reason}
+                        label={reason}
+                        on={chosen('reason', reason)}
+                        onToggle={() => toggleIn('reason', reason)}
+                      />
+                    ))}
+                  </div>
+                ) : null}
               </Group>
 
               <Group label={FILTER_LABELS.dept}>

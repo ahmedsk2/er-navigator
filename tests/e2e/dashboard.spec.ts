@@ -648,6 +648,45 @@ test('the filter panel applies from the dashboard itself', async ({ page }, test
 })
 
 /**
+ * Phase 10 review. The seed gives every stage a reason named "Other", and the filter keys a
+ * reason by its name — `reason=Other` matches an Other under any stage, as "By primary reason"
+ * counts it as one row. The panel used to offer it under each of the ten stages, and tapping any
+ * one lit all ten. It is one value, so it is one chip, in its own "Any stage" group after the
+ * stages. The team called "Other" and the outcome called "Other" are other dimensions.
+ */
+test('the panel offers "Other" once, under "Any stage", and it presses one chip', async ({ page }, testInfo) => {
+  await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.211' : '198.51.100.212')
+  await signIn(page, E2E_USERS.navigator)
+  await page.goto('/dashboard?r=all')
+
+  await page.getByRole('button', { name: 'Filter' }).click()
+  const panel = page.getByRole('dialog', { name: 'Filter cases' })
+  const reasons = panel.getByRole('group', { name: 'Reason', exact: true })
+  const other = reasons.getByRole('button', { name: 'Other', exact: true })
+  await expect(other).toHaveCount(1)
+
+  // Under "Any stage", which is the last of the reason sub-groups, after every stage's own.
+  const anyStage = reasons.locator('[data-reasons-any-stage]')
+  await expect(anyStage.getByRole('button', { name: 'Other', exact: true })).toHaveCount(1)
+  const captions = await reasons.evaluate((group) =>
+    [...group.children]
+      .filter((child) => child.tagName === 'DIV')
+      .map((child) => (child.querySelector('span')?.textContent ?? '').trim()),
+  )
+  expect(captions.length, 'a sub-group per stage, then "Any stage"').toBeGreaterThan(1)
+  expect(captions.at(-1)).toBe('Any stage')
+  expect(captions.slice(0, -1)).not.toContain('Any stage')
+
+  // One tap, one chip.
+  await other.click()
+  await expect(other).toHaveAttribute('aria-pressed', 'true')
+  await expect(reasons.locator('[aria-pressed="true"]')).toHaveCount(1)
+  await panel.getByRole('button', { name: 'Apply', exact: true }).click()
+  await expect(page).toHaveURL('/dashboard?r=all&reason=Other')
+  await expect(page.locator('[data-filter-chip="Reason: Other"]')).toBeVisible()
+})
+
+/**
  * A filter that matches nothing empties every section, and the page must then say it was the
  * FILTER that found nothing: "No cases yet." under a filter reads as an empty department. A stage
  * code nothing carries is also what a link to a stage an Admin has since deactivated looks like.

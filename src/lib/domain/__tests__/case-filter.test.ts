@@ -4,6 +4,7 @@ import {
   caseFilterQuery,
   describeFilter,
   filterChips,
+  filterOptionsOf,
   isEmptyFilter,
   matchesFilter,
   parseCaseFilter,
@@ -338,6 +339,43 @@ describe('filterChips and describeFilter', () => {
       'Stage: Investigations',
       'Payer: Insured',
     ])
+  })
+})
+
+/**
+ * What the panel offers. The seed gives every stage a reason named "Other", and the filter keys a
+ * reason by its name — `reason=Other` matches an Other under any stage, as "By primary reason"
+ * counts it as one row — so ten chips under ten stages were one value that lit all together.
+ */
+describe('filterOptionsOf', () => {
+  const reference = {
+    stages: [
+      { code: 'reg', name: 'Registration', reasons: [{ name: 'Registration desk/system delay' }, { name: 'Other' }] },
+      { code: 'inv', name: 'Investigations', reasons: [{ name: 'Lab: delay in processing' }, { name: 'Other' }] },
+      { code: 'adm', name: 'Admission process', reasons: [{ name: 'Awaiting a bed' }, { name: 'Other' }] },
+      { code: 'dc', name: 'Discharge process', reasons: [{ name: 'Awaiting a bed' }, { name: 'Awaiting pharmacy' }] },
+    ],
+    departments: [{ name: 'MROD' }, { name: 'Other' }],
+    areas: [{ code: 'RESUS', name: 'Resuscitation area' }],
+  }
+
+  it('keeps the per-stage lists, the teams and the areas exactly as the reference has them', () => {
+    const options = filterOptionsOf(reference)
+    expect(options.stages).toEqual([
+      { code: 'reg', name: 'Registration', reasons: ['Registration desk/system delay', 'Other'] },
+      { code: 'inv', name: 'Investigations', reasons: ['Lab: delay in processing', 'Other'] },
+      { code: 'adm', name: 'Admission process', reasons: ['Awaiting a bed', 'Other'] },
+      { code: 'dc', name: 'Discharge process', reasons: ['Awaiting a bed', 'Awaiting pharmacy'] },
+    ])
+    expect(options.departments).toEqual(['MROD', 'Other'])
+    expect(options.areas).toEqual([{ code: 'RESUS', name: 'Resuscitation area' }])
+  })
+
+  it('names once every reason more than one stage carries, in the order the stages first carry it', () => {
+    // "Other" under three stages, a name two stages share, and the names only one stage has left out.
+    expect(filterOptionsOf(reference).anyStageReasons).toEqual(['Other', 'Awaiting a bed'])
+    // A team called "Other" is a different dimension, and a stage with no shared name adds nothing.
+    expect(filterOptionsOf({ ...reference, stages: reference.stages.slice(3) }).anyStageReasons).toEqual([])
   })
 })
 
