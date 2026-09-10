@@ -49,6 +49,8 @@ export function blankDraft(input: { now: Date; shift: CaseDraft['shift'] }): Cas
     shift: input.shift,
     ctas: null,
     areaId: null,
+    diagnosis: '',
+    payer: null,
     stages: [],
     reasons: [],
     primaryReasonId: null,
@@ -96,6 +98,8 @@ type CaseRow = {
   shift: CaseDraft['shift']
   ctas: number | null
   areaId: string | null
+  diagnosis: string | null
+  payer: CaseDraft['payer']
   primaryReasonId: string | null
   roomType: CaseDraft['roomType']
   triageAt: Date | null
@@ -163,6 +167,10 @@ export function draftFromCase(row: CaseRow, reference: ReferenceData): CaseDraft
     shift: row.shift,
     ctas: row.ctas,
     areaId: row.areaId,
+    // Phase 10: a NULL diagnosis becomes the empty string the controlled input needs, the same
+    // way the resolution note and the referral number do.
+    diagnosis: row.diagnosis ?? '',
+    payer: row.payer,
     stages,
     reasons: row.reasons.map((r) => ({ reasonId: r.reasonId, otherText: r.otherText })),
     primaryReasonId: row.primaryReasonId,

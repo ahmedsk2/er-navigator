@@ -17,6 +17,7 @@ import type {
   CaseStatus,
   Disposition,
   InvestigationType,
+  Payer,
   RoomType,
   Shift,
 } from '@prisma/client'
@@ -52,6 +53,9 @@ export type SnapshotSource = {
   medAdminInformedAt: Time
   ctas: number | null
   areaId: string | null
+  /** Phase 10: the working diagnosis and the payer, audited like every other column. */
+  diagnosis: string | null
+  payer: Payer | null
   triageAt: Time
   roomAt: Time
   roomType: RoomType | null
@@ -112,6 +116,8 @@ export function caseSnapshot(c: SnapshotSource): Record<string, unknown> {
     medAdminInformedAt: iso(c.medAdminInformedAt),
     ctas: c.ctas,
     areaId: c.areaId,
+    diagnosis: c.diagnosis,
+    payer: c.payer,
     triageAt: iso(c.triageAt),
     roomAt: iso(c.roomAt),
     roomType: c.roomType,

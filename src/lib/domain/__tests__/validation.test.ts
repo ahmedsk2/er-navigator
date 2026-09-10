@@ -116,6 +116,36 @@ describe('case draft rules (locked plan section 4)', () => {
    * accepted on the case that already carries it (its schema was built from
    * `loadReferenceForCase`), and still refused everywhere else.
    */
+  // --- Phase 10: the working diagnosis and the payer -------------------------------------------
+
+  it('accepts a working diagnosis of 80 characters and refuses 81', () => {
+    expect(draft.safeParse({ ...base(), diagnosis: 'x'.repeat(80) }).success).toBe(true)
+    expect(issues(draft.safeParse({ ...base(), diagnosis: 'x'.repeat(81) }))[0]).toMatch(/^diagnosis: /)
+    // Blank, null and absent are all "not recorded"; nothing here can refuse a save on its own.
+    expect(draft.safeParse({ ...base(), diagnosis: '' }).success).toBe(true)
+    expect(draft.safeParse({ ...base(), diagnosis: null }).success).toBe(true)
+    expect(draft.safeParse(base()).success).toBe(true)
+  })
+
+  it('trims the working diagnosis, as every free text is trimmed', () => {
+    const parsed = draft.parse({ ...base(), diagnosis: '  chest pain, for admission  ' })
+    expect(parsed.diagnosis).toBe('chest pain, for admission')
+  })
+
+  it('accepts the three payers, and null or absent for "not recorded"', () => {
+    for (const payer of ['GOVERNMENT', 'INSURED', 'SELF_PAY']) {
+      expect(draft.safeParse({ ...base(), payer }).success, payer).toBe(true)
+    }
+    expect(draft.safeParse({ ...base(), payer: null }).success).toBe(true)
+    expect(draft.safeParse(base()).success).toBe(true)
+  })
+
+  it('refuses a payer outside the enum', () => {
+    for (const payer of ['PRIVATE', 'government', '']) {
+      expect(issues(draft.safeParse({ ...base(), payer })).join(' '), payer).toContain('payer')
+    }
+  })
+
   it('accepts a retired area on the case that carries it, and nowhere else', () => {
     expect(forCarrier.draft.safeParse({ ...base(), areaId: RETIRED_ON_THIS_CASE }).success).toBe(true)
     expect(issues(draft.safeParse({ ...base(), areaId: RETIRED_ON_THIS_CASE }))).toContain(

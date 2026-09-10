@@ -142,6 +142,10 @@ function caseScalarData(d: ValidatedDraft) {
     shift: d.shift ?? null,
     ctas: d.ctas ?? null,
     areaId: blankToNull(d.areaId),
+    // Phase 10. The diagnosis is free text, so a blank box is a NULL column, exactly as the
+    // resolution note is; the payer is a vocabulary and follows CTAS.
+    diagnosis: blankToNull(d.diagnosis),
+    payer: d.payer ?? null,
     primaryReasonId: d.primaryReasonId ?? null,
     roomType: d.roomType ?? null,
     triageAt: d.triageAt ?? null,

@@ -84,6 +84,8 @@ function draft(over: Partial<CaseDraft> = {}): CaseDraft {
     shift: 'NIGHT',
     ctas: null,
     areaId: null,
+    diagnosis: '',
+    payer: null,
     stages: [],
     reasons: [{ reasonId: reasonNamed('adm', 'No bed available on accepting ward'), otherText: null }],
     primaryReasonId: null,
