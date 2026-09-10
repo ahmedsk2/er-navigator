@@ -1,12 +1,14 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { CaseEditor } from '@/src/components/cases/CaseEditor'
+import { CaseSummarySheet } from '@/src/components/cases/CaseSummarySheet'
 import { CaseTimeline } from '@/src/components/cases/CaseTimeline'
 import { loadUnacknowledgedAlert } from '@/src/lib/alerts/service'
 import { requireUser } from '@/src/lib/auth/session'
 import { can } from '@/src/lib/authz/policy'
 import { loadCaseForEditor } from '@/src/lib/cases/load'
 import { loadReferenceForCase } from '@/src/lib/cases/reference'
+import { summaryOf } from '@/src/lib/cases/summary'
 
 export const metadata: Metadata = { title: 'Case · ER Navigator' }
 export const dynamic = 'force-dynamic'
@@ -40,6 +42,11 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
   // checks `case.review` and refuses a voided case again on the server.
   const canReview = can(user.role, 'case.review') && loaded.status !== 'VOIDED'
 
+  // Phase 10: the shareable reading of this case, computed here from what the page already
+  // loaded — no second query — and taken at page load, exactly as the timeline is.
+  const now = new Date()
+  const summary = summaryOf(loaded, reference, now)
+
   return (
     <CaseEditor
       alert={alert}
@@ -54,11 +61,12 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
       // slotted into the editor after the updates. The editor never touches it; every time on it
       // is edited in the section that owns it.
       timeline={<CaseTimeline steps={loaded.timeline} />}
+      summary={<CaseSummarySheet summary={summary} />}
       review={loaded.review}
       canReview={canReview}
       readOnly={readOnly}
       canVoid={canVoid}
-      nowIso={new Date().toISOString()}
+      nowIso={now.toISOString()}
     />
   )
 }
