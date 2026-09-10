@@ -275,6 +275,70 @@ describe('filterChips and describeFilter', () => {
       'Stage: Admission process · the lone finding',
     )
   })
+
+  /**
+   * The sentence has to say what the predicate does, and the predicate is OR within a dimension,
+   * AND across dimensions, and `not` over the whole conjunction. Joining every chip with " · " said
+   * none of that: "Excluding Stage: Admission process · Payer: Insured" read as two exclusions.
+   */
+  it('joins the values of one dimension with "or", one part per dimension in dimension order', () => {
+    expect(describeFilter(filter({ stage: ['adm', 'inv'] }), REFERENCE)).toBe(
+      'Stage: Admission process or Investigations',
+    )
+    expect(
+      describeFilter(
+        filter({
+          stage: ['inv', 'adm'],
+          reason: ['Lab: delay in processing', 'Imaging: report delay'],
+          dept: ['ICU', 'MROD'],
+          area: ['RAZ', 'RESUS'],
+          ctas: [3, 4],
+          payer: ['GOVERNMENT', 'SELF_PAY'],
+          dispo: ['ADMITTED', 'DISCHARGED_HOME'],
+        }),
+        REFERENCE,
+      ),
+    ).toBe(
+      'Stage: Investigations or Admission process · Reason: Lab: delay in processing or Imaging: report delay · ' +
+        'Team: ICU or MROD · Area: Rapid assessment zone or Resuscitation area · CTAS 3 or 4 · ' +
+        'Payer: Government or Self-pay · Outcome: Admitted or Discharged home',
+    )
+  })
+
+  it('joins a multi-valued dimension with "and" under the lone finding, where the case carries every one', () => {
+    expect(describeFilter(filter({ stage: ['adm', 'inv'], lone: true }), REFERENCE)).toBe(
+      'Stage: Admission process and Investigations · the lone finding',
+    )
+    // Reasons and teams are sets too; CTAS is one value per case, so its values stay alternatives.
+    const sets = filter({ reason: ['A', 'B'], dept: ['ICU', 'MROD'], ctas: [3, 4], lone: true })
+    expect(describeFilter(sets, REFERENCE)).toBe('Reason: A and B · Team: ICU and MROD · CTAS 3 or 4 · the lone finding')
+  })
+
+  it('excludes the cases that match the whole filter, and says so when it spans dimensions', () => {
+    expect(describeFilter(filter({ stage: ['adm'], payer: ['INSURED'], not: true }), REFERENCE)).toBe(
+      'Excluding cases with Stage: Admission process and Payer: Insured',
+    )
+    expect(describeFilter(filter({ stage: ['adm'], area: ['RESUS'], ctas: [2], not: true }), REFERENCE)).toBe(
+      'Excluding cases with Stage: Admission process and Area: Resuscitation area and CTAS 2',
+    )
+    // One dimension is one part, however many values it has, and keeps the short form.
+    expect(describeFilter(filter({ stage: ['adm', 'inv'], not: true }), REFERENCE)).toBe(
+      'Excluding Stage: Admission process or Investigations',
+    )
+    const both = filter({ stage: ['adm', 'inv'], payer: ['INSURED'], not: true, lone: true })
+    expect(describeFilter(both, REFERENCE)).toBe(
+      'Excluding cases with Stage: Admission process and Investigations and Payer: Insured · the lone finding',
+    )
+  })
+
+  it('leaves the chips one per value, exactly as they were', () => {
+    const f = filter({ stage: ['adm', 'inv'], payer: ['INSURED'], not: true })
+    expect(filterChips(f, REFERENCE).map((c) => c.label)).toEqual([
+      'Stage: Admission process',
+      'Stage: Investigations',
+      'Payer: Insured',
+    ])
+  })
 })
 
 describe('withoutFilterValue', () => {
