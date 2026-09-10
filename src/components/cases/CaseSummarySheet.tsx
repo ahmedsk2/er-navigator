@@ -51,23 +51,16 @@ export function CaseSummaryDialog({ summary, onClose }: { summary: CaseSummary; 
   const [copyNote, setCopyNote] = useState<string | null>(null)
   /** True once the clipboard API has refused us and the text is on screen to be selected by hand. */
   const [selectable, setSelectable] = useState(false)
+  /** Whether the press in progress began on the scrim itself rather than on the panel inside it. */
+  const pressOnScrim = useRef(false)
 
-  // Escape and a tap outside, the two ways out of a panel on a phone (the OverflowMenu pattern).
+  // Escape, from anywhere on the page. A tap outside the panel is the scrim's own click, below.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') onClose()
     }
-    const onPointerDown = (event: MouseEvent | TouchEvent): void => {
-      if (!panel.current?.contains(event.target as Node)) onClose()
-    }
     document.addEventListener('keydown', onKeyDown)
-    document.addEventListener('mousedown', onPointerDown)
-    document.addEventListener('touchstart', onPointerDown)
-    return () => {
-      document.removeEventListener('keydown', onKeyDown)
-      document.removeEventListener('mousedown', onPointerDown)
-      document.removeEventListener('touchstart', onPointerDown)
-    }
+    return () => document.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
   // Focus lands in the panel, so a keyboard or a screen reader is inside the dialog rather than
@@ -108,8 +101,29 @@ export function CaseSummaryDialog({ summary, onClose }: { summary: CaseSummary; 
 
   const documented = summary.actions.filter((a) => a.count > 0)
 
+  // A tap on the scrim closes the panel on the CLICK, never on touchstart or mousedown. The click
+  // is the last event a tap makes; closing any earlier takes the scrim away with the finger still
+  // down, and the click the browser synthesises after touchend is hit-tested afresh and lands on
+  // whatever the scrim covered — the board row's link, the editor's "‹ Back" (Phase 10 review).
+  //
+  // Both ends of the press must be on the scrim itself, so a text selection dragged out of the
+  // panel, or a press that wanders into it, closes nothing. The click's own target cannot say
+  // that: it is the nearest element holding both ends, which is the scrim whenever either end is.
+  // A pointer convenience only; Escape and the two Close buttons are the keyboard's ways out.
   return (
-    <div className="no-print fixed inset-0 z-40 flex items-end justify-center bg-ink/40 p-0 sm:items-center sm:p-4">
+    <div
+      data-summary-scrim
+      className="no-print fixed inset-0 z-40 flex items-end justify-center bg-ink/40 p-0 sm:items-center sm:p-4"
+      onPointerDown={(event) => {
+        pressOnScrim.current = event.target === event.currentTarget
+      }}
+      onPointerUp={(event) => {
+        if (event.target !== event.currentTarget) pressOnScrim.current = false
+      }}
+      onClick={(event) => {
+        if (pressOnScrim.current && event.target === event.currentTarget) onClose()
+      }}
+    >
       <div
         ref={panel}
         role="dialog"
