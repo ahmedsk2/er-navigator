@@ -118,6 +118,63 @@ function sheetText(sheet: ExcelJS.Worksheet): string {
   return out.join('\n')
 }
 
+/**
+ * Phase 10, the filter. The one thing that must hold on this page: the number it shows and the
+ * rows the file holds are the same number, filtered or not. Two of the four cases in the window
+ * are insured (3200002 and 3200003), which is a fact of the seed, not of the clock.
+ */
+test('a filter narrows the count, the workbook and the printed report together', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', DESKTOP_ONLY)
+  await fromClientIp(page, '198.51.100.157')
+  await signIn(page, E2E_USERS.supervisor)
+
+  const window = await fixtureWindow()
+  await page.goto(`/export?from=${window.from}&to=${window.to}&status=all&format=navigator`)
+  await expect(page.locator('[data-export-count]')).toHaveText(`${window.mrns.length} cases in range`)
+
+  await page.getByRole('button', { name: 'Filter' }).click()
+  const panel = page.getByRole('dialog', { name: 'Filter cases' })
+  await panel.getByRole('group', { name: 'Payer' }).getByRole('button', { name: 'Insured' }).click()
+  await panel.getByRole('button', { name: 'Apply', exact: true }).click()
+
+  // The range survives the apply; the filter is appended after it, on the page and on both links.
+  await expect(page).toHaveURL(
+    `/export?from=${window.from}&to=${window.to}&status=all&format=navigator&payer=INSURED`,
+  )
+  await expect(page.locator('[data-export-count]')).toHaveText('2 cases in range')
+  await expect(page.locator('[data-download]')).toHaveAttribute(
+    'href',
+    `/api/export.xlsx?from=${window.from}&to=${window.to}&status=all&format=navigator&payer=INSURED`,
+  )
+  await expect(page.locator('[data-print-report]')).toHaveAttribute(
+    'href',
+    `/report?from=${window.from}&to=${window.to}&status=all&payer=INSURED`,
+  )
+
+  // The file itself: the count on the page is the number of rows in it, and they are the two.
+  const response = await page.request.get(
+    `/api/export.xlsx?from=${window.from}&to=${window.to}&status=all&format=navigator&payer=INSURED`,
+  )
+  expect(response.status()).toBe(200)
+  const workbook = new ExcelJS.Workbook()
+  await workbook.xlsx.load(Buffer.from(await response.body()) as unknown as ExcelJS.Buffer)
+  const cases = workbook.getWorksheet('Cases')!
+  const mrns = (() => {
+    const header = (cases.getRow(1).values as ExcelJS.CellValue[]).indexOf('MRN')
+    const found: string[] = []
+    cases.eachRow((row, number) => {
+      if (number > 1) found.push(String(row.getCell(header).value ?? ''))
+    })
+    return found
+  })()
+  expect(mrns.sort()).toEqual(['3200002', '3200003'])
+
+  // And the report over the same request prints which filter it was narrowed by.
+  await page.goto(`/report?from=${window.from}&to=${window.to}&status=all&payer=INSURED`)
+  await expect(page.locator('[data-report-filter]')).toHaveText('Filtered: Payer: Insured')
+  await expect(page.locator('[data-report-range]')).toContainText('2 cases')
+})
+
 test('each format downloads its own workbook, which opens with its own header row', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', DESKTOP_ONLY)
   await fromClientIp(page, '198.51.100.95')

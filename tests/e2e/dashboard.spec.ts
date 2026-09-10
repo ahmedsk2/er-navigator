@@ -574,6 +574,79 @@ test('the longest stays table ranks the seeded 30-hour case and links to it', as
   expect(ranks).toEqual(ranks.map((_, i) => i + 1))
 })
 
+/**
+ * Phase 10, the filter. Every figure on the page is over the filtered population, because the
+ * filter is applied to the loaded cases before `dashboard()` runs — so the check that matters is
+ * that the headline moves with it and that the footnote says which filter moved it.
+ *
+ * The seed is the only source of a payer in this database (the other spec files' cases record
+ * none), so a payer filter is the one narrowing whose result this file can name.
+ */
+test('the filter narrows every figure on the page, and the page says so', async ({ page }, testInfo) => {
+  await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.113' : '198.51.100.114')
+  await signIn(page, E2E_USERS.navigator)
+
+  await page.goto('/dashboard?r=all')
+  await expect(page.locator('[data-filter-note]')).toHaveCount(0)
+  const whole = await page.locator('[data-subtitle]').innerText()
+
+  await page.goto('/dashboard?r=all&payer=SELF_PAY')
+  await expect(page.locator('[data-filter-note]')).toHaveText('Filtered: Payer: Self-pay')
+  const narrowed = await page.locator('[data-subtitle]').innerText()
+  expect(narrowed).not.toBe(whole)
+  // `total` narrows with everything else: "n of n cases", because the filter is the population.
+  const [, inRange, total] = /^(\d+) of (\d+) cases$/.exec(narrowed) ?? []
+  expect(Number(inRange)).toBe(Number(total))
+  // The two seeded self-pay cases, and neither of the insured ones.
+  expect(Number(total)).toBe(2)
+
+  // The range chips and every drill link carry the filter, so a drill-down stays inside the
+  // population its row was counted in.
+  await expect(page.getByRole('link', { name: 'All time' })).toHaveAttribute('href', /payer=SELF_PAY/)
+  await page.goto('/dashboard?r=all&payer=SELF_PAY&drill=payer%3ASelf-pay')
+  await expect(page.locator('[data-drill-label]')).toHaveText('Payer: Self-pay')
+  await expect(rowFor(page, '3200005')).toHaveCount(1)
+  await expect(rowFor(page, '3200009')).toHaveCount(1)
+  await expect(rowFor(page, '3200001')).toHaveCount(0)
+  // …and back to the filtered dashboard, not the whole department.
+  await expect(page.getByRole('link', { name: '‹ Dashboard' })).toHaveAttribute('href', /payer=SELF_PAY/)
+
+  // "Where the time goes" and "By payer" still draw over the filtered population.
+  await page.goto('/dashboard?r=all&payer=SELF_PAY')
+  await expect(page.getByRole('heading', { name: 'Where the time goes', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'By payer', exact: true })).toBeVisible()
+  // The three payers always have a row; what the filter changes is the count in it. Government
+  // has four seeded cases and Insured four, and under this filter both read zero.
+  const byPayer = page.getByRole('heading', { name: 'By payer', exact: true }).locator('xpath=../table')
+  const payerCases = (label: string) =>
+    byPayer.getByRole('row').filter({ hasText: label }).getByRole('cell').nth(1)
+  await expect(payerCases('Self-pay')).toHaveText('2')
+  await expect(payerCases('Insured')).toHaveText('0')
+  await expect(payerCases('Government')).toHaveText('0')
+})
+
+test('the filter panel applies from the dashboard itself', async ({ page }, testInfo) => {
+  await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.115' : '198.51.100.116')
+  await signIn(page, E2E_USERS.navigator)
+  await page.goto('/dashboard?r=7')
+
+  await page.getByRole('button', { name: 'Filter' }).click()
+  const panel = page.getByRole('dialog', { name: 'Filter cases' })
+  await panel.getByRole('group', { name: 'Payer' }).getByRole('button', { name: 'Insured' }).click()
+  await panel.getByRole('button', { name: 'Apply', exact: true }).click()
+
+  // The range survives the apply, and the filter is appended after it.
+  await expect(page).toHaveURL('/dashboard?r=7&payer=INSURED')
+  await expect(page.locator('[data-filter-note]')).toHaveText('Filtered: Payer: Insured')
+
+  // Escape closes the panel without changing anything.
+  await page.getByRole('button', { name: /^Filter/ }).click()
+  await expect(panel).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(panel).toHaveCount(0)
+  await expect(page).toHaveURL('/dashboard?r=7&payer=INSURED')
+})
+
 test('an unknown drill key renders the dashboard rather than an error', async ({ page }, testInfo) => {
   await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.101' : '198.51.100.102')
   await signIn(page, E2E_USERS.navigator)

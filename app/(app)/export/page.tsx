@@ -4,7 +4,7 @@ import { requireAction } from '@/src/lib/auth/session'
 import { loadReference } from '@/src/lib/cases/reference'
 import { filterOptionsOf } from '@/src/lib/domain/case-filter'
 import { countCasesForExport } from '@/src/lib/export/load'
-import { parseExportRange } from '@/src/lib/export/range'
+import { exportRangeQuery, parseExportRange } from '@/src/lib/export/range'
 
 export const metadata: Metadata = { title: 'Export · ER Navigator' }
 export const dynamic = 'force-dynamic'
@@ -30,5 +30,15 @@ export default async function ExportPage({
 
   const range = parseExportRange(await searchParams, new Date())
   const [count, reference] = await Promise.all([countCasesForExport(range), loadReference()])
-  return <ExportPanel initialRange={range} initialCount={count} filterOptions={filterOptionsOf(reference)} />
+  return (
+    <ExportPanel
+      // The dates are the panel's own state and never navigate; applying a filter does, and a
+      // client-side navigation to the same route does not remount a component. Without this the
+      // panel would keep the range it mounted with and go on showing the unfiltered count.
+      key={exportRangeQuery(range)}
+      initialRange={range}
+      initialCount={count}
+      filterOptions={filterOptionsOf(reference)}
+    />
+  )
 }

@@ -252,132 +252,142 @@ export function FilterBar({
       ) : null}
 
       {open ? (
-        <div
-          id={panelId}
-          ref={panel}
-          role="dialog"
-          aria-label="Filter cases"
-          tabIndex={-1}
-          data-filter-panel
-          /* A bottom sheet on the phone, a popover under the button on a laptop. `max-h` plus its
-             own scroll, because seven groups of chips are taller than a 390 × 844 screen. */
-          className="fixed inset-x-0 bottom-0 z-40 max-h-[75vh] overflow-y-auto rounded-t-card border border-line bg-panel p-4 shadow-card outline-none lg:absolute lg:inset-x-auto lg:top-full lg:bottom-auto lg:left-0 lg:mt-1 lg:max-h-[70vh] lg:w-[520px] lg:rounded-card"
-        >
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-section">Filter cases</h2>
-            <Button aria-label="Close filter" onClick={() => setOpen(false)} className="px-2.5">
-              <X size={18} />
-            </Button>
-          </div>
+        <>
+          {/* The phone's sheet covers the rows behind it, so it says so: a dim over the board is
+              what makes "tap anywhere to close" a thing a thumb discovers. The laptop's popover
+              is small and anchored under its button and needs none. */}
+          <div aria-hidden="true" className="fixed inset-0 z-30 bg-ink/30 lg:hidden" />
+          <div
+            id={panelId}
+            ref={panel}
+            role="dialog"
+            aria-label="Filter cases"
+            tabIndex={-1}
+            data-filter-panel
+            /* A bottom sheet on the phone, a popover under the button on a laptop. Three rows: a
+               heading that stays, the groups scrolling between them, and the two actions pinned —
+               seven groups of chips are several times taller than a 390 × 844 screen, and a panel
+               whose Apply button is a scroll away is a panel nobody applies. */
+            className="fixed inset-x-0 bottom-0 z-40 flex max-h-[80vh] flex-col rounded-t-card border border-line bg-panel shadow-card outline-none lg:absolute lg:inset-x-auto lg:top-full lg:bottom-auto lg:left-0 lg:mt-1 lg:max-h-[70vh] lg:w-[520px] lg:rounded-card"
+          >
+            <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
+              <h2 className="text-section">Filter cases</h2>
+              <Button aria-label="Close filter" onClick={() => setOpen(false)} className="px-2.5">
+                <X size={18} />
+              </Button>
+            </div>
 
-          <Segmented
-            label="Include or exclude the matching cases"
-            options={['Include', 'Exclude']}
-            value={draft.not}
-            onChange={(next) => setDraft((current) => ({ ...current, not: next }))}
-          />
-          <Segmented
-            label="How the selected values must match"
-            options={['Among others', 'The lone finding']}
-            value={draft.lone}
-            onChange={(next) => setDraft((current) => ({ ...current, lone: next }))}
-          />
-
-          <Group label={FILTER_LABELS.stage}>
-            {options.stages.map((stage) => (
-              <OptionChip
-                key={stage.code}
-                label={stage.name}
-                on={chosen('stage', stage.code)}
-                onToggle={() => toggleIn('stage', stage.code)}
+            <div data-filter-scroll className="min-h-0 flex-1 overflow-y-auto px-4 pt-3">
+              <Segmented
+                label="Include or exclude the matching cases"
+                options={['Include', 'Exclude']}
+                value={draft.not}
+                onChange={(next) => setDraft((current) => ({ ...current, not: next }))}
               />
-            ))}
-          </Group>
+              <Segmented
+                label="How the selected values must match"
+                options={['Among others', 'The lone finding']}
+                value={draft.lone}
+                onChange={(next) => setDraft((current) => ({ ...current, lone: next }))}
+              />
 
-          {/* The reasons under their own stage: forty-eight of them in one heap is a wall, and a
-              nurse looks for "Lab: delay in processing" under Investigations. */}
-          <Group label={FILTER_LABELS.reason}>
-            {options.stages
-              .filter((stage) => stage.reasons.length > 0)
-              .map((stage) => (
-                <div key={stage.code} className="mb-1.5">
-                  <span className="mb-1 block text-caption text-muted">{stage.name}</span>
-                  {stage.reasons.map((reason) => (
-                    <OptionChip
-                      key={reason}
-                      label={reason}
-                      on={chosen('reason', reason)}
-                      onToggle={() => toggleIn('reason', reason)}
-                    />
+              <Group label={FILTER_LABELS.stage}>
+                {options.stages.map((stage) => (
+                  <OptionChip
+                    key={stage.code}
+                    label={stage.name}
+                    on={chosen('stage', stage.code)}
+                    onToggle={() => toggleIn('stage', stage.code)}
+                  />
+                ))}
+              </Group>
+
+              {/* The reasons under their own stage: forty-eight of them in one heap is a wall, and a
+                  nurse looks for "Lab: delay in processing" under Investigations. */}
+              <Group label={FILTER_LABELS.reason}>
+                {options.stages
+                  .filter((stage) => stage.reasons.length > 0)
+                  .map((stage) => (
+                    <div key={stage.code} className="mb-1.5">
+                      <span className="mb-1 block text-caption text-muted">{stage.name}</span>
+                      {stage.reasons.map((reason) => (
+                        <OptionChip
+                          key={reason}
+                          label={reason}
+                          on={chosen('reason', reason)}
+                          onToggle={() => toggleIn('reason', reason)}
+                        />
+                      ))}
+                    </div>
                   ))}
-                </div>
-              ))}
-          </Group>
+              </Group>
 
-          <Group label={FILTER_LABELS.dept}>
-            {options.departments.map((department) => (
-              <OptionChip
-                key={department}
-                label={department}
-                on={chosen('dept', department)}
-                onToggle={() => toggleIn('dept', department)}
-              />
-            ))}
-          </Group>
+              <Group label={FILTER_LABELS.dept}>
+                {options.departments.map((department) => (
+                  <OptionChip
+                    key={department}
+                    label={department}
+                    on={chosen('dept', department)}
+                    onToggle={() => toggleIn('dept', department)}
+                  />
+                ))}
+              </Group>
 
-          <Group label={FILTER_LABELS.area}>
-            {options.areas.map((area) => (
-              <OptionChip
-                key={area.code}
-                label={area.name}
-                on={chosen('area', area.code)}
-                onToggle={() => toggleIn('area', area.code)}
-              />
-            ))}
-          </Group>
+              <Group label={FILTER_LABELS.area}>
+                {options.areas.map((area) => (
+                  <OptionChip
+                    key={area.code}
+                    label={area.name}
+                    on={chosen('area', area.code)}
+                    onToggle={() => toggleIn('area', area.code)}
+                  />
+                ))}
+              </Group>
 
-          <Group label={FILTER_LABELS.ctas}>
-            {CTAS_LEVELS.map((level) => (
-              <OptionChip
-                key={level}
-                label={`CTAS ${level}`}
-                on={chosen('ctas', String(level))}
-                onToggle={() => toggleIn('ctas', String(level))}
-              />
-            ))}
-          </Group>
+              <Group label={FILTER_LABELS.ctas}>
+                {CTAS_LEVELS.map((level) => (
+                  <OptionChip
+                    key={level}
+                    label={`CTAS ${level}`}
+                    on={chosen('ctas', String(level))}
+                    onToggle={() => toggleIn('ctas', String(level))}
+                  />
+                ))}
+              </Group>
 
-          <Group label={FILTER_LABELS.payer}>
-            {PAYERS.map((payer) => (
-              <OptionChip
-                key={payer}
-                label={PAYER_LABELS[payer]}
-                on={chosen('payer', payer)}
-                onToggle={() => toggleIn('payer', payer)}
-              />
-            ))}
-          </Group>
+              <Group label={FILTER_LABELS.payer}>
+                {PAYERS.map((payer) => (
+                  <OptionChip
+                    key={payer}
+                    label={PAYER_LABELS[payer]}
+                    on={chosen('payer', payer)}
+                    onToggle={() => toggleIn('payer', payer)}
+                  />
+                ))}
+              </Group>
 
-          <Group label={FILTER_LABELS.dispo}>
-            {DISPOSITIONS.map((dispo) => (
-              <OptionChip
-                key={dispo}
-                label={DISPOSITION_LABELS[dispo]}
-                on={chosen('dispo', dispo)}
-                onToggle={() => toggleIn('dispo', dispo)}
-              />
-            ))}
-          </Group>
+              <Group label={FILTER_LABELS.dispo}>
+                {DISPOSITIONS.map((dispo) => (
+                  <OptionChip
+                    key={dispo}
+                    label={DISPOSITION_LABELS[dispo]}
+                    on={chosen('dispo', dispo)}
+                    onToggle={() => toggleIn('dispo', dispo)}
+                  />
+                ))}
+              </Group>
+            </div>
 
-          <div className="sticky bottom-0 -mx-4 -mb-4 flex gap-2 border-t border-line bg-panel px-4 py-3">
-            <Button tone="main" onClick={() => go(draft)} className="flex-1">
-              Apply
-            </Button>
-            <Button onClick={() => go(EMPTY_FILTER)} className="flex-1">
-              Clear
-            </Button>
+            <div className="flex gap-2 border-t border-line px-4 py-3">
+              <Button tone="main" onClick={() => go(draft)} className="flex-1">
+                Apply
+              </Button>
+              <Button onClick={() => go(EMPTY_FILTER)} className="flex-1">
+                Clear
+              </Button>
+            </div>
           </div>
-        </div>
+        </>
       ) : null}
     </div>
   )

@@ -115,6 +115,72 @@ test('the Resolved filter shows the resolved case with its outcome, and never th
   await expect(rowFor(page, VOIDED.mrn)).toHaveCount(0)
 })
 
+/**
+ * Phase 10, the filter. Only the seeded board fixtures carry these stages in this combination, so
+ * the assertions narrow to the `310000` prefix as every other board test does — the filter is a
+ * server-side navigation and the MRN search is a client-side narrowing on top of it.
+ */
+test('the filter narrows the board, says so, and the poll keeps it', async ({ page }) => {
+  test.setTimeout(90_000)
+  await fromClientIp(page, '198.51.100.151')
+  await signIn(page, E2E_USERS.navigator)
+  await narrowToFixtures(page)
+
+  // Nothing is filtered yet, so the bar says nothing beyond its own button.
+  await expect(page.locator('[data-filter-count]')).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Filter' }).click()
+  const panel = page.getByRole('dialog', { name: 'Filter cases' })
+  await expect(panel).toBeVisible()
+  await panel.getByRole('group', { name: 'Stage' }).getByRole('button', { name: 'Investigations' }).click()
+  await panel.getByRole('button', { name: 'Apply', exact: true }).click()
+
+  // The filter is in the address, after `f` and `q`, and the panel has closed behind it.
+  await expect(page).toHaveURL(/\/\?(?:q=310000&)?stage=inv/)
+  await expect(panel).toHaveCount(0)
+
+  // 3100003 is the only seeded case under Investigations; 3100001 is an admission delay.
+  await page.getByLabel('Search MRN').fill(BOARD_MRN_PREFIX)
+  await expect(rowFor(page, '3100003')).toBeVisible()
+  await expect(rowFor(page, LONGEST.mrn)).toHaveCount(0)
+  await expect(page.locator('a[data-mrn]')).toHaveCount(1)
+
+  // The chip names the stage by its NAME, and the count line gives the denominator back.
+  await expect(page.locator('[data-filter-chip="Stage: Investigations"]')).toBeVisible()
+  await expect(page.locator('[data-filter-count]')).toHaveText(/^\d+ of \d+ open cases$/)
+
+  // The 30 s poll carries the filter: a board narrowed to one stage must stay narrowed.
+  const polled = await page.waitForRequest((request) => /\/api\/board\?/.test(request.url()), {
+    timeout: 45_000,
+  })
+  expect(polled.url()).toContain('stage=inv')
+  await expect(rowFor(page, '3100003')).toBeVisible()
+
+  // Dropping the chip is the same navigation as Clear, and the whole board comes back.
+  await page.getByRole('button', { name: 'Remove Stage: Investigations' }).click()
+  await expect(page).not.toHaveURL(/stage=inv/)
+  await page.getByLabel('Search MRN').fill(BOARD_MRN_PREFIX)
+  await expect(rowFor(page, LONGEST.mrn)).toBeVisible()
+  await expect(page.locator('[data-filter-count]')).toHaveCount(0)
+})
+
+test('a filter that matches nothing says so rather than looking like an empty department', async ({
+  page,
+}) => {
+  await fromClientIp(page, '198.51.100.152')
+  await signIn(page, E2E_USERS.navigator)
+
+  // A stage code nothing carries — which is also what a link to a stage an Admin has since
+  // deactivated looks like. It narrows to nothing and says so; it does not error, and the chip
+  // still names the value so the reader can drop it.
+  await page.goto('/?stage=zzz-no-such-stage')
+  await expect(
+    page.getByText('No case matches this filter. Change it, or clear it to see the whole board.'),
+  ).toBeVisible()
+  await expect(page.locator('[data-filter-chip="Stage: zzz-no-such-stage"]')).toBeVisible()
+  await expect(page.locator('a[data-mrn]')).toHaveCount(0)
+})
+
 test('a viewer reads the board but gets no New case button', async ({ page }) => {
   await fromClientIp(page, '198.51.100.74')
   await signIn(page, E2E_USERS.viewer)
