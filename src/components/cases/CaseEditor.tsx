@@ -64,6 +64,16 @@ import {
 } from '@/src/lib/domain/taxonomy'
 import { band, elapsedHours, fmtHours, spokenHours } from '@/src/lib/domain/time'
 import { BAND_TEXT } from '@/src/components/bands'
+import {
+  Activity,
+  Check,
+  ClipboardList,
+  FileText,
+  History,
+  ListChecks,
+  TriangleAlert,
+  Users,
+} from '@/src/components/icons'
 import { MRN_RE, phiWarnings, REGISTRATION_NUDGE_MINUTES, REGISTRATION_QUICK_HOURS } from '@/src/lib/domain/validation'
 import { timeWarnings } from '@/src/lib/domain/warnings'
 
@@ -665,7 +675,7 @@ export function CaseEditor(props: CaseEditorProps) {
       </Section>
 
       {/* 3. Where is the delay */}
-      <Section title="Where is the delay?">
+      <Section title="Where is the delay?" icon={<TriangleAlert size={18} />}>
         <p className="mb-2.5 text-caption text-muted">
           Tap every stage that applies, then the reasons under each. If you pick more than one reason, choose the
           primary one below.
@@ -729,7 +739,7 @@ export function CaseEditor(props: CaseEditorProps) {
 
       {/* 4. Department / consulted team */}
       {showDepartments ? (
-        <Section title="Department / consulted team involved">
+        <Section title="Department / consulted team involved" icon={<Users size={18} />}>
           <Chips
             groupLabel="Departments"
             options={reference.departments.map((d) => d.id)}
@@ -755,7 +765,7 @@ export function CaseEditor(props: CaseEditorProps) {
 
       {/* 5. Investigation times */}
       {showInvestigations ? (
-        <Section title="Investigation times">
+        <Section title="Investigation times" icon={<Activity size={18} />}>
           <Chips
             groupLabel="Investigation types"
             options={INVESTIGATION_TYPES}
@@ -780,7 +790,7 @@ export function CaseEditor(props: CaseEditorProps) {
 
       {/* 5b. Pain management (Phase 8b, decision F). Unconditional: Adaa KPI 8 is reported for
           every case, not only for the ones with an investigation. Nothing here is required. */}
-      <Section title="Pain management (Adaa KPI 8)">
+      <Section title="Pain management (Adaa KPI 8)" icon={<ListChecks size={18} />}>
         <ChoiceRow
           label="Painkiller prescribed"
           options={YES_NO}
@@ -821,14 +831,14 @@ export function CaseEditor(props: CaseEditorProps) {
 
       {/* 6. Admission times */}
       {showAdmission ? (
-        <Section title="Admission times">
+        <Section title="Admission times" icon={<ClipboardList size={18} />}>
           <Chain steps={ADMISSION_STEPS} value={draft} onChange={(next) => set(next)} disabled={disabled} />
         </Section>
       ) : null}
 
       {/* 6b. Case management (Phase 8b, decision B). Also unconditional: a referral to the case
           manager can happen at any stage, and the coordinator's response time is the figure. */}
-      <Section title="Case management">
+      <Section title="Case management" icon={<Users size={18} />}>
         <ChoiceRow
           label="Referred to"
           options={CASE_MGMT_REFERRALS}
@@ -873,7 +883,7 @@ export function CaseEditor(props: CaseEditorProps) {
 
       {/* 7. Referral out */}
       {showReferral ? (
-        <Section title="Referral out">
+        <Section title="Referral out" icon={<FileText size={18} />}>
           <Field label="Referral tracking number">
             <Input
               placeholder="e.g. RCC-48213"
@@ -930,7 +940,7 @@ export function CaseEditor(props: CaseEditorProps) {
 
       {/* 9. Updates */}
       {!isNew ? (
-        <Section title="Updates">
+        <Section title="Updates" icon={<History size={18} />}>
           {updates.length === 0 ? (
             <p className="mb-2 text-caption text-muted">No updates yet. Add one when something changes.</p>
           ) : null}
@@ -998,7 +1008,7 @@ export function CaseEditor(props: CaseEditorProps) {
 
       {/* 10. Resolve */}
       {!isNew ? (
-        <Section title={status === 'RESOLVED' ? 'Resolved' : 'Resolve case'}>
+        <Section title={status === 'RESOLVED' ? 'Resolved' : 'Resolve case'} icon={<Check size={18} />}>
           <Field label="Final disposition">
             <Select
               disabled={disabled}
@@ -1112,7 +1122,7 @@ export function CaseEditor(props: CaseEditorProps) {
 
       {/* 11. Check these times */}
       {warnings.length > 0 ? (
-        <Section title="Check these times" tone="warn">
+        <Section title="Check these times" tone="warn" icon={<TriangleAlert size={18} />}>
           {warnings.map((w) => (
             <p key={w} className="py-0.5 text-caption">
               {w}
