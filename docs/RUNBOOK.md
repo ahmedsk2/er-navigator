@@ -361,6 +361,8 @@ OCI alarms already cover host down and CPU.
 
 ## Security headers
 
+Since Phase 10 the Permissions-Policy allows the microphone to this origin only (`microphone=(self)`): the in-app dictation button uses the browser's speech recognition where it exists (Chrome, Android); every other feature in the header stays denied. `tests/e2e/headers.spec.ts` pins the exact string.
+
 Every response carries HSTS, `X-Frame-Options: DENY`, `X-Content-Type-Options`, a strict
 Referrer-Policy, a Permissions-Policy that denies every device and tracking feature the app
 does not use, and `Cross-Origin-Opener-Policy` / `Cross-Origin-Resource-Policy: same-origin`
