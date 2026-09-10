@@ -47,11 +47,16 @@ const FILTER_LABEL: Record<BoardFilter, string> = { open: 'Open', resolved: 'Res
  */
 const COLUMN_LABELS = ['MRN', 'Registered', 'Waiting on', 'Last update', 'Elapsed'] as const
 
-/**
- * The search box's id: its label's `htmlFor`, and where the row summary sends the keyboard when
- * the row it was opened from has left the board by the time it is closed.
- */
+/** The search box's id, which its label's `htmlFor` names. */
 const SEARCH_ID = 'board-search'
+
+/**
+ * The page title's id: where the row summary sends the keyboard when the row it was opened from
+ * has left the board by the time it is closed. Not the search box, which is the other control
+ * every board has: focusing a text field raises the phone's keyboard over the list the nurse was
+ * about to read.
+ */
+const HEADING_ID = 'board-heading'
 
 /**
  * `/?f=` and `/?q=`, exactly as they were: `f` is omitted when it is the default Open board and
@@ -166,6 +171,7 @@ export function Board({
     <div>
       <PageHeader
         title="ER board"
+        headingId={HEADING_ID}
         subtitle={
           <>
             {/* One element, one sentence — the board spec matches it whole. What Phase 9 adds is
@@ -252,7 +258,7 @@ export function Board({
 
       {/* One summary panel for every row, drawn after the list rather than inside a row, so the
           poll can take a row away — or empty the list — while its summary is being read. */}
-      <RowSummaryHost fallbackFocusId={SEARCH_ID}>
+      <RowSummaryHost fallbackFocusId={HEADING_ID}>
         {visible.length === 0 ? (
           <p className="no-print mx-4 rounded-card border border-line bg-panel p-7 text-center text-body text-muted shadow-card lg:mx-0">
             {emptyMessage}

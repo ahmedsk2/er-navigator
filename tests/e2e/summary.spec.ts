@@ -219,13 +219,14 @@ test('a press that starts or ends inside the panel leaves it open', async ({ pag
  * The panel used to be rendered inside the row it summarises, so when the 30 s poll dropped that
  * row — a colleague resolved the case, or edited it out of the filter — the panel went with it,
  * mid-read, and the keyboard fell to <body>. Now the row can go and the panel stays until it is
- * closed; closing it puts the keyboard on the search box, since the button that opened it is gone.
+ * closed; closing it puts the keyboard on the page title, since the button that opened it is gone
+ * (not on the search box, which would raise the phone's keyboard over the list).
  *
  * A case of the test's own, so resolving it disturbs no fixture another test reads. It is written
  * and resolved straight in the database, as the fixtures are: the board cannot tell that from a
  * colleague's save, and the editor's resolve flow is cases.spec.ts's to test.
  */
-test('a row summary outlives its row leaving the board, and closing it lands on the search box', async ({ page }) => {
+test('a row summary outlives its row leaving the board, and closing it lands on the page title', async ({ page }) => {
   test.setTimeout(90_000)
   const mrn = uniqueMrn()
   const [navigator, reason] = await Promise.all([
@@ -287,7 +288,7 @@ test('a row summary outlives its row leaving the board, and closing it lands on 
 
   await dialog.getByRole('button', { name: 'Close', exact: true }).click()
   await expect(dialog).toHaveCount(0)
-  await expect(page.getByLabel('Search MRN')).toBeFocused()
+  await expect(page.getByRole('heading', { name: 'ER board' })).toBeFocused()
 })
 
 /**

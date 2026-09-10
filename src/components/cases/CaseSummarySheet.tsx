@@ -15,8 +15,9 @@
  * A bottom sheet on the phone and a centred dialog on a laptop, which is the same shape decision
  * the rest of the app makes: a thumb reaches the bottom of a 390 px screen and not its middle.
  *
- * It is "as of page load", exactly like the Timeline section beside it: the clock on it does not
- * tick, and the panel says so.
+ * It is "as of" the last time the server drew the case page (the page load, or the last change
+ * saved on it, since every case action revalidates the page), exactly like the Timeline section
+ * beside it: the clock on it does not tick, and the panel says so.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { X } from '@/src/components/icons'

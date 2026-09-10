@@ -15,16 +15,28 @@ import type { ReactNode } from 'react'
 export function PageHeader({
   title,
   subtitle,
+  headingId,
   children,
 }: {
   title: string
   subtitle?: ReactNode
+  /**
+   * Makes the title a place the keyboard can be sent back to (`tabIndex={-1}`: focusable from a
+   * script, never a Tab stop). The board uses it when the row a summary was opened from has gone.
+   */
+  headingId?: string
   children?: ReactNode
 }) {
   return (
     <div className="px-4 pt-4 pb-2.5 lg:flex lg:items-end lg:justify-between lg:gap-6 lg:px-0 lg:pt-6">
       <div className="min-w-0">
-        <h2 className="text-title">{title}</h2>
+        <h2
+          id={headingId}
+          tabIndex={headingId ? -1 : undefined}
+          className="text-title focus:outline-none"
+        >
+          {title}
+        </h2>
         {subtitle}
       </div>
       {children ? <div className="mt-2 flex flex-wrap items-center gap-2 lg:mt-0">{children}</div> : null}

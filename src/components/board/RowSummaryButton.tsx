@@ -58,8 +58,9 @@ type Shown = { caseId: string; summary: CaseSummary; key: number }
  *
  * Closing it gives the keyboard back to the button that opened it while that button is still on
  * the page. When it is not — the poll took its row away while the panel was open — it goes to the
- * element `fallbackFocusId` names instead: the board passes its search box, the one control it has
- * whatever the rows are, the empty state included, and where finding the next patient starts.
+ * element `fallbackFocusId` names instead: the board passes its page title, which is there whatever
+ * the rows are, the empty state included, and is not a text field (focusing the search box would
+ * raise the phone's keyboard over the list).
  */
 export function RowSummaryHost({
   fallbackFocusId,

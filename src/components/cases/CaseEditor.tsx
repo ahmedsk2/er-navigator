@@ -160,7 +160,7 @@ export type CaseEditorProps = {
   /**
    * Phase 10: the case summary trigger, rendered on the server by `app/cases/[id]/page.tsx` and
    * slotted into the header between "‹ Back" and the clock. A slot for the same reason the
-   * timeline is one — the summary is a reading of the case as it was at page load, the editor
+   * timeline is one — the summary is a reading of the case as the server last drew it, the editor
    * holds none of it, and `/cases/new` has nothing to summarise and passes nothing.
    */
   summary?: ReactNode
