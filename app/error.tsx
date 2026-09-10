@@ -1,8 +1,7 @@
 'use client'
 
-import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { HoldingScreen } from '@/src/components/brand/HoldingScreen'
+import { BoardLink, HoldingScreen } from '@/src/components/holding'
 import { isStaleBuild } from '@/src/lib/build-check'
 
 /**
@@ -72,12 +71,7 @@ export default function ErrorPage({ error, reset }: { error: Error & { digest?: 
         >
           Try again
         </button>
-        <Link
-          href="/"
-          className="inline-flex min-h-11 items-center rounded-button border border-line bg-panel px-4 text-body font-semibold text-accent-ink"
-        >
-          ‹ Board
-        </Link>
+        <BoardLink />
         <button
           type="button"
           onClick={() => window.location.reload()}

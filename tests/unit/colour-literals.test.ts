@@ -48,7 +48,9 @@ describe('colour literals outside the token block', () => {
     'app/error.tsx',
     'app/not-found.tsx',
     'app/forbidden.tsx',
+    'app/(app)/forbidden.tsx',
     'app/(app)/account/page.tsx',
+    'src/components/holding.tsx',
   ])('%s carries no colour literal at all', (file) => {
     expect(hexesIn(read(file))).toEqual([])
   })
