@@ -62,7 +62,8 @@ export const CASE_STATS_SELECT = {
   reviewedAt: true,
   primaryReason: { select: { name: true } },
   ward: { select: { code: true } },
-  area: { select: { name: true } },
+  // The name for "By ED area", the code for the filter's URL (Phase 10): a code survives a rename.
+  area: { select: { name: true, code: true } },
   reviewedBy: { select: { displayName: true } },
   // The count, and every update's timestamp and action category. Phase 8b dropped the `take: 1`
   // that used to sit here: `updateActions` is the DISTINCT set of categories on the case, which
@@ -74,7 +75,9 @@ export const CASE_STATS_SELECT = {
   reasons: {
     select: {
       otherText: true,
-      reason: { select: { stage: { select: { code: true, name: true, sortOrder: true } } } },
+      // Phase 10: the reason's own name as well as its stage, so the filter can ask for a case by
+      // any reason it carries and not only by the primary one.
+      reason: { select: { name: true, stage: { select: { code: true, name: true, sortOrder: true } } } },
     },
   },
   consults: {
@@ -128,6 +131,9 @@ export function toCaseForStats(row: StatsRowInput): CaseForStats {
   // Phase 10: the codes beside the names, for the phase split (kpi.ts PHASES) and the filter,
   // which must not depend on a display name an Admin may rename.
   const stageCodes = [...new Set(stagesInOrder.map((r) => r.reason.stage.code))]
+  // Distinct for the same reason the stages are: a case carrying one reason twice is one case in
+  // the filter, and the chips list a name once.
+  const reasonNames = [...new Set(stagesInOrder.map((r) => r.reason.name))]
 
   // Order-independent on purpose: the dashboard's select takes the newest update only, the
   // export's takes all of them oldest-first, and both must yield the same "last update at".
@@ -162,6 +168,7 @@ export function toCaseForStats(row: StatsRowInput): CaseForStats {
     primaryReasonName: row.primaryReason?.name ?? null,
     stageNames,
     stageCodes,
+    reasonNames,
     // `CaseConsult` is unique per (case, department), so this list is already distinct.
     departmentNames: row.consults.map((c) => c.department.name),
     disposition: row.disposition,
@@ -195,6 +202,7 @@ export function toCaseForStats(row: StatsRowInput): CaseForStats {
     wardCode: row.ward?.code ?? null,
     ctas: row.ctas,
     areaName: row.area?.name ?? null,
+    areaCode: row.area?.code ?? null,
     payer: row.payer,
     updatesCount: row._count.updates,
     lastUpdateAt,

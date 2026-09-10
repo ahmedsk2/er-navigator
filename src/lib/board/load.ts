@@ -10,7 +10,9 @@
 import type { CaseStatus } from '@prisma/client'
 import { timelineOf } from '@/src/lib/cases/timeline'
 import { prisma } from '@/src/lib/db'
+import { isEmptyFilter, matchesFilter, type CaseFilter } from '@/src/lib/domain/case-filter'
 import type { KpiInvestigationType } from '@/src/lib/domain/kpi'
+import { filterableOf } from './rows'
 import type { BoardFilter, BoardPayload, BoardRow, BoardStatus } from './types'
 
 const STATUSES: Record<BoardFilter, ReadonlyArray<CaseStatus>> = {
@@ -63,6 +65,11 @@ const BOARD_ROW_SELECT = {
   primaryReason: { select: { name: true } },
   ward: { select: { code: true } },
   area: { select: { code: true } },
+  // Phase 10: not drawn, matched. `sortOrder` only so the two lists come out in taxonomy order,
+  // the same order `toCaseForStats` builds them in, so a chip reads the same wherever it is shown.
+  reasons: {
+    select: { reason: { select: { name: true, stage: { select: { code: true, sortOrder: true } } } } },
+  },
   consults: {
     orderBy: { department: { sortOrder: 'asc' } },
     select: {
@@ -120,6 +127,7 @@ type SelectedRow = Milestones & {
   primaryReason: { name: string } | null
   ward: { code: string } | null
   area: { code: string } | null
+  reasons: ReadonlyArray<{ reason: { name: string; stage: { code: string; sortOrder: number } } }>
   consults: ReadonlyArray<{
     department: { name: string }
     consultedAt: Date | null
@@ -141,6 +149,7 @@ type SelectedRow = Milestones & {
 }
 
 function toBoardRow(row: SelectedRow): BoardRow {
+  const reasonsInOrder = [...row.reasons].sort((a, b) => a.reason.stage.sortOrder - b.reason.stage.sortOrder)
   return {
     id: row.id,
     mrn: row.mrn,
@@ -153,6 +162,8 @@ function toBoardRow(row: SelectedRow): BoardRow {
     payer: row.payer,
     diagnosis: row.diagnosis,
     primaryReason: row.primaryReason?.name ?? null,
+    stageCodes: [...new Set(reasonsInOrder.map((r) => r.reason.stage.code))],
+    reasonNames: [...new Set(reasonsInOrder.map((r) => r.reason.name))],
     departments: row.consults.map((consult) => consult.department.name),
     disposition: row.disposition,
     ward: row.ward?.code ?? null,
@@ -190,7 +201,16 @@ function toBoardRow(row: SelectedRow): BoardRow {
   }
 }
 
-export async function loadBoardRows(filter: BoardFilter): Promise<BoardRow[]> {
+/**
+ * The case filter (Phase 10) is applied here, in memory, after the query.
+ *
+ * Not in SQL, deliberately. "The lone finding" is a set equality over the case's reasons and its
+ * consulted teams, which Prisma cannot express in one `where` without a subquery per dimension,
+ * and the board is a few hundred open cases the query already returns in full for the counts
+ * strip and the handover sheet. One predicate, three pages, the same answer — which is the whole
+ * reason `matchesFilter` is pure. If the board ever outgrows this, the query is where to look.
+ */
+export async function loadBoardRows(filter: BoardFilter, caseFilter?: CaseFilter): Promise<BoardRow[]> {
   const rows = await prisma.case.findMany({
     where: { status: { in: [...STATUSES[filter]] } },
     // A stable base order; the board sorts by elapsed hours on top of it, and a stable input
@@ -199,7 +219,9 @@ export async function loadBoardRows(filter: BoardFilter): Promise<BoardRow[]> {
     select: BOARD_ROW_SELECT,
   })
 
-  return rows.filter((row) => row.status !== 'VOIDED').map(toBoardRow)
+  const mapped = rows.filter((row) => row.status !== 'VOIDED').map(toBoardRow)
+  if (!caseFilter || isEmptyFilter(caseFilter)) return mapped
+  return mapped.filter((row) => matchesFilter(filterableOf(row), caseFilter))
 }
 
 /**
@@ -217,8 +239,18 @@ export async function loadBoardRowsByIds(ids: ReadonlyArray<string>): Promise<Bo
   return rows.filter((row) => row.status !== 'VOIDED').map(toBoardRow)
 }
 
-/** Scalar-only read of the open cases, for the counts strip on the Resolved tab. */
-async function loadOpenRegistrations(): Promise<string[]> {
+/**
+ * The open cases' registration stamps, for the counts strip on the Resolved tab.
+ *
+ * Scalar-only when no case filter is active, which is the query this has always issued. Under a
+ * filter the counts strip must describe the filtered board, and "does this open case match" is a
+ * question about its reasons, its teams and its area — so the full row is loaded and filtered
+ * through the same predicate the visible rows went through.
+ */
+async function loadOpenRegistrations(caseFilter?: CaseFilter): Promise<string[]> {
+  if (caseFilter && !isEmptyFilter(caseFilter)) {
+    return (await loadBoardRows('open', caseFilter)).map((row) => row.registrationAt)
+  }
   const rows = await prisma.case.findMany({
     where: { status: 'OPEN' },
     select: { registrationAt: true },
@@ -230,11 +262,21 @@ async function loadOpenRegistrations(): Promise<string[]> {
  * Everything one board render needs. On the Open and All tabs the open cases are already in
  * `rows`, so the counts cost nothing; only the Resolved tab pays for the extra scalar read.
  */
-export async function loadBoard(filter: BoardFilter, now: Date): Promise<BoardPayload> {
-  const rows = await loadBoardRows(filter)
+export async function loadBoard(
+  filter: BoardFilter,
+  now: Date,
+  caseFilter?: CaseFilter,
+): Promise<BoardPayload> {
+  const filtered = caseFilter && !isEmptyFilter(caseFilter) ? caseFilter : undefined
+  const rows = await loadBoardRows(filter, filtered)
   const openRegistrations =
     filter === 'resolved'
-      ? await loadOpenRegistrations()
+      ? await loadOpenRegistrations(filtered)
       : rows.filter((row) => row.status === 'OPEN').map((row) => row.registrationAt)
-  return { filter, rows, openRegistrations, now: now.toISOString() }
+  // The unfiltered denominator, and only when it can differ from the numerator: one indexed count
+  // for the filter bar's "{shown} of {total} open cases", and no query at all on an unfiltered board.
+  const totalOpen = filtered
+    ? await prisma.case.count({ where: { status: 'OPEN' } })
+    : openRegistrations.length
+  return { filter, rows, openRegistrations, totalOpen, now: now.toISOString() }
 }

@@ -12,16 +12,24 @@ import { sortByElapsed } from '@/src/lib/board/rows'
 import type { BoardRow } from '@/src/lib/board/types'
 import { dashboardHref } from '@/src/lib/dashboard/drill'
 import type { Range } from '@/src/lib/domain/aggregates'
+import type { CaseFilter } from '@/src/lib/domain/case-filter'
 
 export function DrillView({
   label,
   rows,
   range,
+  filter,
   now,
 }: {
   label: string
   rows: BoardRow[]
   range: Range
+  /**
+   * The case filter the drill-down was resolved under (Phase 10). It carries no rows of its own —
+   * the ids came from a `dashboard()` already narrowed by it — but "‹ Dashboard" has to go back
+   * to the filtered page the reader came from, not to the whole department.
+   */
+  filter?: CaseFilter
   now: Date
 }) {
   const sorted = sortByElapsed(rows, now)
@@ -30,7 +38,7 @@ export function DrillView({
     <div className="dash">
       <div className="no-print px-4 pt-3.5 pb-1.5 lg:px-0 lg:pt-5">
         <Link
-          href={dashboardHref(range)}
+          href={dashboardHref(range, null, filter)}
           className="inline-flex min-h-11 items-center rounded-button border border-line bg-panel px-3 text-body font-semibold text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           ‹ Dashboard

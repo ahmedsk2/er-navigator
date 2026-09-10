@@ -12,6 +12,13 @@
  * never observed DST, but nothing here needs to depend on that staying true.
  */
 import { DAYS, TIMEZONE, riyadhParts } from '@/src/lib/domain/aggregates'
+import {
+  caseFilterQuery,
+  isEmptyFilter,
+  parseCaseFilter,
+  type CaseFilter,
+  type FilterParams,
+} from '@/src/lib/domain/case-filter'
 
 /** The status filter on the export page. VOIDED is never exported under any of them. */
 export const EXPORT_STATUSES = ['open', 'resolved', 'all'] as const
@@ -62,7 +69,18 @@ export const EXPORT_FORMAT_HELP: Record<ExportFormat, string> = {
 /** The prototype's default: `now - 7 days` to today, both as Riyadh calendar dates. */
 export const DEFAULT_RANGE_DAYS = 7
 
-export type ExportRange = { from: string; to: string; status: ExportStatus; format: ExportFormat }
+export type ExportRange = {
+  from: string
+  to: string
+  status: ExportStatus
+  format: ExportFormat
+  /**
+   * The Phase 10 case filter, ABSENT when there is none — not an empty object. A range with no
+   * filter is exactly the value it was before this phase, which is what keeps `exportRangeQuery`
+   * and `reportQuery` byte-identical for every link the export page has ever produced.
+   */
+  filter?: CaseFilter
+}
 
 const DATE_KEY = /^(\d{4})-(\d{2})-(\d{2})$/
 const pad = (n: number): string => String(n).padStart(2, '0')
@@ -152,37 +170,52 @@ export function defaultExportRange(now: Date): ExportRange {
   }
 }
 
-/** Anything missing or malformed falls back to the default range: a bad link is not an error. */
-export function parseExportRange(
-  params: {
-    from?: string | string[]
-    to?: string | string[]
-    status?: string | string[]
-    format?: string | string[]
-  },
-  now: Date,
-): ExportRange {
+const one = (value: string | string[] | undefined): string | string[] | undefined => value
+
+/**
+ * Anything missing or malformed falls back to the default range: a bad link is not an error.
+ *
+ * Takes the whole parameter bag — a route handler's `URLSearchParams` or Next's `searchParams` —
+ * because the case filter repeats its keys and `searchParams.get()` would keep only the first.
+ */
+export function parseExportRange(params: FilterParams, now: Date): ExportRange {
   const fallback = defaultExportRange(now)
+  const read = (key: string): string | string[] | undefined =>
+    params instanceof URLSearchParams ? one(params.get(key) ?? undefined) : one(params[key])
+  const filter = parseCaseFilter(params)
   return {
-    from: parseDateKey(params.from) ?? fallback.from,
-    to: parseDateKey(params.to) ?? fallback.to,
-    status: parseExportStatus(params.status),
-    format: parseExportFormat(params.format),
+    from: parseDateKey(read('from')) ?? fallback.from,
+    to: parseDateKey(read('to')) ?? fallback.to,
+    status: parseExportStatus(read('status')),
+    format: parseExportFormat(read('format')),
+    ...(isEmptyFilter(filter) ? {} : { filter }),
   }
 }
 
+/** The filter's keys, after the range's own, or nothing at all when there is no filter. */
+function withFilter(base: string, range: ExportRange): string {
+  const filter = range.filter ? caseFilterQuery(range.filter) : ''
+  return filter ? `${base}&${filter}` : base
+}
+
 export function exportRangeQuery(range: ExportRange): string {
-  return new URLSearchParams({
-    from: range.from,
-    to: range.to,
-    status: range.status,
-    format: range.format,
-  }).toString()
+  return withFilter(
+    new URLSearchParams({
+      from: range.from,
+      to: range.to,
+      status: range.status,
+      format: range.format,
+    }).toString(),
+    range,
+  )
 }
 
 /** The range's own query, without the format: what `/report` reads. */
 export function reportQuery(range: ExportRange): string {
-  return new URLSearchParams({ from: range.from, to: range.to, status: range.status }).toString()
+  return withFilter(
+    new URLSearchParams({ from: range.from, to: range.to, status: range.status }).toString(),
+    range,
+  )
 }
 
 /**

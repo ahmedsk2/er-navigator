@@ -1,8 +1,10 @@
 import type { Metadata } from 'next'
 import { ExportPanel } from '@/src/components/export/ExportPanel'
 import { requireAction } from '@/src/lib/auth/session'
+import { loadReference } from '@/src/lib/cases/reference'
+import { filterOptionsOf } from '@/src/lib/domain/case-filter'
 import { countCasesForExport } from '@/src/lib/export/load'
-import { defaultExportRange } from '@/src/lib/export/range'
+import { exportRangeQuery, parseExportRange } from '@/src/lib/export/range'
 
 export const metadata: Metadata = { title: 'Export · ER Navigator' }
 export const dynamic = 'force-dynamic'
@@ -13,13 +15,30 @@ export const dynamic = 'force-dynamic'
  * `app/forbidden.tsx` (Phase 7): hiding a tab is not a permission, and the two route handlers
  * behind the buttons check the same action again.
  *
- * The first count is server-rendered for the default range so the page is honest before any
- * JavaScript runs; the panel re-counts through `GET /api/export/count` as the dates change.
+ * The first count is server-rendered for the range in the address so the page is honest before
+ * any JavaScript runs; the panel re-counts through `GET /api/export/count` as the dates change.
+ * Since Phase 10 the address may also carry a case filter, which the panel applies to the count
+ * and both downloads alike — a filter is a navigation here as it is on the other two pages, so
+ * the whole request is one link.
  */
-export default async function ExportPage() {
+export default async function ExportPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
   await requireAction('export.xlsx')
 
-  const range = defaultExportRange(new Date())
-  const count = await countCasesForExport(range)
-  return <ExportPanel initialRange={range} initialCount={count} />
+  const range = parseExportRange(await searchParams, new Date())
+  const [count, reference] = await Promise.all([countCasesForExport(range), loadReference()])
+  return (
+    <ExportPanel
+      // The dates are the panel's own state and never navigate; applying a filter does, and a
+      // client-side navigation to the same route does not remount a component. Without this the
+      // panel would keep the range it mounted with and go on showing the unfiltered count.
+      key={exportRangeQuery(range)}
+      initialRange={range}
+      initialCount={count}
+      filterOptions={filterOptionsOf(reference)}
+    />
+  )
 }

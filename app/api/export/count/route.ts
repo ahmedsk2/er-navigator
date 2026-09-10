@@ -25,15 +25,8 @@ export async function GET(request: Request): Promise<Response> {
     throw error
   }
 
-  const params = new URL(request.url).searchParams
-  const range = parseExportRange(
-    {
-      from: params.get('from') ?? undefined,
-      to: params.get('to') ?? undefined,
-      status: params.get('status') ?? undefined,
-      format: params.get('format') ?? undefined,
-    },
-    new Date(),
-  )
+  // The whole parameter bag, not four `get`s: the Phase 10 case filter repeats its keys, and
+  // `get` would keep only the first stage a nurse selected.
+  const range = parseExportRange(new URL(request.url).searchParams, new Date())
   return exportCountResponse(user, range, await auditContext(user.id))
 }

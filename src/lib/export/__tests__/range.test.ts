@@ -15,6 +15,7 @@ import {
   riyadhWeekday,
   type ExportRange,
 } from '../range'
+import { EMPTY_FILTER } from '@/src/lib/domain/case-filter'
 
 /**
  * Asia/Riyadh is UTC+3 with no DST, so midnight local is 21:00 UTC the previous day. Every
@@ -130,6 +131,19 @@ describe('parseExportFormat', () => {
 describe('parseExportRange', () => {
   const now = new Date('2026-09-08T12:00:00Z')
 
+  it('leaves the filter off entirely when the query string names none', () => {
+    // Phase 10: `filter` is absent, not an empty object, so a range with no filter is exactly the
+    // value it was before this phase — which is what keeps the two query strings byte-identical.
+    expect(parseExportRange({ from: '2026-08-01', to: '2026-08-31' }, now).filter).toBeUndefined()
+    expect(parseExportRange({ from: '2026-08-01', not: '1', lone: '1' }, now).filter).toBeUndefined()
+  })
+
+  it('reads the case filter beside the range', () => {
+    expect(
+      parseExportRange({ from: '2026-08-01', to: '2026-08-31', stage: ['adm'], ctas: '3' }, now).filter,
+    ).toEqual({ ...EMPTY_FILTER, stage: ['adm'], ctas: [3] })
+  })
+
   it('reads a good query string', () => {
     expect(
       parseExportRange({ from: '2026-08-01', to: '2026-08-31', status: 'open', format: 'adaa' }, now),
@@ -160,6 +174,38 @@ describe('exportRangeQuery', () => {
 
   it('leaves it out of the report link, which has no formats', () => {
     expect(reportQuery(range)).toBe('from=2026-09-01&to=2026-09-08&status=all')
+  })
+
+  /**
+   * Phase 10. The case filter is appended after the range, and an empty one adds nothing — the
+   * two strings above are exactly what they were, filter or no filter in the type.
+   */
+  it('appends nothing for an empty filter', () => {
+    const empty: ExportRange = { ...range, filter: EMPTY_FILTER }
+    expect(exportRangeQuery(empty)).toBe('from=2026-09-01&to=2026-09-08&status=all&format=qch')
+    expect(reportQuery(empty)).toBe('from=2026-09-01&to=2026-09-08&status=all')
+  })
+
+  it('appends the filter to both links when one is set', () => {
+    const filtered: ExportRange = {
+      ...range,
+      filter: { ...EMPTY_FILTER, stage: ['adm'], ctas: [2, 3], lone: true },
+    }
+    expect(exportRangeQuery(filtered)).toBe(
+      'from=2026-09-01&to=2026-09-08&status=all&format=qch&stage=adm&ctas=2&ctas=3&lone=1',
+    )
+    expect(reportQuery(filtered)).toBe(
+      'from=2026-09-01&to=2026-09-08&status=all&stage=adm&ctas=2&ctas=3&lone=1',
+    )
+  })
+
+  it('round-trips through parseExportRange, so a pasted link is the same request', () => {
+    const now = new Date('2026-09-08T12:00:00Z')
+    const filtered: ExportRange = {
+      ...range,
+      filter: { ...EMPTY_FILTER, stage: ['adm'], payer: ['INSURED'], not: true },
+    }
+    expect(parseExportRange(new URLSearchParams(exportRangeQuery(filtered)), now)).toEqual(filtered)
   })
 })
 

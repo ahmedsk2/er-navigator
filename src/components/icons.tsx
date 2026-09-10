@@ -1,12 +1,12 @@
 /**
- * The app's icon set (Phase 9, two more in Phase 10): twenty-six line icons, 24 × 24, stroke 2,
+ * The app's icon set (Phase 9, three more in Phase 10): twenty-seven line icons, 24 × 24, stroke 2,
  * round caps, drawn in `currentColor`. Decorative by default (`aria-hidden`); pass `label` for
  * the rare standalone icon that carries meaning and it becomes `role="img"` with that name.
  *
  * Paths are copied from Lucide 1.43.0 (https://lucide.dev), ISC License, Copyright (c) 2026
  * Lucide Icons and Contributors: permission to use, copy, modify and distribute is granted
  * provided the notice appears, which it does here. Copied rather than installed: the locked plan
- * admits no new runtime dependency, and the app needs these twenty-six, not the library.
+ * admits no new runtime dependency, and the app needs these twenty-seven, not the library.
  */
 import type { ReactNode, SVGProps } from 'react'
 
@@ -140,6 +140,13 @@ export const FileText = (p: IconProps) =>
       <path d="M16 13H8" />
       <path d="M16 17H8" />
     </>,
+  )
+
+/** Lucide's "funnel": the filter bar's button, on the board, the dashboard and the export page. */
+export const Funnel = (p: IconProps) =>
+  icon(
+    p,
+    <path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" />,
   )
 
 export const History = (p: IconProps) =>

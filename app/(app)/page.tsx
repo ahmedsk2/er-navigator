@@ -3,6 +3,8 @@ import { Board } from '@/src/components/board/Board'
 import { requireUser } from '@/src/lib/auth/session'
 import { loadBoard } from '@/src/lib/board/load'
 import { parseFilter } from '@/src/lib/board/rows'
+import { loadReference } from '@/src/lib/cases/reference'
+import { caseFilterQuery, filterOptionsOf, parseCaseFilter } from '@/src/lib/domain/case-filter'
 
 export const metadata: Metadata = { title: 'ER board · ER Navigator' }
 export const dynamic = 'force-dynamic'
@@ -15,20 +17,37 @@ export const dynamic = 'force-dynamic'
  * asks for, so it must be read here; `q` is a client-side filter over the rows already sent, so
  * it is only handed through as the input's initial value.
  *
- * `key={filter}` is deliberate: a filter change is a navigation, and remounting is what discards
- * the previous tab's rows instead of showing them for one frame.
+ * The Phase 10 case filter is read here too, and applied to the rows the query returned (see
+ * `loadBoardRows`). It is a navigation like `f`, not a client filter like `q`, because the counts
+ * strip, the empty state and the handover sheet all have to be over the same set of cases.
+ *
+ * `key` is deliberate: a filter change is a navigation, and remounting is what discards the
+ * previous tab's rows instead of showing them for one frame.
  */
 export default async function BoardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ f?: string | string[]; q?: string | string[] }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const user = await requireUser()
   const params = await searchParams
   const filter = parseFilter(Array.isArray(params.f) ? params.f[0] : params.f)
   const query = (Array.isArray(params.q) ? params.q[0] : params.q) ?? ''
+  const caseFilter = parseCaseFilter(params)
 
-  const payload = await loadBoard(filter, new Date())
+  const [payload, reference] = await Promise.all([
+    loadBoard(filter, new Date(), caseFilter),
+    loadReference(),
+  ])
 
-  return <Board key={filter} initial={payload} initialQuery={query} printedBy={user.displayName} />
+  return (
+    <Board
+      key={`${filter}:${caseFilterQuery(caseFilter)}`}
+      initial={payload}
+      initialQuery={query}
+      caseFilter={caseFilter}
+      filterOptions={filterOptionsOf(reference)}
+      printedBy={user.displayName}
+    />
+  )
 }
