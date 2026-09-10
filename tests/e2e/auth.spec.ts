@@ -130,3 +130,53 @@ test.describe('signed in', () => {
     await expect(page.getByText('The two new passwords do not match.')).toBeVisible()
   })
 })
+
+/**
+ * The Phase 9 sign-in (Ahmed's direction A of 10 September). Every selector the specs above use
+ * is unchanged; what is new is geometry, and geometry is the one thing a class name cannot
+ * prove. Both facts are asserted at the real viewport: the hero is there on the phone and on the
+ * desktop, and on the desktop the form card sits in the right-hand column rather than centred.
+ */
+test.describe('the sign-in screen', () => {
+  test('leads with the hero, and on desktop puts the form card in the right half', async ({ page }, testInfo) => {
+    await fromClientIp(page, '198.51.100.41')
+    await page.goto('/login')
+
+    await expect(page.locator('[data-login-hero]')).toBeVisible()
+    // The hero wordmark is the page's one "ER Navigator" heading; the gate and smoke specs
+    // select it by name and a second one would make them ambiguous.
+    await expect(page.getByRole('heading', { name: 'ER Navigator' })).toHaveCount(1)
+
+    const card = page.locator('[data-login-card]')
+    await expect(card).toBeVisible()
+    const box = (await card.boundingBox())!
+    if (testInfo.project.name === 'desktop') {
+      expect(box.x).toBeGreaterThan(600)
+    } else {
+      // On the phone the card is the sheet's content: full width, below the hero.
+      expect(box.x).toBeLessThan(60)
+      expect(box.y).toBeGreaterThan(240)
+    }
+  })
+
+  test('the password can be revealed and hidden, and the toggle is not a second "Password"', async ({ page }) => {
+    await fromClientIp(page, '198.51.100.42')
+    await page.goto('/login')
+
+    const password = page.getByLabel('Password', { exact: true })
+    await password.fill('not-the-real-one')
+    await expect(password).toHaveAttribute('type', 'password')
+
+    const show = page.getByRole('button', { name: 'Show password' })
+    await expect(show).toHaveAttribute('aria-pressed', 'false')
+    await show.click()
+    await expect(password).toHaveAttribute('type', 'text')
+
+    const hide = page.getByRole('button', { name: 'Hide password' })
+    await expect(hide).toHaveAttribute('aria-pressed', 'true')
+    await hide.click()
+    await expect(password).toHaveAttribute('type', 'password')
+    // The typed value survives the round trip: the toggle must not remount the input.
+    await expect(password).toHaveValue('not-the-real-one')
+  })
+})

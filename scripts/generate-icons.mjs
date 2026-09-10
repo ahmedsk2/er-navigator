@@ -1,172 +1,84 @@
 /**
- * The app icons, drawn in code (Phase 7). `node scripts/generate-icons.mjs`.
+ * The app icons (Phase 9). `node scripts/generate-icons.mjs`.
  *
- * No image library and no logo from any template: the mark is the elapsed clock the whole app is
- * about — a white ring with an hour and a minute hand — knocked out of a rounded square in the
- * accent colour (`--color-accent`, #1f7a8c, design/tokens.md). It is rasterised here by hand,
- * supersampled 4x for smooth edges, and written as a PNG with nothing but `node:zlib`.
+ * Until now the icon was a clock drawn pixel by pixel with a signed-distance field, because the
+ * repo had no image library. Phase 9 gives the app a real mark — the heart with an ECG trace
+ * through it, `src/components/brand/Mark.tsx` — and the icons have to be that same mark or the
+ * home screen and the header disagree. Rasterising a two-path SVG by hand is not worth writing,
+ * so `sharp` comes in as a devDependency, pinned to 0.35.4, the version already in the lockfile
+ * (Next resolves it for image optimisation). Nothing at runtime imports it.
+ *
+ * The mark is white on a rounded square of `--color-accent` (#1f7a8c, design/tokens.md), which
+ * is also the manifest's `theme_color`. The paths below are a copy of the ones in Mark.tsx, with
+ * one deliberate difference: on screen the heart is an outline with the trace running through the
+ * hollow, and at 32 px that outline and that trace fuse into a blob. So the icon is the solid
+ * counterpart — a filled white heart with the trace knocked out of it in the accent — which is
+ * the same shape and survives a browser tab. Two files, one mark; a screenshot of the header
+ * beside the installed icon is the check.
  *
  * Outputs (regenerating them is idempotent; commit the result):
  *   public/icons/icon-192.png        192 maskable + any
  *   public/icons/icon-512.png        512 maskable + any
- *   public/apple-touch-icon.png      180, iOS home screen (no maskable concept, so no safe area)
+ *   public/apple-touch-icon.png      180, iOS home screen
  *   public/favicon.ico               32x32 PNG in an ICO container, for the browser tab
  *
- * Maskable means the whole square is painted and everything that must survive a circular crop
- * sits inside the middle 80% (the W3C safe zone). That is why the glyph is drawn at 52% of the
- * canvas here and rather larger on the Apple icon, which is never masked.
+ * Maskable means everything that must survive a circular crop sits inside the middle 80% (the
+ * W3C safe zone). The mark's drawn extent is very nearly as wide as it is tall, so its diagonal
+ * is about the size of its box: a box of 74% of the canvas puts the whole mark inside the 80%
+ * circle with room to spare. The Apple icon is never masked by the manifest's rules — iOS applies
+ * its own rounding — so it fills the square edge to edge and carries a slightly larger mark.
  */
-import { deflateSync } from 'node:zlib'
 import { Buffer } from 'node:buffer'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import sharp from 'sharp'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
-const ACCENT = [0x1f, 0x7a, 0x8c] // --color-accent
-const INK = [0xff, 0xff, 0xff]
+const ACCENT = '#1f7a8c' // --color-accent
+const INK = '#ffffff' // --color-panel
 
-/** Supersampling factor. 4 is enough that no edge on a 192 px icon reads as a staircase. */
-const SS = 4
-
-// --- geometry ----------------------------------------------------------------------------------
-
-/** Signed distance to a rounded square centred on (cx, cy), negative inside. */
-function roundedSquare(x, y, cx, cy, half, radius) {
-  const dx = Math.abs(x - cx) - (half - radius)
-  const dy = Math.abs(y - cy) - (half - radius)
-  const outside = Math.hypot(Math.max(dx, 0), Math.max(dy, 0))
-  return outside + Math.min(Math.max(dx, dy), 0) - radius
-}
-
-/** Signed distance to a line segment, negative inside a stroke of the given half-width. */
-function segment(x, y, ax, ay, bx, by, halfWidth) {
-  const vx = bx - ax
-  const vy = by - ay
-  const t = Math.max(0, Math.min(1, ((x - ax) * vx + (y - ay) * vy) / (vx * vx + vy * vy)))
-  return Math.hypot(x - (ax + t * vx), y - (ay + t * vy)) - halfWidth
-}
+/** The mark, on the 24 x 24 grid of src/components/brand/Mark.tsx. */
+const HEART = 'M12 21s-7-4.5-7-11a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 6.5-7 11-7 11z'
+const TRACE = 'M6 12h3l1.5-3 2 6 1.5-3H18'
+/**
+ * The drawn shape sits a little low in its 24-unit box (the heart's point reaches y 21, its
+ * shoulders start at 5.5), so it is lifted by this much to look centred rather than measured.
+ */
+const OPTICAL_LIFT = 1.25
 
 /**
- * The mark. `glyph` is the fraction of the canvas the clock occupies; `bleed` true paints the
- * whole square (maskable), false insets the tile so a transparent margin remains.
+ * @param {number} size canvas edge in px
+ * @param {{ glyph: number, tile: number, radius: number, trace: number }} opts
+ *   `glyph` is the mark's box as a fraction of the canvas, `tile` the painted square's edge as a
+ *   fraction of the canvas (1 fills it), `radius` the corner radius as a fraction of that square,
+ *   `trace` the ECG stroke width on the 24-unit grid — wider on the small icons, where a hairline
+ *   would disappear into the antialiasing.
  */
-function drawIcon(size, { glyph, bleed }) {
-  const pixels = Buffer.alloc(size * size * 4)
-  const s = size * SS
-  const c = s / 2
-  const tileHalf = bleed ? c : c * 0.94
-  const tileRadius = tileHalf * 0.235
-  const ringOuter = (s * glyph) / 2
-  const ringWidth = ringOuter * 0.155
-  const ringInner = ringOuter - ringWidth
-  const handWidth = ringWidth * 0.52
-  // Twelve and three: a short hand up, a long hand right. The watch-ad "ten past ten" pose makes
-  // a symmetrical V that reads as a tick at 32 px; this reads as a clock at every size.
-  const hourAngle = -Math.PI / 2
-  const minuteAngle = 0
-  const hourLen = ringInner * 0.5
-  const minuteLen = ringInner * 0.74
-
-  for (let py = 0; py < size; py += 1) {
-    for (let px = 0; px < size; px += 1) {
-      let r = 0
-      let g = 0
-      let b = 0
-      let a = 0
-      for (let sy = 0; sy < SS; sy += 1) {
-        for (let sx = 0; sx < SS; sx += 1) {
-          const x = px * SS + sx + 0.5
-          const y = py * SS + sy + 0.5
-          const inTile = roundedSquare(x, y, c, c, tileHalf, tileRadius) <= 0
-          if (!inTile) continue
-
-          const fromCentre = Math.hypot(x - c, y - c)
-          const onRing = fromCentre <= ringOuter && fromCentre >= ringInner
-          const onHour =
-            segment(x, y, c, c, c + Math.cos(hourAngle) * hourLen, c + Math.sin(hourAngle) * hourLen, handWidth) <= 0
-          const onMinute =
-            segment(
-              x,
-              y,
-              c,
-              c,
-              c + Math.cos(minuteAngle) * minuteLen,
-              c + Math.sin(minuteAngle) * minuteLen,
-              handWidth,
-            ) <= 0
-          const ink = onRing || onHour || onMinute
-          const [cr, cg, cb] = ink ? INK : ACCENT
-          r += cr
-          g += cg
-          b += cb
-          a += 255
-        }
-      }
-      const samples = SS * SS
-      const i = (py * size + px) * 4
-      if (a === 0) continue
-      // Premultiplied average over the covered samples, so the tile's edge fades cleanly.
-      const covered = a / 255
-      pixels[i] = Math.round(r / covered)
-      pixels[i + 1] = Math.round(g / covered)
-      pixels[i + 2] = Math.round(b / covered)
-      pixels[i + 3] = Math.round(a / samples)
-    }
-  }
-  return pixels
+function markSvg(size, { glyph, tile, radius, trace }) {
+  const square = size * tile
+  const inset = (size - square) / 2
+  const box = size * glyph
+  const scale = box / 24
+  const x = (size - box) / 2
+  const y = (size - box) / 2 - OPTICAL_LIFT * scale
+  return Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">` +
+      `<rect x="${inset}" y="${inset}" width="${square}" height="${square}" rx="${square * radius}" fill="${ACCENT}"/>` +
+      `<g transform="translate(${x} ${y}) scale(${scale})">` +
+      // The stroke on the heart is only there to round its point the way the outline mark does.
+      `<path d="${HEART}" fill="${INK}" stroke="${INK}" stroke-width="1.4" stroke-linejoin="round"/>` +
+      `<path d="${TRACE}" fill="none" stroke="${ACCENT}" stroke-width="${trace}" stroke-linecap="round" stroke-linejoin="round"/>` +
+      `</g></svg>`,
+    'utf8',
+  )
 }
 
-// --- PNG ---------------------------------------------------------------------------------------
-
-const CRC_TABLE = (() => {
-  const table = new Uint32Array(256)
-  for (let n = 0; n < 256; n += 1) {
-    let c = n
-    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
-    table[n] = c >>> 0
-  }
-  return table
-})()
-
-function crc32(buffer) {
-  let c = 0xffffffff
-  for (const byte of buffer) c = CRC_TABLE[(c ^ byte) & 0xff] ^ (c >>> 8)
-  return (c ^ 0xffffffff) >>> 0
-}
-
-function chunk(type, data) {
-  const length = Buffer.alloc(4)
-  length.writeUInt32BE(data.length)
-  const body = Buffer.concat([Buffer.from(type, 'latin1'), data])
-  const crc = Buffer.alloc(4)
-  crc.writeUInt32BE(crc32(body))
-  return Buffer.concat([length, body, crc])
-}
-
-/** RGBA8 PNG, filter type 0 on every row (the images are small; the gain is not worth the code). */
-function encodePng(size, pixels) {
-  const raw = Buffer.alloc(size * (size * 4 + 1))
-  for (let y = 0; y < size; y += 1) {
-    raw[y * (size * 4 + 1)] = 0
-    pixels.copy(raw, y * (size * 4 + 1) + 1, y * size * 4, (y + 1) * size * 4)
-  }
-  const ihdr = Buffer.alloc(13)
-  ihdr.writeUInt32BE(size, 0)
-  ihdr.writeUInt32BE(size, 4)
-  ihdr[8] = 8 // bit depth
-  ihdr[9] = 6 // colour type: RGBA
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk('IHDR', ihdr),
-    chunk('IDAT', deflateSync(raw, { level: 9 })),
-    chunk('IEND', Buffer.alloc(0)),
-  ])
-}
+const png = (size, opts) => sharp(markSvg(size, opts)).png({ compressionLevel: 9 }).toBuffer()
 
 /** A single-image ICO wrapping a PNG, which every browser since IE11 reads. */
-function encodeIco(size, png) {
+function encodeIco(size, image) {
   const header = Buffer.alloc(6)
   header.writeUInt16LE(0, 0)
   header.writeUInt16LE(1, 2) // type: icon
@@ -176,12 +88,10 @@ function encodeIco(size, png) {
   entry[1] = size < 256 ? size : 0
   entry.writeUInt16LE(1, 4) // colour planes
   entry.writeUInt16LE(32, 6) // bits per pixel
-  entry.writeUInt32LE(png.length, 8)
+  entry.writeUInt32LE(image.length, 8)
   entry.writeUInt32LE(header.length + entry.length, 12)
-  return Buffer.concat([header, entry, png])
+  return Buffer.concat([header, entry, image])
 }
-
-// --- write -------------------------------------------------------------------------------------
 
 function write(path, buffer) {
   const full = resolve(ROOT, path)
@@ -190,10 +100,13 @@ function write(path, buffer) {
   console.log(`${path}  ${buffer.length} bytes`)
 }
 
-const icon = (size, options) => encodePng(size, drawIcon(size, options))
-
-write('public/icons/icon-192.png', icon(192, { glyph: 0.52, bleed: true }))
-write('public/icons/icon-512.png', icon(512, { glyph: 0.52, bleed: true }))
-// iOS crops the corners itself and never masks, so the glyph can be bigger and the tile bleeds.
-write('public/apple-touch-icon.png', icon(180, { glyph: 0.66, bleed: true }))
-write('public/favicon.ico', encodeIco(32, icon(32, { glyph: 0.74, bleed: false })))
+// Maskable: the rounded tile fills the canvas and the mark stays inside the 80% safe circle.
+const MASKABLE = { glyph: 0.74, tile: 1, radius: 0.115, trace: 2.2 }
+write('public/icons/icon-192.png', await png(192, MASKABLE))
+write('public/icons/icon-512.png', await png(512, MASKABLE))
+// iOS rounds the corners itself, so the square is painted flat to the edge; a rounded tile here
+// would show its own transparent corners through Apple's mask.
+write('public/apple-touch-icon.png', await png(180, { glyph: 0.78, tile: 1, radius: 0, trace: 2.2 }))
+// The tab favicon is never masked and is tiny, so the tile is inset and the mark is as large as
+// the rounding allows, with the trace opened up to survive 32 px.
+write('public/favicon.ico', encodeIco(32, await png(32, { glyph: 0.8, tile: 0.94, radius: 0.235, trace: 2.4 })))

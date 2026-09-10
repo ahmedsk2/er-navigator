@@ -85,7 +85,9 @@ test('an admin creates a user, that user signs in, and deactivating them locks t
   await fromClientIp(their, '198.51.100.102')
   await their.goto('/login')
   await their.getByLabel('Username').fill(username)
-  await their.getByLabel('Password').fill(password)
+  // `exact`, as everywhere else in the suite: Phase 9 put a "Show password" toggle in the field,
+  // and getByLabel matches a substring by default.
+  await their.getByLabel('Password', { exact: true }).fill(password)
   await their.getByRole('button', { name: 'Sign in' }).click()
   await expect(their).toHaveURL('/')
 
@@ -102,7 +104,7 @@ test('an admin creates a user, that user signs in, and deactivating them locks t
 
   // And they cannot sign in again.
   await their.getByLabel('Username').fill(username)
-  await their.getByLabel('Password').fill(password)
+  await their.getByLabel('Password', { exact: true }).fill(password)
   await their.getByRole('button', { name: 'Sign in' }).click()
   await expect(their.getByRole('alert')).toBeVisible()
   await expect(their).toHaveURL(/\/login/)

@@ -1,7 +1,7 @@
 'use client'
 
-import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { BoardLink, HoldingScreen } from '@/src/components/holding'
 import { isStaleBuild } from '@/src/lib/build-check'
 
 /**
@@ -45,25 +45,25 @@ export default function ErrorPage({ error, reset }: { error: Error & { digest?: 
 
   if (reloading) {
     return (
-      <main className="mx-auto max-w-md p-4 pt-8">
+      <HoldingScreen>
         <h1 className="text-title">ER Navigator was updated</h1>
         <p className="mt-3 text-body text-ink-2">
           This screen was open while a new version went live. Reloading it now; nothing you typed on a
           previous screen was changed by this.
         </p>
-      </main>
+      </HoldingScreen>
     )
   }
 
   return (
-    <main className="mx-auto max-w-md p-4 pt-8">
+    <HoldingScreen>
       <h1 className="text-title">Something went wrong</h1>
       <p className="mt-3 text-body text-ink-2">
         This screen could not be shown. Nothing you typed on a previous screen was changed by this. Try
         again, or go back to the board.
         {error.digest ? <span className="block text-caption text-muted">Reference {error.digest}</span> : null}
       </p>
-      <div className="mt-6 flex gap-3">
+      <div className="mt-6 flex flex-wrap gap-3">
         <button
           type="button"
           onClick={() => reset()}
@@ -71,12 +71,7 @@ export default function ErrorPage({ error, reset }: { error: Error & { digest?: 
         >
           Try again
         </button>
-        <Link
-          href="/"
-          className="inline-flex min-h-11 items-center rounded-button border border-line bg-panel px-4 text-body font-semibold text-accent-ink"
-        >
-          ‹ Board
-        </Link>
+        <BoardLink />
         <button
           type="button"
           onClick={() => window.location.reload()}
@@ -85,6 +80,6 @@ export default function ErrorPage({ error, reset }: { error: Error & { digest?: 
           Reload
         </button>
       </div>
-    </main>
+    </HoldingScreen>
   )
 }
