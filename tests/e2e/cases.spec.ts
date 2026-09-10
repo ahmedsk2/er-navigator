@@ -673,8 +673,11 @@ test('the case summary opens over the case, names it, and copies itself as text'
   await expect(summaryRow(dialog, 'Waiting on')).toContainText(REASON)
   await expect(dialog.locator('[data-summary-timeline]')).toContainText('Registration')
   // The panel is a reading of the case, not a second editor: the note is counted, never quoted.
-  // The negative check is on the whole dialog, so it covers the hidden copy text as well.
-  await expect(summaryRow(dialog, 'Updates')).toBeVisible()
+  // The count comes first. The page rendered this summary before the note existed, and it holds
+  // the note only once the update's own revalidation has rendered the page again; until then the
+  // check that the note is not quoted passes whatever the summary does with it. That check is on
+  // the whole dialog, so it covers the hidden copy text as well.
+  await expect(summaryRow(dialog, 'Updates').getByRole('cell')).toHaveText(/^1, last \d\d\/\d\d \d\d:\d\d$/)
   await expect(dialog).not.toContainText('Mrs Haddad')
 
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
@@ -688,6 +691,8 @@ test('the case summary opens over the case, names it, and copies itself as text'
   expect(copied).toContain(`* ${REASON} (Admission process)`)
   expect(copied).toContain('Time sequence:')
   expect(copied).toContain('Registration')
+  // The same reading of the case: the note counted, and not quoted.
+  expect(copied).toMatch(/^Updates: 1, last \d\d\/\d\d \d\d:\d\d$/m)
   expect(copied).not.toContain('Mrs Haddad')
 
   // Escape leaves the panel and puts the keyboard back on the button that opened it.
