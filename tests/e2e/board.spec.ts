@@ -217,9 +217,12 @@ test('a row opens its summary without leaving the board, and adds no second link
   await page.locator(`[data-summary-for="${LONGEST.mrn}"]`).click()
   const dialog = page.getByRole('dialog', { name: 'Case summary' })
   await expect(dialog).toBeVisible()
-  await expect(dialog).toContainText(LONGEST.mrn)
-  await expect(dialog).toContainText(LONGEST.reason.name)
-  await expect(dialog).toContainText('Registration')
+  // Read where the panel shows it. The dialog also holds the whole copy text in a hidden <pre>,
+  // and `toContainText` reads hidden text too, so a check on the dialog as a whole would still
+  // pass with the table and the time sequence gone.
+  await expect(dialog.getByRole('row', { name: /^MRN/ })).toContainText(LONGEST.mrn)
+  await expect(dialog.getByRole('row', { name: /^Waiting on/ })).toContainText(LONGEST.reason.name)
+  await expect(dialog.locator('[data-summary-timeline]')).toContainText('Registration')
 
   // One row, one link: the control that opened this is not one of them.
   await expect(page.locator('a[data-mrn]')).toHaveCount(rows)
