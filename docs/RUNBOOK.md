@@ -350,10 +350,12 @@ it never asks for anything new.
 
 ## Monitoring
 
-Uptime Kuma (`uptime.towardpcc.com`), two monitors (Phase 7; both still to be created by Ahmed):
+Uptime Kuma (`uptime.towardpcc.com`, Coolify service `f20u98778pmpgcwkl97ihmgl`), two monitors, both created 10 September 2026 with the default email notification (Ahmed's Gmail):
 
-1. HTTP monitor on `https://nav.towardpcc.com/api/ready`, keyword `"status":"ready"`, accepted status codes 200-299 (Kuma's default), interval 60 s. Covers the app and the database: a database outage answers 503 with `{"status":"database unreachable"}`, which fails both checks.
-2. Push monitor for the worker: type "Push", heartbeat interval 900 s (three five-minute cycles), retries 1. Kuma shows a URL of the form `https://uptime.towardpcc.com/api/push/<token>?status=up&msg=OK&ping=`. Paste that URL into Coolify → er-navigator → Environment Variables as `ALERT_PUSH_URL` (both copies) and redeploy. The worker GETs it after every successful cycle and logs `pushMonitor: set` at start; Kuma alerts when the pushes stop, which is the only thing that notices a worker that is hung, crash-looping or unable to reach the database (the container healthcheck goes unhealthy but Docker does not restart on that, and `/api/ready` stays green).
+1. `ER Navigator — ready` (monitor 8): HTTP(s) - Keyword on `https://nav.towardpcc.com/api/ready`, keyword `"status":"ready"`, accepted status codes 200-299 (Kuma's default), interval 60 s, retries 1. Covers the app and the database: a database outage answers 503 with `{"status":"database unreachable"}`, which fails both checks.
+2. `ER Navigator — worker` (monitor 9): type Push, heartbeat interval 900 s (three five-minute cycles), retries 1. Its URL `https://uptime.towardpcc.com/api/push/<token>?status=up&msg=OK&ping=` is `ALERT_PUSH_URL` in both Coolify copies (set through the API the same day). The worker GETs it after every successful cycle, logs `pushMonitor: set` at start and `push monitor answered { status: 200 }` per cycle; Kuma alerts when the pushes stop, which is the only thing that notices a worker that is hung, crash-looping or unable to reach the database (the container healthcheck goes unhealthy but Docker does not restart on that, and `/api/ready` stays green).
+
+The Kuma UI sits behind a Traefik basic-auth middleware (`kuma-auth`, a label in the service's compose), which also answered 401 to the push URL. The service's compose therefore carries a second router, `https-push-f20u98778pmpgcwkl97ihmgl-uptime-kuma`, for `Host(uptime.towardpcc.com) && PathPrefix(/api/push/)` with the `gzip` middleware only and priority 100: the push endpoint is authenticated by its per-monitor token, the rest of the site stays guarded. If the Kuma service is ever recreated from scratch, that router has to come back or every push monitor on this host answers 401 (the worker logs the status it got). To change the token, use Reset Token on the monitor, then update `ALERT_PUSH_URL` in both copies and Redeploy (a Restart keeps the old environment).
 
 OCI alarms already cover host down and CPU.
 
