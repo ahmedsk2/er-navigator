@@ -70,3 +70,26 @@ test('the rail names the signed-in user, and the phone does not', async ({ page 
     await expect(nav.getByText('Navigator', { exact: true })).toBeVisible()
   }
 })
+
+/**
+ * The desktop shell is a grid with a 232 px rail and a content column of its own width. On paper
+ * the rail is gone and the handover sheet is the page — which it stopped being the moment the
+ * grid arrived, because a `print:` utility and an `lg:` utility are both media rules and which of
+ * them wins is a question of stylesheet order. `.shell-grid` / `.shell-main` in `app/globals.css`
+ * settle it; this is the assertion that says so.
+ */
+test('the handover sheet is the width of the paper, not of the content column', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'the phone column was never narrowed by the grid')
+  await fromClientIp(page, '198.51.100.137')
+  await signIn(page, E2E_USERS.navigator)
+  await page.getByLabel('Search MRN').fill(BOARD_MRN_PREFIX)
+
+  await page.emulateMedia({ media: 'print' })
+  const sheet = page.locator('section.print-only')
+  await expect(sheet).toBeVisible()
+  const box = await sheet.boundingBox()
+  expect(box).not.toBeNull()
+  expect(box!.x).toBeLessThan(24)
+  expect(box!.width).toBeGreaterThan(1200)
+  await page.emulateMedia({ media: 'screen' })
+})

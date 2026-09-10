@@ -34,13 +34,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // container relaxes its width for them. At 390 the max-width never binds either way, and from
   // `lg` the grid is full width for every page, so the rule only ever applies to a wide phone.
   return (
-    <div className="mx-auto flex min-h-dvh max-w-md flex-col has-[[data-wide]]:max-w-[1200px] print:max-w-none lg:grid lg:max-w-none lg:grid-cols-[232px_minmax(0,1fr)] lg:has-[[data-wide]]:max-w-none">
+    <div className="shell-grid mx-auto flex min-h-dvh max-w-md flex-col has-[[data-wide]]:max-w-[1200px] print:max-w-none lg:grid lg:max-w-none lg:grid-cols-[232px_minmax(0,1fr)] lg:has-[[data-wide]]:max-w-none">
       {/*
         The rail's column, painted navy for its whole height so a page longer than the screen does
         not end the colour where the viewport ends; the nav inside it is what sticks. Until `lg`
         this wrapper is `display: contents` and the nav is `fixed` at the foot of the phone.
       */}
-      <div className="contents print:hidden lg:block lg:bg-navy">
+      <div className="no-print contents lg:block lg:bg-navy">
         <TabBar
           showExport={can(user.role, 'export.xlsx')}
           showAdmin={user.role === 'ADMIN'}
@@ -58,7 +58,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <OverflowMenu displayName={user.displayName} roleLabel={ROLE_LABELS[user.role]} />
         </header>
 
-        <main className="flex-1 pb-32 lg:mx-auto lg:w-full lg:max-w-[1200px] lg:px-6 lg:pb-16">{children}</main>
+        <main className="shell-main flex-1 pb-32 lg:mx-auto lg:w-full lg:max-w-[1200px] lg:px-6 lg:pb-16">{children}</main>
       </div>
 
       {can(user.role, 'case.create') ? <NewCaseFab /> : null}
