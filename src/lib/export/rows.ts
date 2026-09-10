@@ -23,6 +23,7 @@ import {
   INVESTIGATION_LABELS,
   INVESTIGATION_STEPS,
   MILESTONES,
+  PAYER_LABELS,
   SHIFT_LABELS,
   TRANSFER_STEPS,
 } from '@/src/lib/domain/taxonomy'
@@ -40,9 +41,12 @@ export type ExportUpdate = { at: Date; text: string; authorName: string }
 /**
  * Phase 8 widened `CaseForStats` with most of the journey, the ward code, CTAS and the ED area,
  * so what is left here is only what the workbook alone shows: the room, the rest of the transfer
- * chain, the referral details, isolation, the note, the labels and the update text.
+ * chain, the referral details, isolation, the note, the labels and the update text. Phase 10 adds
+ * the working diagnosis; the payer arrives on `CaseForStats` with the dashboard's own select.
  */
 export type CaseForExport = CaseForStats & {
+  /** The one-line working diagnosis (Phase 10), or null. */
+  diagnosis: string | null
   navigatorName: string
   /** The navigator's login, which the QCH sheet's "ID Number" column carries beside the name. */
   navigatorUsername: string
@@ -102,6 +106,10 @@ export const CASES_HEADER: string[] = [
   // monthly deck splits everything by ED area, so both sit beside the shift they qualify.
   'CTAS',
   'ED area',
+  // Phase 10 (Ahmed, 10 September): what the patient came in with, and who pays. Beside the ED
+  // area for the same reason CTAS is beside the shift — they qualify the case, not the delay.
+  'Working diagnosis',
+  'Payer',
   'Navigator',
   'Stages',
   'Primary reason',
@@ -134,6 +142,8 @@ export function casesRow(c: CaseForExport, now: Date): Cell[] {
     c.shift ? SHIFT_LABELS[c.shift] : '',
     c.ctas == null ? '' : String(c.ctas),
     c.areaName ?? '',
+    c.diagnosis ?? '',
+    c.payer ? PAYER_LABELS[c.payer] : '',
     c.navigatorName,
     join(c.stageNames),
     c.primaryReasonLabel ?? '',
