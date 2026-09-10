@@ -16,7 +16,8 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { PageHeader } from '@/src/components/shell/PageHeader'
-import { Field, Select } from '@/src/components/ui'
+import { Download, Printer } from '@/src/components/icons'
+import { BUTTON_MAIN, BUTTON_QUIET, Field, Input, Select } from '@/src/components/ui'
 import {
   EXPORT_FORMATS,
   EXPORT_FORMAT_HELP,
@@ -31,11 +32,13 @@ import {
 } from '@/src/lib/export/range'
 import type { ExportCountPayload } from '@/src/lib/export/service'
 
-const DATE_INPUT =
-  'w-full min-h-11 rounded-field border border-line bg-panel px-3 py-2.5 text-input text-ink outline-none ' +
-  'focus:border-accent focus:ring-2 focus:ring-accent-soft'
-
-const LINK_BASE = 'flex min-h-11 w-full items-center justify-center rounded-button px-4 text-body font-semibold'
+/**
+ * The two download controls are links, not buttons, so they cannot be <Button>; they take the
+ * button tones from the same module instead. Until Phase 9 this file carried its own copy of the
+ * input and button strings, which is exactly how a primitive drifts.
+ */
+const LINK_BASE =
+  'flex min-h-11 w-full items-center justify-center gap-2 rounded-button px-4 text-body font-semibold'
 
 export function ExportPanel({
   initialRange,
@@ -75,7 +78,7 @@ export function ExportPanel({
     <div>
       <PageHeader title="Export and print" />
 
-      <section className="mb-2.5 border-y border-line bg-panel p-4">
+      <section className="mx-4 mb-2.5 rounded-card border border-line bg-panel p-4 shadow-card lg:mx-0 lg:max-w-[560px]">
         {/*
           Above the range, because it changes what the two buttons below mean: the same cases,
           three different files. The one-line help under it is the whole of the choice — the
@@ -101,9 +104,8 @@ export function ExportPanel({
         <div className="flex gap-2.5">
           <div className="min-w-0 flex-1">
             <Field label="From (registration date)">
-              <input
+              <Input
                 type="date"
-                className={DATE_INPUT}
                 value={range.from}
                 max={range.to}
                 onChange={(e) => setRange((r) => ({ ...r, from: e.target.value || r.from }))}
@@ -112,9 +114,8 @@ export function ExportPanel({
           </div>
           <div className="min-w-0 flex-1">
             <Field label="To">
-              <input
+              <Input
                 type="date"
-                className={DATE_INPUT}
                 value={range.to}
                 min={range.from}
                 onChange={(e) => setRange((r) => ({ ...r, to: e.target.value || r.to }))}
@@ -149,17 +150,19 @@ export function ExportPanel({
         {empty ? (
           <span
             aria-disabled="true"
-            className={`${LINK_BASE} mb-2.5 cursor-not-allowed bg-accent text-white opacity-60`}
+            className={`${LINK_BASE} ${BUTTON_MAIN} mb-2.5 cursor-not-allowed opacity-60`}
             data-download-disabled
           >
+            <Download size={18} />
             Download Excel
           </span>
         ) : (
           <a
             href={`/api/export.xlsx?${query}`}
-            className={`${LINK_BASE} mb-2.5 bg-accent text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2`}
+            className={`${LINK_BASE} ${BUTTON_MAIN} mb-2.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2`}
             data-download
           >
+            <Download size={18} />
             Download Excel
           </a>
         )}
@@ -168,9 +171,10 @@ export function ExportPanel({
           href={`/report?${reportQuery(range)}`}
           target="_blank"
           rel="noreferrer"
-          className={`${LINK_BASE} border border-line bg-panel text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent`}
+          className={`${LINK_BASE} ${BUTTON_QUIET} focus:outline-none focus-visible:ring-2 focus-visible:ring-accent`}
           data-print-report
         >
+          <Printer size={18} />
           Print report
         </Link>
 
