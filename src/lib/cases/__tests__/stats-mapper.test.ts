@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CASE_STATS_SELECT, toCaseForStats, type CaseStatsRow } from '@/src/lib/cases/stats-mapper'
+import { CASE_STATS_SELECT, toCaseForStats, toFilterableCase, type CaseStatsRow } from '@/src/lib/cases/stats-mapper'
 import { consultRows, dashboard, otherQueue } from '@/src/lib/domain/aggregates'
 
 /**
@@ -462,5 +462,82 @@ describe('toCaseForStats', () => {
     )
     expect(resolvedOnly.updateActions).toEqual([])
     expect(resolvedOnly.untaggedUpdatesCount).toBe(0)
+  })
+})
+
+/**
+ * Phase 10 review. The seven fields `matchesFilter` reads, off any row that has their relations:
+ * the dashboard's and the workbook's through `toCaseForStats`, and the export count's slim select,
+ * which asks for these columns and nothing else. One adapter, so the count on /export cannot read
+ * a case differently from the file it counts.
+ */
+describe('toFilterableCase', () => {
+  /** Exactly what the export's count selects. */
+  const slim = {
+    ctas: 3,
+    payer: 'INSURED' as const,
+    disposition: 'ADMITTED' as const,
+    area: { code: 'RESUS' },
+    reasons: [
+      { reason: { name: 'No bed available on accepting ward', stage: { code: 'adm' } } },
+      { reason: { name: 'Lab: delay in processing', stage: { code: 'inv' } } },
+      { reason: { name: 'Imaging: report delay', stage: { code: 'inv' } } },
+    ],
+    consults: [{ department: { name: 'MROD' } }, { department: { name: 'ICU' } }],
+  }
+
+  it('reads each field from its own column: stages by code, reasons by name, the area by code', () => {
+    expect(toFilterableCase(slim)).toEqual({
+      stageCodes: ['adm', 'inv'],
+      reasonNames: ['No bed available on accepting ward', 'Lab: delay in processing', 'Imaging: report delay'],
+      departmentNames: ['MROD', 'ICU'],
+      areaCode: 'RESUS',
+      ctas: 3,
+      payer: 'INSURED',
+      disposition: 'ADMITTED',
+    })
+  })
+
+  it('leaves what a case did not record empty, rather than inventing a value', () => {
+    expect(
+      toFilterableCase({ ...slim, ctas: null, payer: null, disposition: null, area: null, reasons: [], consults: [] }),
+    ).toEqual({
+      stageCodes: [],
+      reasonNames: [],
+      departmentNames: [],
+      areaCode: null,
+      ctas: null,
+      payer: null,
+      disposition: null,
+    })
+  })
+
+  it('is what toCaseForStats carries, whatever order the reasons came back in', () => {
+    const full = row({
+      ctas: 4,
+      payer: 'SELF_PAY',
+      disposition: 'DISCHARGED_HOME',
+      area: { name: 'Rapid assessment zone', code: 'RAZ' },
+      reasons: [
+        reason('Investigations', 5, null, 'Lab: delay in processing'),
+        reason('Registration', 1, null, 'Registration desk/system delay'),
+        reason('Investigations', 5, null, 'Imaging: report delay'),
+      ],
+      consults: [{ department: { name: 'MROD' }, consultedAt: at('2026-09-08T07:00:00Z'), seenAt: null, repliedAt: null }],
+    })
+    const stats = toCaseForStats(full)
+    const own = toFilterableCase(full)
+    // The same sets, which is all `matchesFilter` reads; toCaseForStats keeps its stage order.
+    expect(new Set(own.stageCodes)).toEqual(new Set(stats.stageCodes))
+    expect(new Set(own.reasonNames)).toEqual(new Set(stats.reasonNames))
+    expect(stats.stageCodes).toEqual(['registration', 'investigations'])
+    expect(stats.reasonNames).toEqual(['Registration desk/system delay', 'Lab: delay in processing', 'Imaging: report delay'])
+    expect([own.departmentNames, own.areaCode, own.ctas, own.payer, own.disposition]).toEqual([
+      stats.departmentNames,
+      stats.areaCode,
+      stats.ctas,
+      stats.payer,
+      stats.disposition,
+    ])
   })
 })

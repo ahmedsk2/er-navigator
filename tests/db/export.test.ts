@@ -13,7 +13,7 @@ import { fmtFormDate } from '@/src/lib/export/format'
 import { countCasesForExport, loadCasesForExport } from '@/src/lib/export/load'
 import { QCH_COLUMNS, QCH_GROUP_HEADER, QCH_HEADER } from '@/src/lib/export/qch'
 import { addDays, riyadhDateKey, riyadhDayStart, type ExportRange } from '@/src/lib/export/range'
-import { EMPTY_FILTER } from '@/src/lib/domain/case-filter'
+import { EMPTY_FILTER, type CaseFilter } from '@/src/lib/domain/case-filter'
 import { exportCountResponse, exportWorkbookResponse } from '@/src/lib/export/service'
 import { XLSX_CONTENT_TYPE } from '@/src/lib/export/workbook'
 
@@ -82,6 +82,12 @@ function reasonNamed(code: string, name: string): string {
 const departmentNamed = (name: string): string => {
   const found = reference.departments.find((d) => d.name === name)
   if (!found) throw new Error(`the seed has no "${name}" department`)
+  return found.id
+}
+
+const areaCoded = (code: string): string => {
+  const found = reference.areas.find((a) => a.code === code)
+  if (!found) throw new Error(`the seed has no "${code}" ED area`)
   return found.id
 }
 
@@ -213,8 +219,18 @@ beforeAll(async () => {
   if (!tagged.ok) throw new Error(`expected the tagged update to append, got ${JSON.stringify(tagged)}`)
 
   // Day one, 22:00 Riyadh — 19:00 UTC, so a server that filtered on its own calendar day would
-  // still catch this one; the case below is the one that proves the boundary.
-  const two = await openCase(navigator, { registrationAt: at(DAY_ONE, 22).toISOString(), shift: 'NIGHT' })
+  // still catch this one; the case below is the one that proves the boundary. Phase 10 review:
+  // it is also the one case in the window with a second stage and an ED area, so the case filter
+  // has a stage, a reason and an area that keep it alone, and a lone finding that leaves it out.
+  const two = await openCase(navigator, {
+    registrationAt: at(DAY_ONE, 22).toISOString(),
+    shift: 'NIGHT',
+    areaId: areaCoded('RESUS'),
+    reasons: [
+      { reasonId: reasonNamed('adm', 'No bed available on accepting ward'), otherText: null },
+      { reasonId: reasonNamed('inv', 'Lab: delay in processing'), otherText: null },
+    ],
+  })
   seeded.open2 = two.input.mrn
 
   // Day two, resolved six hours later. Phase 8b: it is the one case with a disposition decision E
@@ -401,22 +417,33 @@ describe('GET /api/export.xlsx as a SUPERVISOR', () => {
    * Phase 10. The count on `/export` and the rows in the file have to be the same number, or the
    * page is lying about what the button will download — so both go through `matchesFilter` over
    * the same window. `open1` is the only case in the range with a CTAS and the only one with a
-   * consulted team, so each of these filters keeps exactly one case.
+   * consulted team; `open2` the only one with a second stage and an area.
+   *
+   * One row per dimension the predicate reads (Phase 10 review): the count used to build its own
+   * case from a slim select, and a slip there — stage codes read off the reason names, no reason
+   * names, no area — made the page say "0 cases in range" over a file that has rows. So every
+   * expectation is exact and none is empty: a count and a file that both read zero agree too.
    */
   it('narrows the count and the workbook alike, to the same cases', async () => {
-    for (const filter of [
-      { ...EMPTY_FILTER, ctas: [3] },
-      { ...EMPTY_FILTER, dept: ['MROD'] },
-      { ...EMPTY_FILTER, ctas: [3], dept: ['MROD'] },
-    ]) {
+    const filters: Array<[string, CaseFilter, string[]]> = [
+      ['a CTAS', { ...EMPTY_FILTER, ctas: [3] }, [seeded.open1]],
+      ['a consulted team', { ...EMPTY_FILTER, dept: ['MROD'] }, [seeded.open1]],
+      ['both at once', { ...EMPTY_FILTER, ctas: [3], dept: ['MROD'] }, [seeded.open1]],
+      ['a stage, by its code', { ...EMPTY_FILTER, stage: ['inv'] }, [seeded.open2]],
+      ['a reason, by its name', { ...EMPTY_FILTER, reason: ['Lab: delay in processing'] }, [seeded.open2]],
+      ['an ED area, by its code', { ...EMPTY_FILTER, area: ['RESUS'] }, [seeded.open2]],
+      // All three carry an Admission process reason; only two carry nothing else.
+      ['the lone finding', { ...EMPTY_FILTER, stage: ['adm'], lone: true }, [seeded.open1, seeded.resolved]],
+    ]
+    for (const [label, filter, expected] of filters) {
       const range: ExportRange = { ...RANGE, filter }
       const count = await countCasesForExport(range)
       const workbook = await workbookOf(
         await exportWorkbookResponse(supervisor, range, ctxFor(supervisor.id), new Date()),
       )
       const mrns = columnValues(workbook.getWorksheet('Cases')!, 'MRN')
-      expect(mrns).toEqual([seeded.open1])
-      expect(count, 'the live count is the number of rows the file holds').toBe(mrns.length)
+      expect(mrns.sort(), label).toEqual([...expected].sort())
+      expect(count, `${label}: the live count is the number of rows the file holds`).toBe(mrns.length)
     }
 
     // And the complement: `not` keeps the other two cases in the window and drops that one.
