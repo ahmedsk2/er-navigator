@@ -21,8 +21,12 @@
  * carrying the colour and the number beats two, and it survives the five-column row, where a
  * stripe on the far left would be 900 px from the time it describes.
  *
+ * Phase 10 adds one control beside the card: the summary button, a sibling of the link inside the
+ * `<li>`, standing in the gutter the desktop label strip now reserves as its sixth column.
+ *
  * No `'use client'` of its own: the board renders it inside a client component, the dashboard
- * (Phase 4) reuses it from a server component, and it has no state either way.
+ * (Phase 4) reuses it from a server component, and it has no state either way. The summary button
+ * is a client component of its own, which a server component may render.
  */
 import Link from 'next/link'
 import {
@@ -40,14 +44,24 @@ import type { BoardRow } from '@/src/lib/board/types'
 import { fmtStamp } from '@/src/lib/cases/local-time'
 import { fmtHours, spokenHours } from '@/src/lib/domain/time'
 import { BAND_PILL } from '@/src/components/bands'
+import { RowSummaryButton } from './RowSummaryButton'
 
 // Band → class maps live in src/components/bands.ts since Phase 9 (one copy for the three readers).
 
 /**
- * The five desktop columns, shared with the label strip `Board.tsx` draws above the list so the
- * two line up. Exported as a string because Tailwind needs the literal in the class attribute.
+ * The desktop template for the label strip `Board.tsx` draws above the list. Six columns for five
+ * labels: the sixth is the gutter the row's summary button stands in (Phase 10), and leaving it
+ * empty is what keeps "Last update" and "Elapsed" over the cells they name. Exported as a string
+ * because Tailwind needs the literal in the class attribute.
  */
-export const ROW_COLUMNS = 'lg:grid-cols-[140px_120px_minmax(0,1fr)_180px_110px]'
+export const ROW_COLUMNS = 'lg:grid-cols-[140px_120px_minmax(0,1fr)_180px_110px_44px]'
+
+/**
+ * The card's own five columns. The same widths as the strip's first five, over a card that is
+ * exactly the button and its gap narrower than the strip — so the two line up to the pixel while
+ * the button sits outside the link, where a control nested in an anchor cannot be.
+ */
+const CARD_COLUMNS = 'lg:grid-cols-[140px_120px_minmax(0,1fr)_180px_110px]'
 
 /** What a cell does on the phone, undone at `lg` so the five columns can fill themselves. */
 const CELL_RESET = 'lg:col-start-auto lg:row-start-auto lg:col-span-1 lg:row-span-1'
@@ -60,12 +74,15 @@ export function BoardRowItem({ row, now }: { row: BoardRow; now: Date }) {
   const chips = identityChips(row)
 
   return (
-    <li>
+    // The margins that used to sit on the card now sit here, because the card is no longer the
+    // only child: the summary button is its sibling, never its descendant (a button inside an
+    // anchor is invalid, and `a[data-mrn]` is counted per row in three specs).
+    <li className="mx-4 my-2 flex items-center gap-2 lg:mx-0 lg:gap-3">
       <Link
         href={`/cases/${row.id}`}
         data-mrn={row.mrn}
         data-band={rowBand}
-        className={`mx-4 my-2 grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-0.5 rounded-card border border-line-soft bg-panel p-3.5 shadow-card focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset lg:mx-0 lg:my-2 lg:items-center lg:gap-y-0 lg:px-4 lg:py-3 ${ROW_COLUMNS}`}
+        className={`grid min-h-11 min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-0.5 rounded-card border border-line-soft bg-panel p-3.5 shadow-card focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset lg:items-center lg:gap-y-0 lg:px-4 lg:py-3 ${CARD_COLUMNS}`}
       >
         {/*
           The identity line. On the phone the MRN, the chips and the registration stamp are one
@@ -147,6 +164,9 @@ export function BoardRowItem({ row, now }: { row: BoardRow; now: Date }) {
           <span aria-hidden="true">{fmtHours(hours)}</span>
         </span>
       </Link>
+
+      {/* Phase 10: "what is happening with this patient", without leaving the board. */}
+      <RowSummaryButton caseId={row.id} mrn={row.mrn} />
     </li>
   )
 }
