@@ -155,12 +155,24 @@ test('the filter narrows the board, says so, and the poll keeps it', async ({ pa
   const [, shown, total] = /^(\d+) of (\d+) open cases$/.exec(countLine) ?? []
   expect(Number(total), countLine).toBeGreaterThan(Number(shown))
 
-  // The 30 s poll carries the filter: a board narrowed to one stage must stay narrowed.
-  const polled = await page.waitForRequest((request) => /\/api\/board\?/.test(request.url()), {
+  // The 30 s poll carries the filter, and its answer keeps it: a board narrowed to one stage must
+  // stay narrowed. The answer and not just the request, because a route that ignored the filter
+  // would still have been asked with it. Then the board itself, read again once the answer has
+  // had two frames to be drawn, so the rows counted are the poll's and not the first paint's.
+  const polled = await page.waitForResponse((response) => /\/api\/board\?/.test(response.url()), {
     timeout: 45_000,
   })
   expect(polled.url()).toContain('stage=inv')
+  expect(polled.status()).toBe(200)
+  const answer = (await polled.json()) as { rows: Array<{ mrn: string; stageCodes: string[] }> }
+  expect(answer.rows.map((r) => r.mrn)).toContain('3100003')
+  expect(answer.rows.filter((r) => !r.stageCodes.includes('inv')).map((r) => r.mrn)).toEqual([])
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  )
   await expect(rowFor(page, '3100003')).toBeVisible()
+  await expect(rowFor(page, LONGEST.mrn)).toHaveCount(0)
+  await expect(page.locator('a[data-mrn]')).toHaveCount(1)
 
   // Dropping the chip is the same navigation as Clear, and the whole board comes back.
   await page.getByRole('button', { name: 'Remove Stage: Investigations' }).click()
@@ -205,9 +217,12 @@ test('a row opens its summary without leaving the board, and adds no second link
   await page.locator(`[data-summary-for="${LONGEST.mrn}"]`).click()
   const dialog = page.getByRole('dialog', { name: 'Case summary' })
   await expect(dialog).toBeVisible()
-  await expect(dialog).toContainText(LONGEST.mrn)
-  await expect(dialog).toContainText(LONGEST.reason.name)
-  await expect(dialog).toContainText('Registration')
+  // Read where the panel shows it. The dialog also holds the whole copy text in a hidden <pre>,
+  // and `toContainText` reads hidden text too, so a check on the dialog as a whole would still
+  // pass with the table and the time sequence gone.
+  await expect(dialog.getByRole('row', { name: /^MRN/ })).toContainText(LONGEST.mrn)
+  await expect(dialog.getByRole('row', { name: /^Waiting on/ })).toContainText(LONGEST.reason.name)
+  await expect(dialog.locator('[data-summary-timeline]')).toContainText('Registration')
 
   // One row, one link: the control that opened this is not one of them.
   await expect(page.locator('a[data-mrn]')).toHaveCount(rows)
@@ -281,6 +296,49 @@ test('printing the board gives the handover sheet, not the screen', async ({ pag
   await expect(page.getByRole('navigation', { name: 'Sections' })).toBeHidden()
   await expect(page.getByRole('link', { name: '+ New case' })).toBeHidden()
 
+  await page.emulateMedia({ media: 'screen' })
+})
+
+/**
+ * Phase 10 review. The sheet prints the rows the board is showing, and the two things on screen
+ * that say those rows are narrowed — the filter's chips and its count line — are `.no-print`. A
+ * charge nurse who narrowed to Admission process and printed at shift change used to hand over a
+ * partial list with nothing on the paper saying so. The line under the stamp now says how the
+ * rows were narrowed, and a sheet of the whole board has no such line at all.
+ */
+test('a narrowed board says so on the handover sheet, and the whole board does not', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.201')
+  await signIn(page, E2E_USERS.navigator)
+  const sheet = page.locator('section.print-only')
+  // Its own line, straight under the stamp line (the heading, the stamp, then this).
+  const narrowed = sheet.locator('h2 + p + [data-sheet-narrowed]')
+
+  // The whole Open board: the sheet as it always was, with nothing saying otherwise.
+  await page.emulateMedia({ media: 'print' })
+  await expect(sheet).toBeVisible()
+  await expect(sheet.locator('[data-sheet-narrowed]')).toHaveCount(0)
+  await expect(sheet).not.toContainText('Filtered:')
+  await expect(sheet).not.toContainText('MRN search:')
+  await page.emulateMedia({ media: 'screen' })
+
+  // Narrowed to one stage. On paper the chip has gone with the rest of the screen, so this line
+  // is the only thing left saying the list is partial.
+  await page.goto('/?stage=adm')
+  const chip = page.locator('[data-filter-chip="Stage: Admission process"]')
+  await expect(chip).toBeVisible()
+  await page.emulateMedia({ media: 'print' })
+  await expect(chip).toBeHidden()
+  await expect(narrowed).toHaveText('Filtered: Stage: Admission process')
+  await page.emulateMedia({ media: 'screen' })
+
+  // The MRN search narrows the printed rows too, so it is named beside the filter: the two open
+  // admission delays the fixtures seed are the sheet, and the investigations case is not on it.
+  await narrowToFixtures(page)
+  await page.emulateMedia({ media: 'print' })
+  await expect(narrowed).toHaveText(`Filtered: Stage: Admission process · MRN search: ${BOARD_MRN_PREFIX}`)
+  await expect(sheet).toContainText('· 2 cases')
+  await expect(sheet.getByRole('cell', { name: LONGEST.mrn, exact: true })).toBeVisible()
+  await expect(sheet.getByRole('cell', { name: '3100003', exact: true })).toHaveCount(0)
   await page.emulateMedia({ media: 'screen' })
 })
 

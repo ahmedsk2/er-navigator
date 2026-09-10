@@ -34,7 +34,8 @@ import { InstallPrompt } from '@/src/components/shell/InstallPrompt'
 import { PageHeader } from '@/src/components/shell/PageHeader'
 import { Input } from '@/src/components/ui'
 import { BoardRowItem, ROW_COLUMNS } from './BoardRowItem'
-import { HandoverSheet } from './HandoverSheet'
+import { HandoverSheet, narrowingLine } from './HandoverSheet'
+import { RowSummaryHost } from './RowSummaryButton'
 
 const FILTER_LABEL: Record<BoardFilter, string> = { open: 'Open', resolved: 'Resolved', all: 'All' }
 
@@ -45,6 +46,12 @@ const FILTER_LABEL: Record<BoardFilter, string> = { open: 'Open', resolved: 'Res
  * `hidden lg:grid`, because the phone's row is three stacked lines and has nothing to head.
  */
 const COLUMN_LABELS = ['MRN', 'Registered', 'Waiting on', 'Last update', 'Elapsed'] as const
+
+/**
+ * The search box's id: its label's `htmlFor`, and where the row summary sends the keyboard when
+ * the row it was opened from has left the board by the time it is closed.
+ */
+const SEARCH_ID = 'board-search'
 
 /**
  * `/?f=` and `/?q=`, exactly as they were: `f` is omitted when it is the default Open board and
@@ -187,7 +194,7 @@ export function Board({
       {/* The phone stacks the field over the chips; the laptop has room for one line, which is
           also what puts the chips beside the field the mockup shows. */}
       <div className="no-print px-4 pb-2.5 lg:flex lg:items-center lg:gap-3 lg:px-0">
-        <label htmlFor="board-search" className="sr-only">
+        <label htmlFor={SEARCH_ID} className="sr-only">
           Search MRN
         </label>
         <div className="relative mb-2.5 lg:mb-0 lg:w-[320px] lg:shrink-0">
@@ -196,7 +203,7 @@ export function Board({
             className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted"
           />
           <Input
-            id="board-search"
+            id={SEARCH_ID}
             type="search"
             inputMode="numeric"
             autoComplete="off"
@@ -234,32 +241,46 @@ export function Board({
         count={filtered ? `${counts.open} of ${payload.totalOpen} open cases` : undefined}
       />
 
-      <HandoverSheet rows={visible} now={now} printedBy={printedBy} />
+      {/* The sheet prints `visible`, which both the filter and the search box narrow, and the
+          chips and the count line that say so on screen do not print: the sheet says it itself. */}
+      <HandoverSheet
+        rows={visible}
+        now={now}
+        printedBy={printedBy}
+        narrowing={narrowingLine(caseFilter, filterOptions, query)}
+      />
 
-      {visible.length === 0 ? (
-        <p className="no-print mx-4 rounded-card border border-line bg-panel p-7 text-center text-body text-muted shadow-card lg:mx-0">
-          {emptyMessage}
-        </p>
-      ) : (
-        <>
-          <div
-            aria-hidden="true"
-            data-board-columns
-            className={`no-print hidden px-4 pb-1 text-caption font-semibold text-muted lg:grid lg:gap-x-3 ${ROW_COLUMNS}`}
-          >
-            {COLUMN_LABELS.map((label, i) => (
-              <span key={label} className={i === COLUMN_LABELS.length - 1 ? 'text-right' : undefined}>
-                {label}
-              </span>
-            ))}
-          </div>
-          <ul className="no-print">
-            {visible.map((row) => (
-              <BoardRowItem key={row.id} row={row} now={now} />
-            ))}
-          </ul>
-        </>
-      )}
+      {/* One summary panel for every row, drawn after the list rather than inside a row, so the
+          poll can take a row away — or empty the list — while its summary is being read. */}
+      <RowSummaryHost fallbackFocusId={SEARCH_ID}>
+        {visible.length === 0 ? (
+          <p className="no-print mx-4 rounded-card border border-line bg-panel p-7 text-center text-body text-muted shadow-card lg:mx-0">
+            {emptyMessage}
+          </p>
+        ) : (
+          <>
+            <div
+              aria-hidden="true"
+              data-board-columns
+              className={`no-print hidden px-4 pb-1 text-caption font-semibold text-muted lg:grid lg:gap-x-3 ${ROW_COLUMNS}`}
+            >
+              {COLUMN_LABELS.map((label, i) => (
+                <span
+                  key={label}
+                  className={i === COLUMN_LABELS.length - 1 ? 'text-right' : undefined}
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
+            <ul className="no-print">
+              {visible.map((row) => (
+                <BoardRowItem key={row.id} row={row} now={now} />
+              ))}
+            </ul>
+          </>
+        )}
+      </RowSummaryHost>
 
       {/* After the rows, not before them (Phase 7). The banner can only appear once the browser
           has hydrated — the server cannot know whether this phone has already dismissed it — and

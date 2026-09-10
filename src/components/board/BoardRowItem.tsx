@@ -84,7 +84,11 @@ export function BoardRowItem({ row, now }: { row: BoardRow; now: Date }) {
     // The margins that used to sit on the card now sit here, because the card is no longer the
     // only child: the summary button is its sibling, never its descendant (a button inside an
     // anchor is invalid, and `a[data-mrn]` is counted per row in three specs).
-    <li className="mx-4 my-2 flex items-center gap-2 lg:mx-0 lg:gap-3">
+    //
+    // `flex-wrap` for the button's "Could not read the summary." (Phase 10 review): the line is
+    // full width, so it wraps under the card instead of taking its width from the card, which
+    // shrank by the length of the sentence and pulled its cells out from under the column labels.
+    <li className="mx-4 my-2 flex flex-wrap items-center gap-2 lg:mx-0 lg:gap-3">
       <Link
         href={`/cases/${row.id}`}
         data-mrn={row.mrn}
