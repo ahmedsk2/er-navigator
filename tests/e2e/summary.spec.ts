@@ -141,6 +141,74 @@ test('a press on the scrim closes the board summary and never opens the row unde
   await expect(opener).toBeFocused()
 })
 
+/**
+ * Phase 10 review of the fixes. Two rows' summaries asked for in quick succession on a slow ward
+ * connection: the first answer back used to open whichever arrived last, so the older request
+ * replaced the panel the nurse had asked for after it — or reopened a panel after she had read
+ * and closed the other one. Only the latest request may open the panel, and closing it cancels
+ * whatever is still on its way.
+ */
+test('a slower summary answer never replaces the one asked for after it, nor reopens a closed panel', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.204')
+  await signIn(page, E2E_USERS.navigator)
+  await page.getByLabel('Search MRN').fill(BOARD_MRN_PREFIX)
+  const first = LONGEST.mrn
+  const second = '3100002'
+  await expect(page.locator(`a[data-mrn="${first}"]`)).toBeVisible()
+  await expect(page.locator(`a[data-mrn="${second}"]`)).toBeVisible()
+  const href = await page.locator(`a[data-mrn="${first}"]`).getAttribute('href')
+  const firstId = href!.split('/').pop()!
+
+  // Hold the first row's answer until the test lets it go.
+  let release: () => void = () => {}
+  const held = new Promise<void>((resolve) => (release = resolve))
+  await page.route(`**/api/cases/${firstId}/summary`, async (route) => {
+    await held
+    await route.continue()
+  })
+  const firstAnswer = () => page.waitForResponse((r) => r.url().includes(`/api/cases/${firstId}/summary`))
+  const settle = () =>
+    page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  const dialog = page.getByRole('dialog', { name: 'Case summary' })
+  const mrnRow = dialog.getByRole('row').filter({ has: page.getByRole('rowheader', { name: 'MRN', exact: true }) })
+
+  // 1. The first row asked, the second asked after it and answered first; the first answer lands
+  //    late and the panel stays on the second.
+  await page.locator(`[data-summary-for="${first}"]`).click()
+  await page.locator(`[data-summary-for="${second}"]`).click()
+  await expect(mrnRow).toContainText(second)
+  let answered = firstAnswer()
+  release()
+  await answered
+  await settle()
+  await expect(dialog).toHaveCount(1)
+  await expect(mrnRow).toContainText(second)
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+
+  // 2. The same, but the nurse has read and closed the second before the first answer lands: it
+  //    does not open a panel she is no longer waiting for.
+  let releaseAgain: () => void = () => {}
+  const heldAgain = new Promise<void>((resolve) => (releaseAgain = resolve))
+  await page.unroute(`**/api/cases/${firstId}/summary`)
+  await page.route(`**/api/cases/${firstId}/summary`, async (route) => {
+    await heldAgain
+    await route.continue()
+  })
+  await page.locator(`[data-summary-for="${first}"]`).click()
+  await page.locator(`[data-summary-for="${second}"]`).click()
+  await expect(mrnRow).toContainText(second)
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  answered = firstAnswer()
+  releaseAgain()
+  await answered
+  await settle()
+  await expect(dialog).toHaveCount(0)
+  // And the first row's button is usable again rather than stuck loading.
+  await expect(page.locator(`[data-summary-for="${first}"]`)).toBeEnabled()
+})
+
 test('a press on the scrim closes the case summary and leaves the editor as it was', async ({ page }, testInfo) => {
   const target = await prisma.case.findFirstOrThrow({
     where: { mrn: LONGEST.mrn, status: 'OPEN' },

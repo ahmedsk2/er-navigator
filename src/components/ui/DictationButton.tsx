@@ -137,6 +137,11 @@ export function DictationButton({
   // The callbacks the recogniser will use, kept current without re-creating the recogniser: the
   // editor hands a new closure on every keystroke, and re-binding a live recogniser to it would
   // end the session mid-sentence.
+  /**
+   * The last session started, which `stop()` does not clear. `recognition` is the one listening
+   * now; this is the one whose news the row is still waiting for.
+   */
+  const latest = useRef<Recognition | null>(null)
   const sink = useRef(onText)
   const report = useRef(onStatus)
   useEffect(() => {
@@ -184,24 +189,29 @@ export function DictationButton({
     // rather than sitting pressed over a microphone that stopped listening minutes ago, and an
     // error says why in the line under the row.
     //
-    // Only while this is still the current session, though. `stop()` lets go of it at once, but
-    // its own error and end arrive later, and a quick second tap has started another session by
-    // then: an ending that did not check whose it was turned the button back to "Dictate", with
-    // its line under it, over a microphone that was still listening. `onresult` is not held to
-    // this: the words a stopped session hands back were spoken before the tap, and belong in
-    // the box.
+    // Only the current session may turn the button back, though. `stop()` lets go of it at once,
+    // but its own error and end arrive later, and a quick second tap has started another session
+    // by then: an ending that did not check whose it was turned the button back to "Dictate" over
+    // a microphone that was still listening. Its error line is held to a looser rule: it is said
+    // unless a newer session has started, because a session the nurse stopped herself that then
+    // fails to reach the speech service hands back no words, and that is when she needs to know
+    // why. `onresult` is not held to either: the words a stopped session hands back were spoken
+    // before the tap, and belong in the box.
     session.onend = () => {
       if (recognition.current !== session) return
       recognition.current = null
       setListening(false)
     }
     session.onerror = (event) => {
-      if (recognition.current !== session) return
-      recognition.current = null
-      setListening(false)
+      if (latest.current !== session) return
+      if (recognition.current === session) {
+        recognition.current = null
+        setListening(false)
+      }
       report.current?.(dictationErrorLine(event.error))
     }
     recognition.current = session
+    latest.current = session
     setListening(true)
     report.current?.(null)
     session.start()

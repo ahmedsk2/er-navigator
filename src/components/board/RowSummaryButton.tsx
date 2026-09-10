@@ -44,8 +44,13 @@ type State =
 type SummaryHost = {
   /** The case whose summary is open, so that its button, and only its, says `aria-expanded`. */
   openCaseId: string | null
-  /** Open `summary`; `trigger` is the button that asked for it, to be given the keyboard back. */
-  show: (caseId: string, summary: CaseSummary, trigger: HTMLElement | null) => void
+  /** A button is about to ask for a summary: the ticket its answer must bring back to be shown. */
+  request: () => number
+  /**
+   * Open `summary` if `ticket` is still the latest request; `trigger` is the button that asked
+   * for it, to be given the keyboard back.
+   */
+  show: (caseId: string, summary: CaseSummary, trigger: HTMLElement | null, ticket: number) => void
 }
 
 const SummaryHostContext = createContext<SummaryHost | null>(null)
@@ -73,8 +78,20 @@ export function RowSummaryHost({
   const trigger = useRef<HTMLElement | null>(null)
   /** Bumped per opening, so each one mounts a fresh panel that takes the focus as it opens. */
   const openings = useRef(0)
+  /**
+   * Bumped per request and per close. On a slow ward connection a nurse can tap one row, then
+   * another before the first answer is back; answers arrive in any order, and only the one she
+   * asked for last may open the panel — and none may once she has closed it.
+   */
+  const requests = useRef(0)
 
-  const show = useCallback((caseId: string, summary: CaseSummary, from: HTMLElement | null) => {
+  const request = useCallback(() => {
+    requests.current += 1
+    return requests.current
+  }, [])
+
+  const show = useCallback((caseId: string, summary: CaseSummary, from: HTMLElement | null, ticket: number) => {
+    if (ticket !== requests.current) return
     trigger.current = from
     openings.current += 1
     setShown({ caseId, summary, key: openings.current })
@@ -83,13 +100,14 @@ export function RowSummaryHost({
   const close = useCallback(() => {
     const from = trigger.current
     trigger.current = null
+    requests.current += 1
     setShown(null)
     if (from?.isConnected) from.focus()
     else document.getElementById(fallbackFocusId)?.focus()
   }, [fallbackFocusId])
 
   const openCaseId = shown?.caseId ?? null
-  const host = useMemo<SummaryHost>(() => ({ openCaseId, show }), [openCaseId, show])
+  const host = useMemo<SummaryHost>(() => ({ openCaseId, request, show }), [openCaseId, request, show])
 
   return (
     <SummaryHostContext value={host}>
@@ -114,13 +132,14 @@ export function RowSummaryButton({ caseId, mrn }: { caseId: string; mrn: string 
     // The element itself, taken now: if the row is gone by the time the answer comes back, the ref
     // has been emptied, and the host still needs something to test for `isConnected`.
     const from = trigger.current
+    const ticket = host?.request() ?? 0
     fetch(`/api/cases/${caseId}/summary`, { headers: { accept: 'application/json' } })
       .then(async (response) => {
         if (!response.ok) throw new Error(String(response.status))
         const summary = (await response.json()) as CaseSummary
         if (host) {
           setState({ kind: 'idle' })
-          host.show(caseId, summary, from)
+          host.show(caseId, summary, from, ticket)
         } else {
           setState({ kind: 'open', summary })
         }

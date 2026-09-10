@@ -440,9 +440,11 @@ test('the working diagnosis and the payer reach the board row and the export', a
  * recognition needs a microphone and, in Chrome, Google's servers; neither is here, and what is
  * under test is ours — what the button and the box do with what the recogniser reports. Each
  * `start()` reports the next outcome a moment later, as the real one does, and then the session
- * ends; the last outcome repeats.
+ * ends; the last outcome repeats. A `hold` outcome listens until it is stopped, and hands its
+ * words back then, as the real one does with audio it already has — so a test can look at the
+ * row while a session is listening and nothing has been heard yet.
  */
-type Heard = { error: string } | { transcript: string }
+type Heard = { error: string } | { transcript: string } | { hold: string }
 async function fakeRecogniser(page: Page, outcomes: Heard[]): Promise<void> {
   await page.addInitScript((sequence: Heard[]) => {
     let started = 0
@@ -453,19 +455,33 @@ async function fakeRecogniser(page: Page, outcomes: Heard[]): Promise<void> {
       onresult: ((event: unknown) => void) | null = null
       onerror: ((event: { error: string }) => void) | null = null
       onend: (() => void) | null = null
+      held: string | null = null
+      hear(transcript: string): void {
+        const result = { isFinal: true, length: 1, 0: { transcript } }
+        this.onresult?.({ resultIndex: 0, results: { length: 1, 0: result } })
+      }
       start(): void {
         const heard = sequence[Math.min(started, sequence.length - 1)]!
         started += 1
+        if ('hold' in heard) {
+          this.held = heard.hold
+          return
+        }
         setTimeout(() => {
           if ('error' in heard) this.onerror?.({ error: heard.error })
-          else {
-            const result = { isFinal: true, length: 1, 0: { transcript: heard.transcript } }
-            this.onresult?.({ resultIndex: 0, results: { length: 1, 0: result } })
-          }
+          else this.hear(heard.transcript)
           this.onend?.()
         }, 50)
       }
-      stop(): void {}
+      stop(): void {
+        const held = this.held
+        if (held === null) return
+        this.held = null
+        setTimeout(() => {
+          this.hear(held)
+          this.onend?.()
+        }, 0)
+      }
       abort(): void {}
     }
     Object.assign(window, { SpeechRecognition: FakeRecognition, webkitSpeechRecognition: FakeRecognition })
@@ -516,12 +532,13 @@ test('a blocked microphone says why, and the button goes back to Dictate', async
 
 /**
  * The same stand-in, hearing words on the second try. The line a failed session left goes as
- * soon as the nurse tries again, and what the recogniser hears joins what she has typed, with one
- * space between.
+ * soon as the nurse tries again — on the tap, while the microphone is listening and before a word
+ * has come back, since a result would clear it too — and what the recogniser hears joins what
+ * she has typed, with one space between.
  */
 test('dictated words are appended to the box, and trying again clears the last line', async ({ page }) => {
   await fromClientIp(page, '198.51.100.187')
-  await fakeRecogniser(page, [{ error: 'no-speech' }, { transcript: HEARD }])
+  await fakeRecogniser(page, [{ error: 'no-speech' }, { hold: HEARD }])
   const taps = await signIn(page, E2E_USERS.navigator)
   await openCase(page, uniqueMrn(), STAGE, REASON, taps)
 
@@ -532,6 +549,13 @@ test('dictated words are appended to the box, and trying again clears the last l
   const line = page.locator('[data-dictate-status]')
   await expect(line).toHaveText('Nothing was heard. Tap the microphone and speak again.')
 
+  // Trying again: listening, nothing heard yet, and the old line already gone.
+  await mic.click()
+  await expect(mic).toHaveAccessibleName('Stop dictating')
+  await expect(line).toHaveCount(0)
+  await expect(diagnosis).toHaveValue('Chest pain')
+
+  // Stopping hands back what was heard.
   await mic.click()
   await expect(diagnosis).toHaveValue(`Chest pain ${HEARD}`)
   await expect(line).toHaveCount(0)
@@ -569,12 +593,14 @@ test('a dictated phrase stops at the cap of the box it lands in', async ({ page 
 /**
  * A stand-in that listens until it is told to stop, and then takes its time about ending, as the
  * real one can: `stop()` returns at once, and the stopped session's error and end arrive only
- * after the audio it already had has been to the speech service and back. It logs every start,
- * stop and ending, so a test can see that an ending landed after the next session started.
+ * after the audio it already had has been to the speech service and back — here, when the test
+ * says so (`endStoppedSession`), so the order of events is the test's and not a timer's under
+ * load. It logs every start, stop and ending.
  */
-async function lateEndingRecogniser(page: Page, endAfterMs: number): Promise<void> {
-  await page.addInitScript((delay: number) => {
+async function lateEndingRecogniser(page: Page): Promise<void> {
+  await page.addInitScript(() => {
     const log: string[] = []
+    const pending: Array<() => void> = []
     let sessions = 0
     class FakeRecognition {
       lang = ''
@@ -589,11 +615,11 @@ async function lateEndingRecogniser(page: Page, endAfterMs: number): Promise<voi
       }
       stop(): void {
         log.push(`stop ${this.session}`)
-        setTimeout(() => {
+        pending.push(() => {
           this.onerror?.({ error: 'network' })
           this.onend?.()
           log.push(`ended ${this.session}`)
-        }, delay)
+        })
       }
       abort(): void {}
     }
@@ -601,8 +627,20 @@ async function lateEndingRecogniser(page: Page, endAfterMs: number): Promise<voi
       SpeechRecognition: FakeRecognition,
       webkitSpeechRecognition: FakeRecognition,
       recogniserLog: log,
+      recogniserPending: pending,
     })
-  }, endAfterMs)
+  })
+}
+
+/** The recogniser's log so far, as one string. */
+function recogniserLog(page: Page): Promise<string> {
+  return page.evaluate(() => (window as unknown as { recogniserLog: string[] }).recogniserLog.join(', '))
+}
+
+/** The oldest stopped session ends now, failing to reach the speech service; then two frames. */
+async function endStoppedSession(page: Page): Promise<void> {
+  await page.evaluate(() => (window as unknown as { recogniserPending: Array<() => void> }).recogniserPending.shift()!())
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
 }
 
 /**
@@ -613,7 +651,7 @@ async function lateEndingRecogniser(page: Page, endAfterMs: number): Promise<voi
  */
 test('a stopped session that ends late does not stop the one started after it', async ({ page }) => {
   await fromClientIp(page, '198.51.100.222')
-  await lateEndingRecogniser(page, 1_000)
+  await lateEndingRecogniser(page)
   const taps = await signIn(page, E2E_USERS.navigator)
   await openCase(page, uniqueMrn(), STAGE, REASON, taps)
 
@@ -621,19 +659,44 @@ test('a stopped session that ends late does not stop the one started after it', 
   await mic.click()
   await mic.click()
   await expect(mic).toHaveAccessibleName('Dictate')
-  // Tapped again inside the second the first session takes to end.
+  // Tapped again before the first session has ended.
   await mic.click()
   await expect(mic).toHaveAccessibleName('Stop dictating')
+  expect(await recogniserLog(page)).toBe('start 1, stop 1, start 2')
 
-  // The first session's error and end arrive after the second session has started ...
-  const log = () =>
-    page.evaluate(() => (window as unknown as { recogniserLog: string[] }).recogniserLog.join(', '))
-  await expect.poll(log).toBe('start 1, stop 1, start 2, ended 1')
-  // ... and once React has had two frames to act on them, the second session is still listening.
-  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  // The first session's error and end arrive after the second session has started, and the
+  // second is still listening, with no line under it about a failure that was not its own.
+  await endStoppedSession(page)
+  expect(await recogniserLog(page)).toBe('start 1, stop 1, start 2, ended 1')
   await expect(mic).toHaveAccessibleName('Stop dictating')
   await expect(mic).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('[data-dictate-status]')).toHaveCount(0)
+})
+
+/**
+ * Phase 10 review of the fixes: the same late ending with nothing tapped after it. The nurse
+ * stopped the microphone herself, the words it had could not reach the speech service, and none
+ * arrive — which is exactly when she needs the line that says why, so a stopped session that is
+ * still the last one started keeps its say.
+ */
+test('a stopped session that fails with nothing started after it still says why', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.223')
+  await lateEndingRecogniser(page)
+  const taps = await signIn(page, E2E_USERS.navigator)
+  await openCase(page, uniqueMrn(), STAGE, REASON, taps)
+
+  const mic = micBeside(page, page.getByLabel(DIAGNOSIS_LABEL, { exact: true }))
+  await mic.click()
+  await mic.click()
+  await expect(mic).toHaveAccessibleName('Dictate')
+
+  await endStoppedSession(page)
+  expect(await recogniserLog(page)).toBe('start 1, stop 1, ended 1')
+  await expect(page.locator('[data-dictate-status]')).toHaveText(
+    'Dictation could not reach the speech service. Check the connection, or type instead.',
+  )
+  await expect(mic).toHaveAccessibleName('Dictate')
+  await expect(mic).toHaveAttribute('aria-pressed', 'false')
 })
 
 /**
