@@ -29,12 +29,18 @@ export function ReportView({
   header,
   generatedAt,
   requestedBy,
+  filterLine,
 }: {
   data: DashboardData
   range: ExportRange
   header: string
   generatedAt: Date
   requestedBy: string
+  /**
+   * The Phase 10 case filter in words, or nothing. A printed report over part of the department
+   * that does not say which part is a number somebody will quote in a meeting.
+   */
+  filterLine?: string
 }) {
   return (
     // The sections inside DashboardBody drop their phone inset at `lg`, because in the signed-in
@@ -50,6 +56,11 @@ export function ReportView({
             Report · {range.from} to {range.to} · {EXPORT_STATUS_LABELS[range.status]} · {data.inRange}{' '}
             {data.inRange === 1 ? 'case' : 'cases'}
           </p>
+          {filterLine ? (
+            <p className="mt-0.5 text-body text-ink-2" data-report-filter>
+              Filtered: {filterLine}
+            </p>
+          ) : null}
           <p className="mt-0.5 text-caption text-muted" data-report-meta>
             Generated <span className="num">{fmtSheetStamp(generatedAt.toISOString())}</span> (Asia/Riyadh) for{' '}
             {requestedBy}

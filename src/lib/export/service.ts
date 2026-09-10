@@ -14,6 +14,7 @@
 import { type AuditContext } from '@/src/lib/audit'
 import { assertCan, isForbiddenError, type AuthUser } from '@/src/lib/auth/session'
 import { dashboard } from '@/src/lib/domain/aggregates'
+import { caseFilterQuery } from '@/src/lib/domain/case-filter'
 import { adaaWorkbook } from './adaa'
 import { countCasesForExport, loadCasesForExport } from './load'
 import { qchWorkbook } from './qch'
@@ -69,8 +70,10 @@ export async function exportWorkbookResponse(
 
   const cases = await loadCasesForExport(range)
 
+  // The filter is part of the request, so it is part of the record: "who pulled a month of cases"
+  // is a different question from "who pulled the insured ones".
   console.info(
-    `[export] xlsx actor=${user.id} format=${range.format} from=${range.from} to=${range.to} status=${range.status} cases=${cases.length}`,
+    `[export] xlsx actor=${user.id} format=${range.format} from=${range.from} to=${range.to} status=${range.status} filter=${range.filter ? caseFilterQuery(range.filter) || 'none' : 'none'} cases=${cases.length}`,
   )
   return xlsxResponseOf(workbookFor(cases, range, now), exportFilename(range))
 }

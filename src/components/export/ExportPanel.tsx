@@ -15,6 +15,7 @@
  */
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { FilterBar } from '@/src/components/filter/FilterBar'
 import { PageHeader } from '@/src/components/shell/PageHeader'
 import { Download, Printer } from '@/src/components/icons'
 import { BUTTON_MAIN, BUTTON_QUIET, Field, Input, Select } from '@/src/components/ui'
@@ -31,6 +32,7 @@ import {
   type ExportStatus,
 } from '@/src/lib/export/range'
 import type { ExportCountPayload } from '@/src/lib/export/service'
+import { EMPTY_FILTER, type FilterOptions } from '@/src/lib/domain/case-filter'
 
 /**
  * The two download controls are links, not buttons, so they cannot be <Button>; they take the
@@ -43,9 +45,11 @@ const LINK_BASE =
 export function ExportPanel({
   initialRange,
   initialCount,
+  filterOptions,
 }: {
   initialRange: ExportRange
   initialCount: number
+  filterOptions: FilterOptions
 }) {
   const initialQuery = exportRangeQuery(initialRange)
   const [range, setRange] = useState<ExportRange>(initialRange)
@@ -77,6 +81,19 @@ export function ExportPanel({
   return (
     <div>
       <PageHeader title="Export and print" />
+
+      {/*
+        The filter is a navigation, not a control in the card: it changes what the count means and
+        what both downloads would contain, and the page must be able to be re-opened at exactly
+        this request from a link. The dates are the panel's own state, so they ride along as the
+        base query — a filter applied after moving the dates keeps the dates.
+      */}
+      <FilterBar
+        basePath="/export"
+        baseQuery={exportRangeQuery({ ...range, filter: undefined })}
+        filter={range.filter ?? EMPTY_FILTER}
+        options={filterOptions}
+      />
 
       <section className="mx-4 mb-2.5 rounded-card border border-line bg-panel p-4 shadow-card lg:mx-0 lg:max-w-[560px]">
         {/*
@@ -181,7 +198,7 @@ export function ExportPanel({
         <p className="mt-2.5 mb-0 text-caption text-muted">
           All three formats cover the same cases: the range is the registration date, and voided
           cases are never exported. Print report opens the department report for this range in a
-          new tab.
+          new tab. A filter above narrows the count, the workbook and the report alike.
         </p>
       </section>
     </div>

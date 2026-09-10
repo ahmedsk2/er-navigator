@@ -13,6 +13,7 @@ import { fmtFormDate } from '@/src/lib/export/format'
 import { countCasesForExport, loadCasesForExport } from '@/src/lib/export/load'
 import { QCH_COLUMNS, QCH_GROUP_HEADER, QCH_HEADER } from '@/src/lib/export/qch'
 import { addDays, riyadhDateKey, riyadhDayStart, type ExportRange } from '@/src/lib/export/range'
+import { EMPTY_FILTER } from '@/src/lib/domain/case-filter'
 import { exportCountResponse, exportWorkbookResponse } from '@/src/lib/export/service'
 import { XLSX_CONTENT_TYPE } from '@/src/lib/export/workbook'
 
@@ -393,6 +394,44 @@ describe('GET /api/export.xlsx as a SUPERVISOR', () => {
     )
     expect(columnValues(workbook.getWorksheet('Cases')!, 'MRN').sort()).toEqual(
       [seeded.open1, seeded.open2].sort(),
+    )
+  })
+
+  /**
+   * Phase 10. The count on `/export` and the rows in the file have to be the same number, or the
+   * page is lying about what the button will download — so both go through `matchesFilter` over
+   * the same window. `open1` is the only case in the range with a CTAS and the only one with a
+   * consulted team, so each of these filters keeps exactly one case.
+   */
+  it('narrows the count and the workbook alike, to the same cases', async () => {
+    for (const filter of [
+      { ...EMPTY_FILTER, ctas: [3] },
+      { ...EMPTY_FILTER, dept: ['MROD'] },
+      { ...EMPTY_FILTER, ctas: [3], dept: ['MROD'] },
+    ]) {
+      const range: ExportRange = { ...RANGE, filter }
+      const count = await countCasesForExport(range)
+      const workbook = await workbookOf(
+        await exportWorkbookResponse(supervisor, range, ctxFor(supervisor.id), new Date()),
+      )
+      const mrns = columnValues(workbook.getWorksheet('Cases')!, 'MRN')
+      expect(mrns).toEqual([seeded.open1])
+      expect(count, 'the live count is the number of rows the file holds').toBe(mrns.length)
+    }
+
+    // And the complement: `not` keeps the other two cases in the window and drops that one.
+    const excluded: ExportRange = { ...RANGE, filter: { ...EMPTY_FILTER, ctas: [3], not: true } }
+    expect(await countCasesForExport(excluded)).toBe(2)
+    const workbook = await workbookOf(
+      await exportWorkbookResponse(supervisor, excluded, ctxFor(supervisor.id), new Date()),
+    )
+    expect(columnValues(workbook.getWorksheet('Cases')!, 'MRN').sort()).toEqual(
+      [seeded.open2, seeded.resolved].sort(),
+    )
+
+    // An empty filter is not a filter: the same three cases as no filter at all.
+    expect(await countCasesForExport({ ...RANGE, filter: EMPTY_FILTER })).toBe(
+      await countCasesForExport(RANGE),
     )
   })
 

@@ -11,6 +11,7 @@ import type { Prisma } from '@prisma/client'
 import { CASE_STATS_SELECT, toCaseForStats } from '@/src/lib/cases/stats-mapper'
 import { prisma } from '@/src/lib/db'
 import type { CaseForStats } from '@/src/lib/domain/aggregates'
+import { isEmptyFilter, matchesFilter, type CaseFilter } from '@/src/lib/domain/case-filter'
 import { EXPORT_STATUS_VALUES, riyadhDayBounds, type ExportRange } from './range'
 import type { CaseForExport } from './rows'
 
@@ -84,8 +85,49 @@ export function exportWhere(range: ExportRange): Prisma.CaseWhereInput {
 
 const ORDER: Prisma.CaseOrderByWithRelationInput[] = [{ registrationAt: 'asc' }, { id: 'asc' }]
 
+/** The active case filter on a range, or nothing — an empty filter is not a filter (Phase 10). */
+function filterOf(range: ExportRange): CaseFilter | undefined {
+  return range.filter && !isEmptyFilter(range.filter) ? range.filter : undefined
+}
+
+/** Everything `matchesFilter` needs, and the least the database has to be asked for to answer it. */
+const CASE_FILTER_SELECT = {
+  id: true,
+  ctas: true,
+  payer: true,
+  disposition: true,
+  area: { select: { code: true } },
+  reasons: { select: { reason: { select: { name: true, stage: { select: { code: true } } } } } },
+  consults: { select: { department: { select: { name: true } } } },
+} as const satisfies Prisma.CaseSelect
+
+/**
+ * "{n} cases in range", live as the nurse moves the dates.
+ *
+ * Without a filter this is the `count` it has always been. With one it has to look at the same
+ * cases the workbook would be written from — the predicate reads a case's reasons, teams and
+ * area, which no `WHERE` clause here can decide — so it reads the seven columns behind it and
+ * counts the matches. That is what makes the count on the page and the rows in the file the same
+ * number: one predicate over the same window, never two.
+ */
 export async function countCasesForExport(range: ExportRange): Promise<number> {
-  return prisma.case.count({ where: exportWhere(range) })
+  const filter = filterOf(range)
+  if (!filter) return prisma.case.count({ where: exportWhere(range) })
+  const rows = await prisma.case.findMany({ where: exportWhere(range), select: CASE_FILTER_SELECT })
+  return rows.filter((row) =>
+    matchesFilter(
+      {
+        stageCodes: row.reasons.map((r) => r.reason.stage.code),
+        reasonNames: row.reasons.map((r) => r.reason.name),
+        departmentNames: row.consults.map((c) => c.department.name),
+        areaCode: row.area?.code ?? null,
+        ctas: row.ctas,
+        payer: row.payer,
+        disposition: row.disposition,
+      },
+      filter,
+    ),
+  ).length
 }
 
 export async function loadCasesForExport(range: ExportRange): Promise<CaseForExport[]> {
@@ -94,7 +136,9 @@ export async function loadCasesForExport(range: ExportRange): Promise<CaseForExp
     orderBy: ORDER,
     select: CASE_EXPORT_SELECT,
   })
-  return rows.map(toCaseForExport)
+  const mapped = rows.map(toCaseForExport)
+  const filter = filterOf(range)
+  return filter ? mapped.filter((c) => matchesFilter(c, filter)) : mapped
 }
 
 /** The printed report needs the dashboard maths over the same window, and nothing else. */
@@ -104,5 +148,7 @@ export async function loadCasesForStatsInRange(range: ExportRange): Promise<Case
     orderBy: ORDER,
     select: CASE_STATS_SELECT,
   })
-  return rows.map(toCaseForStats)
+  const mapped = rows.map(toCaseForStats)
+  const filter = filterOf(range)
+  return filter ? mapped.filter((c) => matchesFilter(c, filter)) : mapped
 }

@@ -24,15 +24,7 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   const now = new Date()
-  const params = new URL(request.url).searchParams
-  const range = parseExportRange(
-    {
-      from: params.get('from') ?? undefined,
-      to: params.get('to') ?? undefined,
-      status: params.get('status') ?? undefined,
-      format: params.get('format') ?? undefined,
-    },
-    now,
-  )
+  // The whole parameter bag, not four `get`s: the Phase 10 case filter repeats its keys.
+  const range = parseExportRange(new URL(request.url).searchParams, now)
   return exportWorkbookResponse(user, range, await auditContext(user.id), now)
 }
