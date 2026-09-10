@@ -31,9 +31,21 @@ export const mrnSchema = z.string().trim().regex(MRN_RE, 'Enter the MRN as digit
 
 /** Free text: trimmed, capped, never blocking. Identifier risk is reported by phiWarnings(). */
 export const freeText = (max: number) => z.string().trim().max(max)
-export const updateTextSchema = freeText(1000).min(1, 'Type what changed.')
-export const noteSchema = freeText(1000)
-export const otherTextSchema = freeText(300)
+
+/**
+ * The caps of the four boxes that carry a microphone, exported (Phase 10, the review of Slice 10A)
+ * so each box can say the same number as its rule — as its `maxLength`, and as the most a
+ * dictation may fill it to. Before, only the working diagnosis had one, as a copy in the editor,
+ * and a long dictation into the other three was refused at Save with zod's raw "Too big".
+ */
+export const DIAGNOSIS_MAX = 80
+export const OTHER_TEXT_MAX = 300
+export const NOTE_MAX = 1000
+export const UPDATE_TEXT_MAX = 1000
+
+export const updateTextSchema = freeText(UPDATE_TEXT_MAX).min(1, 'Type what changed.')
+export const noteSchema = freeText(NOTE_MAX)
+export const otherTextSchema = freeText(OTHER_TEXT_MAX)
 
 /**
  * The weekly deck's action category on an update (Phase 8b, decision C). Already nullable and
@@ -159,7 +171,7 @@ export function buildCaseSchemas(
     // Phase 10. The working diagnosis is a clinical line, not an identifier: it is free text
     // capped at 80 characters, and `phiWarnings` warns on a 10-digit run in it as it does on
     // every other free text. The payer is a vocabulary, so an unknown value is refused.
-    diagnosis: freeText(80).nullable().optional(),
+    diagnosis: freeText(DIAGNOSIS_MAX).nullable().optional(),
     payer: payerSchema.nullable().optional(),
     reasons: z.array(caseReasonInput).min(1, 'Select at least one delay reason.'),
     primaryReasonId: z.string().nullable().optional(),

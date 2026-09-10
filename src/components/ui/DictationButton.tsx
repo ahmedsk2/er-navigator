@@ -72,8 +72,8 @@ const supportedOnServer = (): boolean => false
 
 /**
  * The merge rule, in one place: dictated words are appended to what is already in the box, with a
- * single space between, and never past the field's own cap (the working diagnosis is 80
- * characters by zod, and a save that the microphone made too long would be refused).
+ * single space between, and never past the field's own cap — every caller passes its box's zod
+ * cap from validation.ts, because a save that the microphone made too long would be refused.
  */
 export function appendDictated(current: string, text: string, max?: number): string {
   const addition = text.trim()

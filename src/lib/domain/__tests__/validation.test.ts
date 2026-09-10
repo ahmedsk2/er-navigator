@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildCaseSchemas,
+  DIAGNOSIS_MAX,
   mrnSchema,
+  NOTE_MAX,
+  OTHER_TEXT_MAX,
   phiWarnings,
+  UPDATE_TEXT_MAX,
   updateActionSchema,
   updateTextSchema,
   voidSchema,
@@ -391,6 +395,25 @@ describe('free text and identifiers', () => {
   it('updates need text and are capped', () => {
     expect(updateTextSchema.safeParse('   ').success).toBe(false)
     expect(updateTextSchema.safeParse('x'.repeat(1001)).success).toBe(false)
+  })
+  /**
+   * Phase 10, the review of Slice 10A. The four boxes with a microphone read their caps from
+   * here — as `maxLength`, and as the most a dictation may fill — so the numbers are pinned
+   * (exporting them changed no rule) and each is exactly where its rule starts refusing.
+   */
+  it('exports the caps the free-text boxes read, each exactly where its rule starts refusing', () => {
+    expect([DIAGNOSIS_MAX, OTHER_TEXT_MAX, NOTE_MAX, UPDATE_TEXT_MAX]).toEqual([80, 300, 1000, 1000])
+    const fits = (max: number) => 'x'.repeat(max)
+    const over = (max: number) => 'x'.repeat(max + 1)
+    expect(issues(draft.safeParse({ ...base(), diagnosis: fits(DIAGNOSIS_MAX) }))).toEqual([])
+    expect(issues(draft.safeParse({ ...base(), diagnosis: over(DIAGNOSIS_MAX) }))[0]).toMatch(/^diagnosis: /)
+    const other = (text: string) => ({ ...base(), reasons: [{ reasonId: 'r-other', otherText: text }] })
+    expect(issues(draft.safeParse(other(fits(OTHER_TEXT_MAX))))).toEqual([])
+    expect(issues(draft.safeParse(other(over(OTHER_TEXT_MAX))))[0]).toMatch(/^reasons\.0\.otherText: /)
+    expect(issues(draft.safeParse({ ...base(), resolutionNote: fits(NOTE_MAX) }))).toEqual([])
+    expect(issues(draft.safeParse({ ...base(), resolutionNote: over(NOTE_MAX) }))[0]).toMatch(/^resolutionNote: /)
+    expect(updateTextSchema.safeParse(fits(UPDATE_TEXT_MAX)).success).toBe(true)
+    expect(updateTextSchema.safeParse(over(UPDATE_TEXT_MAX)).success).toBe(false)
   })
   it('void needs a reason', () => expect(voidSchema.safeParse({ version: 2, voidReason: 'no' }).success).toBe(false))
   it('warns on a 10-digit run and never blocks', () => {

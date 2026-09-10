@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { prisma } from '../../src/lib/db'
+import { NOTE_MAX, OTHER_TEXT_MAX, UPDATE_TEXT_MAX } from '../../src/lib/domain/validation'
 import { riyadhDateKey } from '../../src/lib/export/range'
 import { CASES_HEADER } from '../../src/lib/export/rows'
 import { CASE_URL, fromClientIp, openCase, signIn, uniqueMrn } from './fixtures/case-flow'
@@ -535,6 +536,34 @@ test('dictated words are appended to the box, and trying again clears the last l
   await expect(diagnosis).toHaveValue(`Chest pain ${HEARD}`)
   await expect(line).toHaveCount(0)
   await expect(mic).toHaveAccessibleName('Dictate')
+})
+
+/**
+ * The same stand-in against the three boxes whose dictation was uncapped: the Other reason, the
+ * update and the resolution note. A phrase longer than the room left is cut at the box's own cap
+ * (the zod cap, exported from validation.ts) rather than being refused at Save with zod's raw
+ * "Too big", and each box carries the cap as its `maxLength`, as the working diagnosis does.
+ */
+test('a dictated phrase stops at the cap of the box it lands in', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.188')
+  await fakeRecogniser(page, [{ transcript: HEARD }])
+  const taps = await signIn(page, E2E_USERS.navigator)
+  await openCase(page, uniqueMrn(), STAGE, REASON, taps)
+  await page.getByRole('group', { name: `${STAGE} reasons` }).getByRole('button', { name: 'Other', exact: true }).click()
+
+  const boxes: Array<[Locator, number]> = [
+    [page.getByLabel(`Other reason under ${STAGE}`, { exact: true }), OTHER_TEXT_MAX],
+    [page.getByLabel('What changed?', { exact: true }), UPDATE_TEXT_MAX],
+    [page.getByLabel(NOTE_LABEL, { exact: true }), NOTE_MAX],
+  ]
+  for (const [box, cap] of boxes) {
+    // Four characters of room: the space and "for" fit, " admission" does not.
+    const typed = 'x'.repeat(cap - 4)
+    await box.fill(typed)
+    await micBeside(page, box).click()
+    await expect(box).toHaveValue(`${typed} for`)
+    await expect(box).toHaveAttribute('maxlength', String(cap))
+  }
 })
 
 /**

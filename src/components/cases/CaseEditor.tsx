@@ -77,7 +77,16 @@ import {
   TriangleAlert,
   Users,
 } from '@/src/components/icons'
-import { MRN_RE, phiWarnings, REGISTRATION_NUDGE_MINUTES, REGISTRATION_QUICK_HOURS } from '@/src/lib/domain/validation'
+import {
+  DIAGNOSIS_MAX,
+  MRN_RE,
+  NOTE_MAX,
+  OTHER_TEXT_MAX,
+  phiWarnings,
+  REGISTRATION_NUDGE_MINUTES,
+  REGISTRATION_QUICK_HOURS,
+  UPDATE_TEXT_MAX,
+} from '@/src/lib/domain/validation'
 import { timeWarnings } from '@/src/lib/domain/warnings'
 
 const CLOCK_TICK_MS = 30_000
@@ -99,9 +108,6 @@ const UPDATE_ACTIONS = Object.keys(UPDATE_ACTION_LABELS) as Array<keyof typeof U
 const CASE_MGMT_REFERRALS = ['CASE_MANAGER', 'COMPLEX_CARE'] as const
 const CASE_MGMT_CRITERIA = ['MEETS', 'NOT_MEETING'] as const
 const CASE_MGMT_ACTIONS = ['ENROLLED', 'FOR_ENROLLMENT'] as const
-
-/** Phase 10. The zod cap (`freeText(80)`), so the box and the rules say the same number. */
-const DIAGNOSIS_MAX = 80
 
 /**
  * One row for the pethidine question, because the two columns behind it are one clinical fact:
@@ -761,11 +767,16 @@ export function CaseEditor(props: CaseEditorProps) {
                   onText={(text) =>
                     setOtherText(
                       other.id,
-                      appendDictated(mine.find((r) => r.reasonId === other.id)?.otherText ?? '', text),
+                      appendDictated(
+                        mine.find((r) => r.reasonId === other.id)?.otherText ?? '',
+                        text,
+                        OTHER_TEXT_MAX,
+                      ),
                     )
                   }
                 >
                   <Input
+                    maxLength={OTHER_TEXT_MAX}
                     placeholder="Describe the other reason (goes to the review queue)"
                     disabled={disabled}
                     aria-label={`Other reason under ${stage.name}`}
@@ -1038,9 +1049,10 @@ export function CaseEditor(props: CaseEditorProps) {
               <div className="flex items-start gap-2">
                 <DictationRow
                   disabled={busy}
-                  onText={(text) => setUpdateText((current) => appendDictated(current, text))}
+                  onText={(text) => setUpdateText((current) => appendDictated(current, text, UPDATE_TEXT_MAX))}
                 >
                   <Input
+                    maxLength={UPDATE_TEXT_MAX}
                     aria-label="What changed?"
                     placeholder="What changed?"
                     disabled={busy}
@@ -1144,10 +1156,11 @@ export function CaseEditor(props: CaseEditorProps) {
           <Field label="Resolution note (optional)" htmlFor={noteId}>
             <DictationRow
               disabled={disabled}
-              onText={(text) => set({ resolutionNote: appendDictated(draft.resolutionNote, text) })}
+              onText={(text) => set({ resolutionNote: appendDictated(draft.resolutionNote, text, NOTE_MAX) })}
             >
               <Input
                 id={noteId}
+                maxLength={NOTE_MAX}
                 disabled={disabled}
                 value={draft.resolutionNote}
                 onChange={(e) => set({ resolutionNote: e.target.value })}

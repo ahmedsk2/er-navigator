@@ -1,11 +1,28 @@
 import { describe, expect, it } from 'vitest'
-import { dictationErrorLine } from '../ui/DictationButton'
+import { appendDictated, dictationErrorLine } from '../ui/DictationButton'
 
 /**
- * The pure half of the microphone (Phase 10): what the recogniser's error code tells the nurse.
- * The button itself has no unit test — there is no DOM harness — and is driven through a
- * stand-in recogniser in tests/e2e/cases.spec.ts.
+ * The pure halves of the microphone (Phase 10): how dictated words join the box, and what the
+ * recogniser's error code tells the nurse. The button itself has no unit test — there is no DOM
+ * harness — and is driven through a stand-in recogniser in tests/e2e/cases.spec.ts.
  */
+describe('appendDictated', () => {
+  it('appends with one space between, whatever spacing either side brought', () => {
+    expect(appendDictated('Chest pain', 'for admission')).toBe('Chest pain for admission')
+    expect(appendDictated('Chest pain  ', ' for admission ')).toBe('Chest pain for admission')
+    expect(appendDictated('', ' for admission')).toBe('for admission')
+  })
+
+  it('leaves the box alone when nothing was heard', () => {
+    expect(appendDictated('Chest pain', '   ')).toBe('Chest pain')
+  })
+
+  it("never fills past the box's cap", () => {
+    expect(appendDictated('x'.repeat(76), 'for admission', 80)).toBe(`${'x'.repeat(76)} for`)
+    expect(appendDictated('Chest pain', 'for admission', 80)).toBe('Chest pain for admission')
+  })
+})
+
 describe('dictationErrorLine', () => {
   it('says the browser has blocked the microphone, for either refusal', () => {
     const blocked =
