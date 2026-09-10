@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { blankDraft } from '../load'
 import type { LoadedCase } from '../load'
+import { fmtStamp } from '../local-time'
 import { summaryOf, summaryText } from '../summary'
 import type { CaseDraft, ReferenceData } from '../types'
 
@@ -95,6 +96,7 @@ function loaded(over: Partial<LoadedCase> = {}, draftOver: Partial<CaseDraft> = 
     voidReason: null,
     openedByName: 'Nadia Navigator',
     openedAt: T(9),
+    resolvedAt: null,
     draft: d,
     updates: [
       { id: 'u1', createdAt: T(6), text: 'Rang the ward, Mrs Smith is next', author: 'Nadia', action: 'BED_MANAGEMENT' },
@@ -131,10 +133,41 @@ describe('summaryOf', () => {
   })
 
   it('clocks a resolved case to its departure time, whatever "now" is', () => {
-    const s = summaryOf(loaded({ status: 'RESOLVED' }, { departedAt: T(2) }), REFERENCE, NOW)
+    // `resolvedAt` an hour after the departure on purpose: "Left ED at" edited after the resolve
+    // moves only the departure, and the departure is the end of the stay (`endAt`).
+    const s = summaryOf(loaded({ status: 'RESOLVED', resolvedAt: T(1) }, { departedAt: T(2) }), REFERENCE, NOW)
     expect(s.leftAt).toBe(T(2))
     expect(s.elapsedHours).toBe(7)
     expect(s.band).toBe('h6')
+  })
+
+  it('clocks a resolved case whose departure time was cleared to its resolution, and freezes it there', () => {
+    // A navigator can clear "Left ED at" on a resolved case and save: the draft's departure is
+    // nullable and `saveCase` refuses only a voided case. The row is then RESOLVED with no
+    // departure and its resolvedAt intact — kpi.ts's "Resolved (no departure time recorded)" —
+    // and the board row stops its clock at resolvedAt. So must the summary.
+    const at = (now: Date) =>
+      summaryOf(loaded({ status: 'RESOLVED', resolvedAt: T(3) }, { departedAt: null }), REFERENCE, now)
+    const s = at(NOW)
+    expect(s.leftAt).toBe(T(3))
+    expect(s.elapsedHours).toBe(6)
+    expect(s.band).toBe('h6')
+    expect(summaryText(s)).toContain(`Left ED: ${fmtStamp(T(3))}`)
+    expect(summaryText(s)).not.toContain('still in the ED')
+    // A day later it reads exactly the same: the stay ended when the case was resolved.
+    const dayLater = at(new Date(NOW.getTime() + 24 * 3_600_000))
+    expect(dayLater.leftAt).toBe(T(3))
+    expect(dayLater.elapsedHours).toBe(6)
+  })
+
+  it('reads a reopened case as still in the ED, although it keeps its old departure time', () => {
+    // `reopenCase` clears resolvedAt and leaves departedAt as entered (the prototype's reopen), so
+    // an OPEN case can carry a departure time. Every clock in the app reads that as "still here".
+    const s = summaryOf(loaded({ status: 'OPEN', resolvedAt: null }, { departedAt: T(2) }), REFERENCE, NOW)
+    expect(s.leftAt).toBeNull()
+    expect(s.elapsedHours).toBe(9)
+    expect(s.band).toBe('h6')
+    expect(summaryText(s)).toContain('Left ED: still in the ED')
   })
 
   it('lists the reasons with the primary first and marked, each under its stage', () => {
@@ -171,6 +204,14 @@ describe('summaryOf', () => {
     ])
     // Six, not seven: "Update without an action tag" is not one of the deck's categories.
     expect(s.actions).toHaveLength(6)
+  })
+
+  it('counts a recorded transfer request as the external transfer category, once', () => {
+    // No update carries the FAX_RCC tag here, so the one count is the transfer request time on
+    // the case — the third timestamp `actionKindsOf` in kpi.ts reads as a documented action.
+    const s = summaryOf(loaded({}, { transferRequestedAt: T(4) }), REFERENCE, NOW)
+    expect(s.actions.map((a) => [a.name, a.count])).toContainEqual(['External transfer / fax / RCC', 1])
+    expect(summaryText(s)).toContain('External transfer / fax / RCC ×1')
   })
 
   it('counts the updates and dates the newest, whatever order they arrived in', () => {
