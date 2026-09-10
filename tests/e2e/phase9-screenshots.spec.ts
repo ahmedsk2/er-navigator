@@ -37,6 +37,9 @@ test('phase 9 gate screenshots: the refusal screen, bare and inside the shell', 
   // Next renders a forbidden() thrown below a layout within that layout, so this refusal already
   // has the shell's header above it: the card must come alone, or the app prints its own name
   // twice on the same screen.
-  await expect(page.getByText('ER Navigator', { exact: true })).toHaveCount(1)
+  // Counted as headings, which excludes the shape that is display:none: since P9.40 the header's
+  // h1 is hidden from lg and the rail's wordmark is the h1 there, so the DOM holds two "ER
+  // Navigator" texts on a laptop and exactly one of them is on screen.
+  await expect(page.getByRole('heading', { name: 'ER Navigator' })).toHaveCount(1)
   await shoot(page, 'forbidden-shell')
 })
