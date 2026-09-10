@@ -37,6 +37,7 @@ import {
   BarSection,
   ByAreaSection,
   ByCtasSection,
+  ByPayerSection,
   DischargeCommunication,
   DocumentationSection,
   ExamToConsultSection,
@@ -45,6 +46,7 @@ import {
   OutcomesSection,
   RepeatVisits,
   StayBandsSection,
+  WhereTimeGoesSection,
   TurnaroundSection,
   WorkingTargets,
   hbarRows,
@@ -161,6 +163,7 @@ export function DashboardBody({
       <StayBandsSection kpi={kpi} range={range} />
       <AdaaPanel kpi={kpi} range={range} />
       <WorkingTargets kpi={kpi} range={range} />
+      <WhereTimeGoesSection kpi={kpi} range={range} />
     </>
   )
 
@@ -189,6 +192,7 @@ export function DashboardBody({
       ) : (
         <>
           {variant === 'screen' ? <StayBandsSection kpi={kpi} range={range} /> : null}
+          {variant === 'screen' ? <WhereTimeGoesSection kpi={kpi} range={range} /> : null}
 
           {data.weeks.length > 1 && (
             <DashSection title="By week: cases and median stay" icon={<Activity size={18} />}>
@@ -310,6 +314,7 @@ export function DashboardBody({
           <DischargeCommunication kpi={kpi} range={range} />
           <ByCtasSection kpi={kpi} range={range} />
           <ByAreaSection kpi={kpi} range={range} />
+          <ByPayerSection kpi={kpi} range={range} />
           <RepeatVisits kpi={kpi} range={range} />
           <DocumentationSection kpi={kpi} range={range} />
 

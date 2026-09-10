@@ -259,3 +259,25 @@ describe('resolveDrill, the Phase 8 sections', () => {
     }
   })
 })
+
+describe('Phase 10 drill-downs', () => {
+  it('resolves a phase by its grid key: the measured cases, the longest, or a stage row', () => {
+    expect(resolveDrill(data, { section: 'phase', name: gridKey('front', 'median') })).toMatchObject({
+      label: 'Front end: cases with the interval measured',
+      ids: [],
+    })
+    expect(resolveDrill(data, { section: 'phase', name: gridKey('after', 'longest') })).toMatchObject({
+      label: 'After the decision: the longest phase of the stay',
+    })
+    expect(resolveDrill(data, { section: 'phase', name: gridKey('decision', 'Investigations') })).toMatchObject({
+      label: 'Investigations (decision)',
+    })
+    expect(resolveDrill(data, { section: 'phase', name: gridKey('decision', 'No such stage') })).toBeNull()
+    expect(resolveDrill(data, { section: 'phase', name: gridKey('nowhere', 'median') })).toBeNull()
+  })
+
+  it('resolves a payer row, naming the missing one plainly', () => {
+    expect(resolveDrill(data, { section: 'payer', name: 'Not recorded' })).toMatchObject({ label: 'Payer not recorded' })
+    expect(resolveDrill(data, { section: 'payer', name: 'Government' })).toMatchObject({ label: 'Payer: Government', ids: [] })
+  })
+})

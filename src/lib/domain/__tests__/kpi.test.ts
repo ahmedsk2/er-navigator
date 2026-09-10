@@ -39,6 +39,9 @@ import {
   turnaroundBands,
   unitTypeOf,
   type KpiCase,
+  byPayer,
+  phaseHours,
+  phaseSplit,
 } from '../kpi'
 
 /** 2026-09-09 12:00 UTC = 15:00 Riyadh. Every fixture time is relative to this. */
@@ -105,12 +108,14 @@ function base(id: string, over: Partial<KpiCase> = {}): KpiCase {
  *  e  resolved, reg 20 h ago, left 15.5 h ago                 stay 4.5   DISCHARGED_HOME (same MRN as a)
  *  v  voided (ignored everywhere)
  */
-const a = base('a', { ctas: 3, areaName: 'Acute area', stageNames: ['Investigations'] })
+const a = base('a', { ctas: 3, areaName: 'Acute area', stageNames: ['Investigations'], stageCodes: ['inv'] })
 const b = base('b', {
   registrationAt: T(26.5),
   ctas: 2,
   areaName: 'Resuscitation area',
   stageNames: ['Referral / consulted team', 'Admission process'],
+  stageCodes: ['ref', 'adm'],
+  payer: 'INSURED',
   medAdminInformedAt: T(2),
   updatesCount: 1,
   untaggedUpdatesCount: 1,
@@ -130,6 +135,8 @@ const c = base('c', {
   ctas: 3,
   areaName: 'Acute area',
   stageNames: ['Admission process'],
+  stageCodes: ['adm'],
+  payer: 'GOVERNMENT',
   disposition: 'ADMITTED',
   wardCode: 'MMW',
   triageAt: T(12.75),
@@ -158,6 +165,8 @@ const d = base('d', {
   physicianAt: T(29),
   decisionAt: T(28),
   stageNames: ['Discharge process'],
+  stageCodes: ['dc'],
+  payer: 'GOVERNMENT',
   investigations: [{ type: 'LAB', orderedAt: T(29), collectedAt: null, receivedAt: null, doneAt: null, preliminaryAt: null, resultedAt: T(27.5) }],
 })
 const e = base('e', {
@@ -171,6 +180,8 @@ const e = base('e', {
   physicianAt: T(19.75),
   decisionAt: T(17),
   stageNames: ['Investigations'],
+  stageCodes: ['inv'],
+  payer: 'SELF_PAY',
   investigations: [{ type: 'XR', orderedAt: T(19.5), collectedAt: null, receivedAt: null, doneAt: T(19), preliminaryAt: null, resultedAt: T(18) }],
 })
 const v = base('v', { status: 'VOIDED', registrationAt: T(40) })
@@ -777,5 +788,75 @@ describe('voided cases are in nothing', () => {
     expect(targets([v]).every((r) => r.n === 0)).toBe(true)
     expect(byCtas([v], NOW).every((r) => r.n === 0)).toBe(true)
     expect(byArea([v], NOW)).toEqual([])
+  })
+})
+
+/**
+ * Phase 10: where the time goes, and by payer. Hand-computed from the fixture: door is the
+ * earlier of registration and triage, so b's front end runs from T(26.5) not T(26.25); `after`
+ * is null for b because it is still open (leaving is endAt, RESOLVED only).
+ *   b: front 0.5 h, decision 6 h, after —        c: 0.5, 2.5, 7      (complete)
+ *   d: 1, 1, 4 (complete)                        e: 0.25, 2.75, 1.5  (complete)
+ *   a: nothing measured; v: voided, ignored.
+ * Complete cases c, d, e: sums front 1.75, decision 6.25, after 12.5, total 20.5.
+ */
+describe('Phase 10: where the time goes, by payer', () => {
+  const ALL = [a, b, c, d, e, v]
+
+  it('measures the three phases of a case in hours', () => {
+    expect(phaseHours(b)).toEqual({ front: 0.5, decision: 6, after: null })
+    expect(phaseHours(c)).toEqual({ front: 0.5, decision: 2.5, after: 7 })
+    expect(phaseHours(d)).toEqual({ front: 1, decision: 1, after: 4 })
+    expect(phaseHours(e)).toEqual({ front: 0.25, decision: 2.75, after: 1.5 })
+    expect(phaseHours(a)).toEqual({ front: null, decision: null, after: null })
+  })
+
+  it('splits the stay: a median per phase, shares over the complete cases, the longest phase per case', () => {
+    const s = phaseSplit(ALL)
+    expect(s.completeN).toBe(3)
+    expect(s.completeIds).toEqual(['c', 'd', 'e'])
+    const [front, decision, after] = s.phases as [typeof s.phases[number], typeof s.phases[number], typeof s.phases[number]]
+    expect(front).toMatchObject({ key: 'front', name: 'Front end', n: 4, ids: ['b', 'c', 'd', 'e'], med: 0.5, longestN: 0, longestIds: [] })
+    expect(decision).toMatchObject({ key: 'decision', n: 4, ids: ['b', 'c', 'd', 'e'], med: 2.625, longestN: 1, longestIds: ['e'] })
+    expect(after).toMatchObject({ key: 'after', n: 3, ids: ['c', 'd', 'e'], med: 4, longestN: 2, longestIds: ['c', 'd'] })
+    expect(front.share).toBeCloseTo(1.75 / 20.5, 12)
+    expect(decision.share).toBeCloseTo(6.25 / 20.5, 12)
+    expect(after.share).toBeCloseTo(12.5 / 20.5, 12)
+    expect(front.share! + decision.share! + after.share!).toBeCloseTo(1, 12)
+    // The stages under each phase, every case that carries a reason there, zero rows kept.
+    expect(front.stages.map((r) => [r.name, r.value])).toEqual([['Registration', 0], ['Triage', 0], ['Resus room', 0], ['Exam room', 0]])
+    expect(decision.stages).toEqual([
+      { name: 'Investigations', value: 2, ids: ['a', 'e'] },
+      { name: 'Referral / consulted team', value: 1, ids: ['b'] },
+      { name: 'Disposition decision', value: 0, ids: [] },
+    ])
+    expect(after.stages).toEqual([
+      { name: 'Admission process', value: 2, ids: ['b', 'c'] },
+      { name: 'Discharge process', value: 1, ids: ['d'] },
+      { name: 'Administrative / coordination', value: 0, ids: [] },
+    ])
+  })
+
+  it('guards the shares below three complete cases and charges a tie to the earlier phase', () => {
+    const two = phaseSplit([a, b, c, d])
+    expect(two.completeN).toBe(2)
+    expect(two.phases.map((p) => p.share)).toEqual([null, null, null])
+    const tie = base('t', { status: 'RESOLVED', registrationAt: T(3), physicianAt: T(2), decisionAt: T(1), departedAt: T(0), resolvedAt: T(0) })
+    const s = phaseSplit([c, d, e, tie])
+    expect(phaseHours(tie)).toEqual({ front: 1, decision: 1, after: 1 })
+    expect(s.phases[0]!.longestIds).toEqual(['t'])
+  })
+
+  it('groups the cases by payer in a fixed order, with Not recorded last', () => {
+    const rows = byPayer(ALL, NOW)
+    expect(rows.map((r) => [r.name, r.n, r.ids])).toEqual([
+      ['Government', 2, ['c', 'd']],
+      ['Insured', 1, ['b']],
+      ['Self-pay', 1, ['e']],
+      ['Not recorded', 1, ['a']],
+    ])
+    // Every group is below MIN_N here, so no median is a number.
+    expect(rows.map((r) => r.med)).toEqual([null, null, null, null])
+    expect(byPayer([c, d, e], NOW).map((r) => r.name)).toEqual(['Government', 'Insured', 'Self-pay'])
   })
 })

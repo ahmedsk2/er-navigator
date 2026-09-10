@@ -12,7 +12,7 @@
  * "By ED area" on a hospital that has not started recording areas is noise, and the sections that
  * can be empty say so where they are defined.
  */
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import {
   Activity,
   BarChart3,
@@ -499,6 +499,83 @@ export function DocumentationSection({ kpi, range }: Props) {
     <DashSection title="Documentation" icon={<FileText size={18} />}>
       <DataTable head={['Check', 'Cases']} rows={countRows(kpi.completeness, range, 'quality')} />
       <Footnote>What is missing or contradictory on the record, so it can be fixed while the case is fresh.</Footnote>
+    </DashSection>
+  )
+}
+
+// --- Phase 10: where the time goes, by payer --------------------------------------------------
+
+/**
+ * The stay in three parts (docs/specs/phase10-delays.md): front end, decision, after the
+ * decision. Three tables under one heading, all siblings of the h3 as every section keeps them:
+ * the phases with a median and a share, the longest phase per case, then the stages of each
+ * phase. Every row drills down; the grid key is `phase|what`.
+ */
+export function WhereTimeGoesSection({ kpi, range }: Props) {
+  const { phases, completeN } = kpi.phases
+  if (!phases.some((p) => p.n > 0)) return null
+  return (
+    <DashSection title="Where the time goes" icon={<Clock size={18} />}>
+      <DataTable
+        head={['Phase', 'Cases', 'Median', 'Share']}
+        rows={phases.map((p) => ({
+          key: p.key,
+          href: href(range, 'phase', gridKey(p.key, 'median')),
+          cells: [
+            p.name,
+            p.n,
+            <Median key="m" value={p.med} n={p.n} />,
+            <span key="s" className="inline-flex min-w-[56px] flex-col items-end gap-1">
+              {fmtShare(p.share)}
+              <ShareBar share={p.share} label={p.name} />
+            </span>,
+          ],
+        }))}
+      />
+      <PanelLabel>Longest phase of the stay, over the {completeN} cases with all three measured</PanelLabel>
+      <DataTable
+        head={['Phase', 'Cases']}
+        rows={phases.map((p) => ({
+          key: `longest-${p.key}`,
+          href: href(range, 'phase', gridKey(p.key, 'longest')),
+          cells: [p.name, p.longestN],
+        }))}
+      />
+      {phases.map((p) => (
+        <Fragment key={p.key}>
+          <PanelLabel>Reasons recorded in the {p.name.toLowerCase()}</PanelLabel>
+          <DataTable
+            head={['Stage', 'Cases']}
+            rows={p.stages.map((s) => ({
+              key: `${p.key}-${s.name}`,
+              href: href(range, 'phase', gridKey(p.key, s.name)),
+              cells: [s.name, s.value],
+            }))}
+          />
+        </Fragment>
+      ))}
+      <Footnote>
+        Front end is door to physician; decision is physician to the disposition decision; after the decision is
+        decision to leaving, so it counts resolved cases only. Shares are summed hours over the cases with all three
+        measured. Tap a row for the cases.
+      </Footnote>
+    </DashSection>
+  )
+}
+
+/** Nothing to show until a payer is recorded on at least one case, as with the ED area. */
+export function ByPayerSection({ kpi, range }: Props) {
+  if (!kpi.byPayer.some((r) => r.name !== NOT_RECORDED && r.n > 0)) return null
+  return (
+    <DashSection title="By payer" icon={<Users size={18} />}>
+      <DataTable
+        head={['Payer', 'Cases', 'Median stay']}
+        rows={kpi.byPayer.map((row) => ({
+          key: row.name,
+          href: href(range, 'payer', row.name),
+          cells: [row.name, row.n, <Median key="m" value={row.med} n={row.n} />],
+        }))}
+      />
     </DashSection>
   )
 }

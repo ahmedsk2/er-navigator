@@ -60,6 +60,8 @@ export const DRILL_SECTIONS = [
   'outcome',
   'ctas',
   'area',
+  'phase',
+  'payer',
   'repeat',
   'quality',
 ] as const
@@ -135,6 +137,9 @@ type DashboardData = {
     outcomes: NamedRows
     byCtas: NamedRows
     byArea: NamedRows
+    /** Phase 10: the three phases, each with its measured ids, its longest-phase ids and its stage rows. */
+    phases: { phases: ReadonlyArray<{ key: string; name: string; ids: string[]; longestIds: string[]; stages: NamedRows }> }
+    byPayer: NamedRows
     repeats: ReadonlyArray<{ mrn: string; ids: string[] }>
     completeness: NamedRows
   }
@@ -230,6 +235,18 @@ export function resolveDrill(data: DashboardData, key: DrillKey): Drill | null {
       return named(data.kpi.byCtas, (r) => (r.name === NOT_RECORDED ? 'CTAS not recorded' : `CTAS ${r.name}`))
     case 'area':
       return named(data.kpi.byArea, (r) => (r.name === NOT_RECORDED ? 'ED area not recorded' : r.name))
+    case 'phase': {
+      // `phase|median`, `phase|longest`, or `phase|<stage name>`.
+      const [phaseKey, what] = splitGrid(key.name)
+      const phase = data.kpi.phases.phases.find((p) => p.key === phaseKey)
+      if (!phase) return null
+      if (what === 'median') return { key, label: `${phase.name}: cases with the interval measured`, ids: phase.ids }
+      if (what === 'longest') return { key, label: `${phase.name}: the longest phase of the stay`, ids: phase.longestIds }
+      const stage = phase.stages.find((s) => s.name === what)
+      return stage ? { key, label: `${stage.name} (${phase.name.toLowerCase()})`, ids: stage.ids } : null
+    }
+    case 'payer':
+      return named(data.kpi.byPayer, (r) => (r.name === NOT_RECORDED ? 'Payer not recorded' : `Payer: ${r.name}`))
     case 'repeat': {
       const row = data.kpi.repeats.find((r) => r.mrn === key.name)
       return row ? { key, label: `MRN ${row.mrn}, ${row.ids.length} visits`, ids: row.ids } : null

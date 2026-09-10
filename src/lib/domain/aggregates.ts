@@ -21,6 +21,8 @@ import {
   admissionToUnitBands,
   byArea,
   byCtas,
+  byPayer,
+  phaseSplit,
   communication,
   completeness,
   examToConsult,
@@ -42,6 +44,7 @@ import {
   type KpiCase,
   type LongestStay,
   type ShareRow,
+  type PhaseSplit,
   type StatRow,
   type TargetKey,
   type TurnaroundRow,
@@ -388,6 +391,9 @@ export type DashboardKpi = {
   turnaround: TurnaroundRow[]
   byCtas: StatRow[]
   byArea: StatRow[]
+  /** Phase 10: the stay in three parts, and the cases by payer. */
+  phases: PhaseSplit
+  byPayer: StatRow[]
 }
 
 function guardedShare(within: number, n: number): number | null {
@@ -445,6 +451,8 @@ export function kpiPanels(all: ReadonlyArray<CaseForStats>, cases: ReadonlyArray
     turnaround: turnaroundBands(cases),
     byCtas: byCtas(cases, now),
     byArea: byArea(cases, now),
+    phases: phaseSplit(cases),
+    byPayer: byPayer(cases, now),
   }
 }
 

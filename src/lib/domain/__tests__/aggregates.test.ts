@@ -375,3 +375,15 @@ describe('Phase 8 panels', () => {
     ])
   })
 })
+
+describe('Phase 10 panels', () => {
+  const k = dashboard(FIXTURE, '30', NOW).kpi
+  it('carries the phase split and the payer rows, in their fixed orders', () => {
+    expect(k.phases.phases.map((p) => p.key)).toEqual(['front', 'decision', 'after'])
+    // The fixture records no physician or decision time, so nothing is measured here; the maths is
+    // hand-checked in kpi.test.ts, this is the wiring.
+    expect(k.phases.completeN).toBe(0)
+    expect(k.phases.phases.every((p) => p.n === 0 && p.share === null)).toBe(true)
+    expect(k.byPayer.map((r) => r.name)).toEqual(['Government', 'Insured', 'Self-pay', 'Not recorded'])
+  })
+})

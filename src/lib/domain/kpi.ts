@@ -26,6 +26,9 @@ import {
   INVESTIGATION_LABELS,
   INVESTIGATION_STEPS,
   MILESTONES,
+  PAYER_LABELS,
+  PAYERS,
+  STAGES,
   TRANSFER_STEPS,
 } from './taxonomy'
 
@@ -999,4 +1002,105 @@ export function byArea(cases: ReadonlyArray<KpiCase>, now: Date): StatRow[] {
     if (b.name === NOT_RECORDED) return -1
     return b.n - a.n || a.name.localeCompare(b.name)
   })
+}
+
+// --- where the time goes, by payer (Phase 10) --------------------------------------------------
+
+/**
+ * The three parts of a stay (docs/specs/phase10-delays.md, Ahmed's request of 10 September):
+ * front end = door to physician, decision = physician to disposition decision, after = decision
+ * to leaving. The intervals are KPI 1, 2 and 3 in hours; `after` exists only for a RESOLVED case,
+ * because leaving is `endAt` (the leaving ruling above), so the three phases carry different n.
+ * The stages of the locked taxonomy fall under the phase whose interval they lengthen.
+ */
+export const PHASES = [
+  { key: 'front', name: 'Front end', stages: ['reg', 'triage', 'resus', 'exam'] },
+  { key: 'decision', name: 'Decision', stages: ['inv', 'ref', 'dispo'] },
+  { key: 'after', name: 'After the decision', stages: ['adm', 'dc', 'admin'] },
+] as const
+export type PhaseKey = (typeof PHASES)[number]['key']
+
+const STAGE_NAME_BY_CODE: ReadonlyMap<string, string> = new Map(STAGES.map((s) => [s.code, s.name]))
+
+/** The three intervals of one case, in hours; null where an end is missing or reversed. */
+export function phaseHours(c: KpiCase): Record<PhaseKey, number | null> {
+  const hours = (m: number | null): number | null => (m == null ? null : m / 60)
+  return { front: hours(kpi1Minutes(c)), decision: hours(kpi2Minutes(c)), after: hours(kpi3Minutes(c)) }
+}
+
+export type PhaseRow = {
+  key: PhaseKey
+  name: string
+  /** Cases with this interval measured, and their median in hours (n<3 guarded). */
+  n: number
+  ids: string[]
+  med: number | null
+  /** This phase's summed hours over the summed stay, across the cases with all three measured. */
+  share: number | null
+  /** Of the cases with all three measured, those where this phase is the longest. */
+  longestN: number
+  longestIds: string[]
+  /** The phase's stages: cases carrying at least one reason in each, in stage order, zero rows kept. */
+  stages: IdRow[]
+}
+export type PhaseSplit = { phases: PhaseRow[]; completeN: number; completeIds: string[] }
+
+/**
+ * Where the time goes. `share` is the honest pie: summed hours of the phase over the summed
+ * three-phase stay, across the cases where all three were measured — so the three shares add up
+ * to one and are null below MIN_N such cases. `longest` is charged per case, ties to the earlier
+ * phase (a delay shared equally is charged to where it began).
+ */
+export function phaseSplit(cases: ReadonlyArray<KpiCase>): PhaseSplit {
+  const xs = live(cases)
+  const measured = PHASES.map(() => ({ ids: [] as string[], hours: [] as number[] }))
+  const complete: Array<{ c: KpiCase; h: Record<PhaseKey, number> }> = []
+  for (const c of xs) {
+    const h = phaseHours(c)
+    PHASES.forEach((p, i) => {
+      const v = h[p.key]
+      if (v != null) {
+        measured[i]!.ids.push(c.id)
+        measured[i]!.hours.push(v)
+      }
+    })
+    if (h.front != null && h.decision != null && h.after != null) {
+      complete.push({ c, h: { front: h.front, decision: h.decision, after: h.after } })
+    }
+  }
+  const sums = PHASES.map((p) => complete.reduce((a, { h }) => a + h[p.key], 0))
+  const total = sums.reduce((a, b) => a + b, 0)
+  const phases: PhaseRow[] = PHASES.map((p, i) => {
+    const longest = complete.filter(({ h }) => longestPhase(h) === p.key)
+    return {
+      key: p.key,
+      name: p.name,
+      n: measured[i]!.ids.length,
+      ids: measured[i]!.ids,
+      med: guardedMedian(measured[i]!.hours),
+      share: complete.length >= MIN_N && total > 0 ? sums[i]! / total : null,
+      longestN: longest.length,
+      longestIds: longest.map(({ c }) => c.id),
+      stages: p.stages.map((code) => {
+        const hits = xs.filter((c) => c.stageCodes.includes(code))
+        return { name: STAGE_NAME_BY_CODE.get(code) ?? code, value: hits.length, ids: hits.map((c) => c.id) }
+      }),
+    }
+  })
+  return { phases, completeN: complete.length, completeIds: complete.map(({ c }) => c.id) }
+}
+
+function longestPhase(h: Record<PhaseKey, number>): PhaseKey {
+  let best: PhaseKey = 'front'
+  for (const p of PHASES) if (h[p.key] > h[best]) best = p.key
+  return best
+}
+
+/** Government · Insured · Self-pay always, in that order, then 'Not recorded' when any case lacks one. */
+export function byPayer(cases: ReadonlyArray<KpiCase>, now: Date): StatRow[] {
+  const m = statBy(cases, now, (c) => (c.payer ? PAYER_LABELS[c.payer] : NOT_RECORDED))
+  const rows: StatRow[] = PAYERS.map((p) => m.get(PAYER_LABELS[p]) ?? { name: PAYER_LABELS[p], n: 0, ids: [], med: null })
+  const missing = m.get(NOT_RECORDED)
+  if (missing) rows.push(missing)
+  return rows
 }

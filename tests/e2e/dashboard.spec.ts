@@ -267,6 +267,8 @@ test('every section the seeded data earns is on the page, charts included', asyn
 
   for (const heading of [
     'Cases past each threshold',
+    // Phase 10: the stay in three parts; the seed records physician and decision times.
+    'Where the time goes',
     'By week: cases and median stay',
     'Primary delay reason',
     // Phase 8 renamed "Journey stage where delays occur" to the weekly deck's own word.
