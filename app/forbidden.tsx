@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { HoldingScreen } from '@/src/components/brand/HoldingScreen'
 
 /**
  * The body of every HTTP 403 this app serves (Phase 7). `requireAction()` calls Next's
@@ -13,7 +14,7 @@ import Link from 'next/link'
  */
 export default function Forbidden() {
   return (
-    <main className="mx-auto max-w-md p-4 pt-8">
+    <HoldingScreen>
       <h1 className="text-title">Not allowed</h1>
       <p className="mt-3 text-body text-ink-2">
         Your role cannot open this screen. Nothing is wrong with your sign-in, and the attempt has
@@ -25,6 +26,6 @@ export default function Forbidden() {
       >
         ‹ Board
       </Link>
-    </main>
+    </HoldingScreen>
   )
 }

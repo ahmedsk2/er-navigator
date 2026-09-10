@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { HoldingScreen } from '@/src/components/brand/HoldingScreen'
 
 /**
  * HTTP 404 for the whole app: a case id that does not exist, a mistyped link, a bookmark to a
@@ -7,7 +8,7 @@ import Link from 'next/link'
  */
 export default function NotFound() {
   return (
-    <main className="mx-auto max-w-md p-4 pt-8">
+    <HoldingScreen>
       <h1 className="text-title">Not found</h1>
       <p className="mt-3 text-body text-ink-2">
         There is nothing at this address. The case may have been voided, or the link is wrong.
@@ -18,6 +19,6 @@ export default function NotFound() {
       >
         ‹ Board
       </Link>
-    </main>
+    </HoldingScreen>
   )
 }
