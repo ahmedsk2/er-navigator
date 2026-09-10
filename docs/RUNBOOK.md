@@ -282,6 +282,25 @@ ADMIN_PASSWORD that was in Coolify when the database was first seeded, then chan
 /account (at least 12 characters). Changing it signs out every other device and leaves a
 user.password audit row. The seeded password is never re-applied — the seed only creates the
 admin when the username is absent — so clearing ADMIN_PASSWORD in Coolify afterwards is safe.
+
+For the same reason, CHANGING ADMIN_PASSWORD in Coolify after the first seed changes nothing:
+on 10 September it had been changed the morning after the seed, every sign-in with the new value
+failed (five `auth.fail` rows, no lock yet), and the fix was to re-hash the current value into the
+row as the owner role. Either sign in with the original value and change it at /account, or run
+this on the host. The value is read from the last migrate container (the one place outside
+Coolify that holds it), hashed with the host's python3-bcrypt, and piped straight into psql, so
+neither the value nor the hash is ever printed or re-read by a shell:
+
+```bash
+M=$(sudo docker ps -a --format '{{.Names}}' | grep '^migrate-jqcjqhmcmizxs1u51wnqlfwv')
+D=$(sudo docker ps --format '{{.Names}}' | grep '^db-jqcjqhmcmizxs1u51wnqlfwv')
+HASH=$(sudo docker inspect "$M" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^ADMIN_PASSWORD=' | cut -d= -f2- | tr -d '\n' | python3 -c 'import sys,bcrypt; print(bcrypt.hashpw(sys.stdin.buffer.read(), bcrypt.gensalt(12)).decode(), end="")')
+printf '%s\n' "UPDATE \"User\" SET \"passwordHash\" = '$HASH', \"failedLogins\" = 0, \"lockedUntil\" = NULL WHERE username = 'admin';" "INSERT INTO \"AuditLog\" (id, action, entity, \"entityId\", after, \"userAgent\") VALUES (gen_random_uuid()::text, 'user.password', 'User', (SELECT id FROM \"User\" WHERE username = 'admin'), '{\"reason\":\"ADMIN_PASSWORD re-hashed by the owner role\"}', 'runbook: owner SQL');" | sudo docker exec -i "$D" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1'
+unset HASH
+```
+
+Expect `UPDATE 1` and `INSERT 0 1`. The row's failure count and lock are cleared with it. Done
+this way on 2026-09-10 03:54 UTC (audit row `user.password`, user agent `runbook: owner SQL`).
 Ten failed sign-ins lock an account for 15 minutes. To clear a lock before then, an Admin uses
 Admin → Users → Reset password on that user: it clears the lock and the failure count, signs
 the user out everywhere and leaves a `user.password` audit row. Only when no Admin can sign in
