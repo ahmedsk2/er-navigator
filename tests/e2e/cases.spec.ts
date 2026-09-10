@@ -567,6 +567,76 @@ test('a dictated phrase stops at the cap of the box it lands in', async ({ page 
 })
 
 /**
+ * A stand-in that listens until it is told to stop, and then takes its time about ending, as the
+ * real one can: `stop()` returns at once, and the stopped session's error and end arrive only
+ * after the audio it already had has been to the speech service and back. It logs every start,
+ * stop and ending, so a test can see that an ending landed after the next session started.
+ */
+async function lateEndingRecogniser(page: Page, endAfterMs: number): Promise<void> {
+  await page.addInitScript((delay: number) => {
+    const log: string[] = []
+    let sessions = 0
+    class FakeRecognition {
+      lang = ''
+      continuous = false
+      interimResults = false
+      onresult: ((event: unknown) => void) | null = null
+      onerror: ((event: { error: string }) => void) | null = null
+      onend: (() => void) | null = null
+      session = (sessions += 1)
+      start(): void {
+        log.push(`start ${this.session}`)
+      }
+      stop(): void {
+        log.push(`stop ${this.session}`)
+        setTimeout(() => {
+          this.onerror?.({ error: 'network' })
+          this.onend?.()
+          log.push(`ended ${this.session}`)
+        }, delay)
+      }
+      abort(): void {}
+    }
+    Object.assign(window, {
+      SpeechRecognition: FakeRecognition,
+      webkitSpeechRecognition: FakeRecognition,
+      recogniserLog: log,
+    })
+  }, endAfterMs)
+}
+
+/**
+ * Phase 10 review: a quick re-tap. `stop()` let go of the session at once, but the stopped
+ * session's own error and end came later, and they turned the button back to "Dictate" (with
+ * their line under it) while the session started after them was still listening. A session's
+ * ending now counts only while it is still the current one.
+ */
+test('a stopped session that ends late does not stop the one started after it', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.222')
+  await lateEndingRecogniser(page, 1_000)
+  const taps = await signIn(page, E2E_USERS.navigator)
+  await openCase(page, uniqueMrn(), STAGE, REASON, taps)
+
+  const mic = micBeside(page, page.getByLabel(DIAGNOSIS_LABEL, { exact: true }))
+  await mic.click()
+  await mic.click()
+  await expect(mic).toHaveAccessibleName('Dictate')
+  // Tapped again inside the second the first session takes to end.
+  await mic.click()
+  await expect(mic).toHaveAccessibleName('Stop dictating')
+
+  // The first session's error and end arrive after the second session has started ...
+  const log = () =>
+    page.evaluate(() => (window as unknown as { recogniserLog: string[] }).recogniserLog.join(', '))
+  await expect.poll(log).toBe('start 1, stop 1, start 2, ended 1')
+  // ... and once React has had two frames to act on them, the second session is still listening.
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  await expect(mic).toHaveAccessibleName('Stop dictating')
+  await expect(mic).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('[data-dictate-status]')).toHaveCount(0)
+})
+
+/**
  * Phase 10, Slice 10C. The case summary: the panel a nurse opens to answer "what is happening
  * with 851557?" and the block of text she pastes into the handover message.
  *

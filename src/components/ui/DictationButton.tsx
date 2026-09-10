@@ -178,11 +178,20 @@ export function DictationButton({
     // silence timeout all land here or in `onend`. Either way the button goes back to idle
     // rather than sitting pressed over a microphone that stopped listening minutes ago, and an
     // error says why in the line under the row.
+    //
+    // Only while this is still the current session, though. `stop()` lets go of it at once, but
+    // its own error and end arrive later, and a quick second tap has started another session by
+    // then: an ending that did not check whose it was turned the button back to "Dictate", with
+    // its line under it, over a microphone that was still listening. `onresult` is not held to
+    // this: the words a stopped session hands back were spoken before the tap, and belong in
+    // the box.
     session.onend = () => {
+      if (recognition.current !== session) return
       recognition.current = null
       setListening(false)
     }
     session.onerror = (event) => {
+      if (recognition.current !== session) return
       recognition.current = null
       setListening(false)
       report.current?.(dictationErrorLine(event.error))
