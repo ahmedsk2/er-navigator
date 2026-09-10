@@ -113,11 +113,16 @@ const BUTTON_TONE = {
   danger: 'border border-danger bg-panel text-danger',
 } as const
 
+/**
+ * `ComponentPropsWithRef`, not `ButtonHTMLAttributes`: React 19 passes `ref` as an ordinary prop
+ * to a function component, and the summary sheet needs one so that closing the dialog can put
+ * focus back on the button that opened it (Phase 10).
+ */
 export function Button({
   tone = 'quiet',
   className = '',
   ...rest
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { tone?: keyof typeof BUTTON_TONE }) {
+}: React.ComponentPropsWithRef<'button'> & { tone?: keyof typeof BUTTON_TONE }) {
   return <button type="button" {...rest} className={`${BUTTON_BASE} ${BUTTON_TONE[tone]} ${className}`} />
 }
 

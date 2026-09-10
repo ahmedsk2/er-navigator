@@ -87,11 +87,18 @@ test('the desktop row is five columns under a label strip, and the phone has nei
     await expect(labels).toContainText('Waiting on')
     await expect(labels).toContainText('Last update')
     await expect(labels).toContainText('Elapsed')
-    // The strip sits above the first row and shares its grid, so the columns line up.
+    // The strip sits above the first row, and the columns line up. Since Phase 10 the two no
+    // longer share one box: the summary button stands in a gutter to the right of the card, and
+    // the strip reserves it as an empty sixth column. So what is measured is the alignment
+    // itself — the same left edge, and the "Elapsed" label ending exactly where the row's
+    // elapsed pill ends.
     const stripBox = (await labels.boundingBox())!
     const rowBox = (await row.boundingBox())!
     expect(stripBox.y).toBeLessThan(rowBox.y)
-    expect(Math.abs(stripBox.width - rowBox.width)).toBeLessThan(40)
+    expect(Math.abs(stripBox.x - rowBox.x)).toBeLessThan(2)
+    const elapsedLabel = (await labels.locator('span').last().boundingBox())!
+    const pillBox = (await row.locator('.num').last().boundingBox())!
+    expect(Math.abs(elapsedLabel.x + elapsedLabel.width - (pillBox.x + pillBox.width))).toBeLessThan(2)
   }
 })
 

@@ -424,6 +424,55 @@ test('the working diagnosis and the payer reach the board row and the export', a
 })
 
 /**
+ * Phase 10, Slice 10C. The case summary: the panel a nurse opens to answer "what is happening
+ * with 851557?" and the block of text she pastes into the handover message.
+ *
+ * The clipboard is read back rather than trusted, because the whole point of the Copy button is
+ * what lands on the clipboard — and because the assertion that matters is a negative one: the
+ * update text the nurse typed on this very case must not be in it.
+ */
+test('the case summary opens over the case, names it, and copies itself as text', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.59')
+  const taps = await signIn(page, E2E_USERS.navigator)
+  const mrn = uniqueMrn()
+  await openCase(page, mrn, STAGE, REASON, taps)
+
+  // A note with a name in it: exactly the free text a summary must never carry.
+  const UPDATE_TEXT = 'Ward says Mrs Haddad is ahead of us in the queue'
+  await page.getByLabel('What changed?').fill(UPDATE_TEXT)
+  await page.getByLabel('What changed?').press('Enter')
+  await expect(page.getByText(UPDATE_TEXT)).toBeVisible()
+
+  await page.getByRole('button', { name: 'Summary', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Case summary' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toContainText(mrn)
+  await expect(dialog).toContainText(REASON)
+  await expect(dialog).toContainText('Registration')
+  // The panel is a reading of the case, not a second editor: the note is counted, never quoted.
+  await expect(dialog).toContainText('Updates')
+  await expect(dialog).not.toContainText('Mrs Haddad')
+
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  await dialog.getByRole('button', { name: 'Copy', exact: true }).click()
+  await expect(dialog.getByText('Copied.', { exact: true })).toBeVisible()
+
+  // Windows hands `\n` back as `\r\n` through the OS clipboard, so the line breaks are normalised
+  // before the lines are read. What is asserted is the text, not the platform's newline.
+  const copied = (await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, '\n')
+  expect(copied.split('\n')[0]).toBe(`Case summary — MRN ${mrn}`)
+  expect(copied).toContain(`* ${REASON} (Admission process)`)
+  expect(copied).toContain('Time sequence:')
+  expect(copied).toContain('Registration')
+  expect(copied).not.toContain('Mrs Haddad')
+
+  // Escape leaves the panel and puts the keyboard back on the button that opened it.
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Summary', exact: true })).toBeFocused()
+})
+
+/**
  * Phase 8, Slice E. The case's time sequence, read-only, after the updates — the weekly deck's
  * per-case slide generated — and the same sequence in one compact line under the case's row on
  * the handover sheet.

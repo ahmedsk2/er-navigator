@@ -145,6 +145,13 @@ export type CaseEditorProps = {
    */
   timeline?: ReactNode
   /**
+   * Phase 10: the case summary trigger, rendered on the server by `app/cases/[id]/page.tsx` and
+   * slotted into the header between "‹ Back" and the clock. A slot for the same reason the
+   * timeline is one — the summary is a reading of the case as it was at page load, the editor
+   * holds none of it, and `/cases/new` has nothing to summarise and passes nothing.
+   */
+  summary?: ReactNode
+  /**
    * Phase 8b, decision H. `review` is what the case carries (shown to every role, so a navigator
    * can see their entry has been checked); `canReview` is whether this caller may set it, which
    * the page decides from `case.review` and the service checks again. Neither is part of the
@@ -543,6 +550,9 @@ export function CaseEditor(props: CaseEditorProps) {
         >
           ‹ Back
         </Link>
+        {/* Phase 10: the summary trigger sits between the way out and the clock — the two things
+            a nurse reaches for from this header — and is nothing at all on a new case. */}
+        {props.summary ? <div className="ml-auto mr-3 self-center">{props.summary}</div> : null}
         {/* The visible clock is tabular and terse; the label is the whole sentence, because a
             screen reader reads "6h 05m" as "six h zero five m" and "–" as nothing at all. */}
         <div

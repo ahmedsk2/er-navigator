@@ -3,17 +3,23 @@
  * dressed as a card in Phase 9 (Ahmed's direction A of 10 September):
  *
  *   phone                                    laptop
- *   ┌──────────────────────────────┐         MRN   Registered  Waiting on   Last update  Elapsed
- *   │ MRN [chips] reg dd/mm HH:mm  │         ─────────────────────────────────────────────────
- *   │ primary reason · teams       │  6h05m  │ MRN  reg dd/mm  reason · teams   No update  6h05m│
- *   │ No update for 3h 10m         │         └───────────────────────────────────────────────┘
- *   └──────────────────────────────┘
+ *   ┌───────────────────────────────┐  ┌──┐   MRN  Registered  Waiting on  Last update  Elapsed
+ *   │ MRN [chips] reg dd/mm  6h05m  │  │ ▤│   ┌────────────────────────────────────────────────┐
+ *   │ primary reason · teams        │  └──┘   │ MRN  reg dd/mm  reason · teams  No upd.  6h05m │  ▤
+ *   │ No update for 3h 10m          │         └────────────────────────────────────────────────┘
+ *   └───────────────────────────────┘
  *
- * One `<a>`, one grid, two templates. The phone places its cells explicitly — three stacked lines
- * beside a pill that spans them — and the laptop drops that placement and lets five columns fill
- * themselves in source order. The MRN, the chips and the stamp are one wrapping line on the phone
- * and the first two columns on the laptop, which is what the `lg:contents` wrapper buys: one
- * markup, no duplicated DOM. The text, the order and every `data-*` hook are what they were.
+ * One `<a>`, one grid, two templates. The phone places its cells explicitly — the identity line
+ * beside the elapsed pill, then the reason and the last line across the whole card — and the
+ * laptop drops that placement and lets five columns fill themselves in source order. The MRN, the
+ * chips and the stamp are one wrapping line on the phone and the first two columns on the laptop,
+ * which is what the `lg:contents` wrapper buys: one markup, no duplicated DOM. The text, the
+ * order and every `data-*` hook are what they were.
+ *
+ * Phase 10 is why the phone's lower two lines span both columns rather than running up to a pill
+ * that spans all three rows: the summary button takes about fifty pixels off the card, and the
+ * reason — the one thing a charge nurse scans a board for — has to stay readable. The pill is
+ * 48 px tall in a 90 px card, so those two lines were reaching past empty space to get to it.
  *
  * The 6 px band stripe is gone. Its job — the threshold, read from across a corridor — is now the
  * elapsed clock itself, filled with the band's own colour (`BAND_PILL`, whose contrast with white
@@ -21,8 +27,13 @@
  * carrying the colour and the number beats two, and it survives the five-column row, where a
  * stripe on the far left would be 900 px from the time it describes.
  *
+ * The control beside the card is the Phase 10 summary button: a sibling of the link inside the
+ * `<li>`, never a descendant of it, standing in the gutter the desktop label strip reserves as an
+ * empty sixth column.
+ *
  * No `'use client'` of its own: the board renders it inside a client component, the dashboard
- * (Phase 4) reuses it from a server component, and it has no state either way.
+ * (Phase 4) reuses it from a server component, and it has no state either way. The summary button
+ * is a client component of its own, which a server component may render.
  */
 import Link from 'next/link'
 import {
@@ -40,14 +51,24 @@ import type { BoardRow } from '@/src/lib/board/types'
 import { fmtStamp } from '@/src/lib/cases/local-time'
 import { fmtHours, spokenHours } from '@/src/lib/domain/time'
 import { BAND_PILL } from '@/src/components/bands'
+import { RowSummaryButton } from './RowSummaryButton'
 
 // Band → class maps live in src/components/bands.ts since Phase 9 (one copy for the three readers).
 
 /**
- * The five desktop columns, shared with the label strip `Board.tsx` draws above the list so the
- * two line up. Exported as a string because Tailwind needs the literal in the class attribute.
+ * The desktop template for the label strip `Board.tsx` draws above the list. Six columns for five
+ * labels: the sixth is the gutter the row's summary button stands in (Phase 10), and leaving it
+ * empty is what keeps "Last update" and "Elapsed" over the cells they name. Exported as a string
+ * because Tailwind needs the literal in the class attribute.
  */
-export const ROW_COLUMNS = 'lg:grid-cols-[140px_120px_minmax(0,1fr)_180px_110px]'
+export const ROW_COLUMNS = 'lg:grid-cols-[140px_120px_minmax(0,1fr)_180px_110px_44px]'
+
+/**
+ * The card's own five columns. The same widths as the strip's first five, over a card that is
+ * exactly the button and its gap narrower than the strip — so the two line up to the pixel while
+ * the button sits outside the link, where a control nested in an anchor cannot be.
+ */
+const CARD_COLUMNS = 'lg:grid-cols-[140px_120px_minmax(0,1fr)_180px_110px]'
 
 /** What a cell does on the phone, undone at `lg` so the five columns can fill themselves. */
 const CELL_RESET = 'lg:col-start-auto lg:row-start-auto lg:col-span-1 lg:row-span-1'
@@ -60,12 +81,15 @@ export function BoardRowItem({ row, now }: { row: BoardRow; now: Date }) {
   const chips = identityChips(row)
 
   return (
-    <li>
+    // The margins that used to sit on the card now sit here, because the card is no longer the
+    // only child: the summary button is its sibling, never its descendant (a button inside an
+    // anchor is invalid, and `a[data-mrn]` is counted per row in three specs).
+    <li className="mx-4 my-2 flex items-center gap-2 lg:mx-0 lg:gap-3">
       <Link
         href={`/cases/${row.id}`}
         data-mrn={row.mrn}
         data-band={rowBand}
-        className={`mx-4 my-2 grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-0.5 rounded-card border border-line-soft bg-panel p-3.5 shadow-card focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset lg:mx-0 lg:my-2 lg:items-center lg:gap-y-0 lg:px-4 lg:py-3 ${ROW_COLUMNS}`}
+        className={`grid min-h-11 min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-0.5 rounded-card border border-line-soft bg-panel p-3.5 shadow-card focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset lg:items-center lg:gap-y-0 lg:px-4 lg:py-3 ${CARD_COLUMNS}`}
       >
         {/*
           The identity line. On the phone the MRN, the chips and the registration stamp are one
@@ -105,7 +129,7 @@ export function BoardRowItem({ row, now }: { row: BoardRow; now: Date }) {
           in source order, so a second top-level child here would push the last update and the
           clock one column along.
         */}
-        <span className={`col-start-1 row-start-2 mt-[3px] block min-w-0 lg:mt-0 ${CELL_RESET}`}>
+        <span className={`col-start-1 col-span-2 row-start-2 mt-[3px] block min-w-0 lg:mt-0 ${CELL_RESET}`}>
           {row.diagnosis ? (
             <span data-diagnosis={row.diagnosis} className="block truncate text-caption text-ink-2">
               {row.diagnosis}
@@ -116,7 +140,7 @@ export function BoardRowItem({ row, now }: { row: BoardRow; now: Date }) {
 
         {row.status === 'RESOLVED' ? (
           <span
-            className={`col-start-1 row-start-3 flex flex-wrap items-baseline gap-x-1.5 text-caption text-band-ok ${CELL_RESET}`}
+            className={`col-start-1 col-span-2 row-start-3 flex flex-wrap items-baseline gap-x-1.5 text-caption text-band-ok ${CELL_RESET}`}
           >
             <span>{resolvedText(row)}</span>
             {/* Phase 8b: a supervisor has read this one. The chip and nothing else — who and
@@ -132,7 +156,7 @@ export function BoardRowItem({ row, now }: { row: BoardRow; now: Date }) {
           </span>
         ) : (
           <span
-            className={`num col-start-1 row-start-3 block text-caption ${stale ? 'font-semibold text-band-h4-ink' : 'text-muted'} ${CELL_RESET}`}
+            className={`num col-start-1 col-span-2 row-start-3 block text-caption ${stale ? 'font-semibold text-band-h4-ink' : 'text-muted'} ${CELL_RESET}`}
           >
             {stalenessText(idle)}
           </span>
@@ -141,12 +165,15 @@ export function BoardRowItem({ row, now }: { row: BoardRow; now: Date }) {
         {/* The eye reads "6h 05m"; a screen reader would say "six h zero five m", so the row's
             clock carries the whole sentence and the tabular text is hidden from it. */}
         <span
-          className={`num col-start-2 row-start-1 row-span-3 self-center justify-self-end rounded-button px-2.5 py-1.5 text-center text-rowclock whitespace-nowrap ${BAND_PILL[rowBand]} ${CELL_RESET}`}
+          className={`num col-start-2 row-start-1 self-center justify-self-end rounded-button px-2.5 py-1.5 text-center text-rowclock whitespace-nowrap ${BAND_PILL[rowBand]} ${CELL_RESET}`}
         >
           <span className="sr-only">In the Emergency Department {spokenHours(hours)}</span>
           <span aria-hidden="true">{fmtHours(hours)}</span>
         </span>
       </Link>
+
+      {/* Phase 10: "what is happening with this patient", without leaving the board. */}
+      <RowSummaryButton caseId={row.id} mrn={row.mrn} />
     </li>
   )
 }

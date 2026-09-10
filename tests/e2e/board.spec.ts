@@ -181,6 +181,38 @@ test('a filter that matches nothing says so rather than looking like an empty de
   await expect(page.locator('a[data-mrn]')).toHaveCount(0)
 })
 
+/**
+ * Phase 10, Slice 10C. The row's summary button: the same panel the case page opens, over a
+ * summary fetched on the tap, without leaving the board.
+ *
+ * The count assertion is the point of the test as much as the panel is. The button is a sibling
+ * of the row's link and never a child of it, and three specs count the board by `a[data-mrn]`.
+ */
+test('a row opens its summary without leaving the board, and adds no second link', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.79')
+  await signIn(page, E2E_USERS.navigator)
+  await narrowToFixtures(page)
+
+  const rows = await page.locator('a[data-mrn]').count()
+  expect(rows).toBeGreaterThan(0)
+
+  await page.locator(`[data-summary-for="${LONGEST.mrn}"]`).click()
+  const dialog = page.getByRole('dialog', { name: 'Case summary' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toContainText(LONGEST.mrn)
+  await expect(dialog).toContainText(LONGEST.reason.name)
+  await expect(dialog).toContainText('Registration')
+
+  // One row, one link: the control that opened this is not one of them.
+  await expect(page.locator('a[data-mrn]')).toHaveCount(rows)
+  // Still the board: opening the panel is not a navigation.
+  await expect(page.getByRole('heading', { name: 'ER board' })).toBeVisible()
+
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.locator(`[data-summary-for="${LONGEST.mrn}"]`)).toBeFocused()
+})
+
 test('a viewer reads the board but gets no New case button', async ({ page }) => {
   await fromClientIp(page, '198.51.100.74')
   await signIn(page, E2E_USERS.viewer)
