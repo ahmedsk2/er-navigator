@@ -37,6 +37,11 @@ test('phase 9 gate screenshots: the refusal screen, bare and inside the shell', 
   // Next renders a forbidden() thrown below a layout within that layout, so this refusal already
   // has the shell's header above it: the card must come alone, or the app prints its own name
   // twice on the same screen.
-  await expect(page.getByText('ER Navigator', { exact: true })).toHaveCount(1)
+  //
+  // Visible ones only. Since [ERN-P9.40] the shell carries the name twice in the markup — the
+  // rail's wordmark and the header's `lg:hidden` h1 — and exactly one of the two is displayed at
+  // any width, which is the whole of what this line is checking. `toHaveCount` counts hidden
+  // elements, so without the filter it counts the shape that is not on the screen (Slice 9C).
+  await expect(page.getByText('ER Navigator', { exact: true }).filter({ visible: true })).toHaveCount(1)
   await shoot(page, 'forbidden-shell')
 })

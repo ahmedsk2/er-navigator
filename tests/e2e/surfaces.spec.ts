@@ -75,8 +75,8 @@ test('the desktop row is five columns under a label strip, and the phone has nei
 
   if (mobile) {
     await expect(labels).toBeHidden()
-    // Three columns on the phone: the identity line, and the pill beside all three lines.
-    expect(columns.length).toBe(3)
+    // Two columns on the phone: the three stacked lines, and the pill beside all of them.
+    expect(columns.length).toBe(2)
   } else {
     // MRN · Registered · Waiting on · Last update · Elapsed.
     expect(columns.length).toBe(5)

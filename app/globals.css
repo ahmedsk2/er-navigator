@@ -125,7 +125,13 @@ body { background: var(--color-bg); color: var(--color-ink); font-family: var(--
   .shell-grid, .shell-main { display: block; max-width: none; margin-inline: 0; padding-inline: 0; }
 
   .dash a { color: inherit !important; text-decoration: none; }
-  .dash section { break-inside: avoid; border-width: 1px 0; }
+  /*
+    Phase 9 made every dashboard section a card. On paper a card is wrong twice over: a rounded
+    corner with no side border draws a stub of a line, and a 16 px inset inside a 12 mm page
+    margin is an inset inside an inset. The section goes back to the full-bleed strip between two
+    hairlines that Phase 4 printed.
+  */
+  .dash section { break-inside: avoid; border-width: 1px 0; border-radius: 0; margin-inline: 0; }
   .dash .shadow-panel { box-shadow: none; }
   .dash .shadow-card { box-shadow: none; }
 }
