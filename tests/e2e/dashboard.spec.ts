@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import type { BoardPayload } from '../../src/lib/board/types'
 import { inRange, type CaseForStats, type Range } from '../../src/lib/domain/aggregates'
 import { headline } from '../../src/lib/domain/kpi'
@@ -625,6 +625,59 @@ test('the filter narrows every figure on the page, and the page says so', async 
   await expect(payerCases('Government')).toHaveText('0')
 })
 
+/**
+ * Phase 10 review. The test above reaches its drill-down by `goto`, so a row link that dropped the
+ * filter went unnoticed. Two builders make those links: DashboardBody's own (thresholds, weeks,
+ * consults, investigations, shifts) and sections.tsx's (every other table), so a row of each is
+ * read, then clicked. The filter repeats a key and spans two dimensions, and it leaves 3200008 and
+ * 3200009 of the fixture, so both lists below differ from their unfiltered ones.
+ */
+test('a filtered dashboard’s rows open their drill-downs inside the same filter', async ({ page }, testInfo) => {
+  await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.215' : '198.51.100.216')
+  await signIn(page, E2E_USERS.navigator)
+  const query = 'r=all&ctas=3&payer=SELF_PAY&payer=GOVERNMENT'
+  await page.goto(`/dashboard?${query}`)
+  await expect(page.locator('[data-filter-note]')).toHaveText('Filtered: CTAS 3 · Payer: Self-pay or Government')
+
+  /** The row link's own href, held to the range, its drill key and every filter key and value. */
+  const hrefOf = async (link: Locator, drill: string): Promise<string> => {
+    const href = (await link.getAttribute('href')) ?? ''
+    const params = new URL(href, 'http://dashboard.invalid').searchParams
+    expect(params.get('r'), href).toBe('all')
+    expect(params.get('drill'), href).toBe(drill)
+    expect(params.getAll('ctas'), href).toEqual(['3'])
+    expect(params.getAll('payer'), href).toEqual(['SELF_PAY', 'GOVERNMENT'])
+    return href
+  }
+  const back = page.getByRole('link', { name: '‹ Dashboard' })
+
+  // A sections.tsx row. Of the two self-pay fixture cases only 3200009 is CTAS 3.
+  const byPayer = page.getByRole('heading', { name: 'By payer', exact: true }).locator('xpath=../table')
+  const selfPay = byPayer.getByRole('link', { name: 'Self-pay', exact: true })
+  const payerHref = await hrefOf(selfPay, 'payer:Self-pay')
+  await selfPay.click()
+  await expect(page).toHaveURL(payerHref)
+  await expect(page.locator('[data-drill-label]')).toHaveText('Payer: Self-pay')
+  await expect(rowFor(page, '3200009')).toHaveCount(1)
+  await expect(rowFor(page, '3200005')).toHaveCount(0)
+  await expect(back).toHaveAttribute('href', `/dashboard?${query}`)
+  await back.click()
+  await expect(page).toHaveURL(`/dashboard?${query}`)
+
+  // A DashboardBody row. Past six hours, CTAS 3 and not insured: 3200008 (26 h) and 3200009 (13 h);
+  // 3200001 (26 h) is CTAS 2, 3200002 (14 h) insured, and 3200005 stayed 5 h.
+  const over6 = page.getByRole('link', { name: 'Over 6h' })
+  const thresholdHref = await hrefOf(over6, 'threshold:6')
+  await over6.click()
+  await expect(page).toHaveURL(thresholdHref)
+  await expect(page.locator('[data-drill-label]')).toHaveText('Cases over 6h')
+  for (const mrn of ['3200008', '3200009']) await expect(rowFor(page, mrn), `${mrn} is listed`).toHaveCount(1)
+  for (const mrn of ['3200001', '3200002', '3200005']) {
+    await expect(rowFor(page, mrn), `${mrn} is outside the filter`).toHaveCount(0)
+  }
+  await expect(back).toHaveAttribute('href', `/dashboard?${query}`)
+})
+
 test('the filter panel applies from the dashboard itself', async ({ page }, testInfo) => {
   await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.115' : '198.51.100.116')
   await signIn(page, E2E_USERS.navigator)
@@ -645,6 +698,27 @@ test('the filter panel applies from the dashboard itself', async ({ page }, test
   await page.keyboard.press('Escape')
   await expect(panel).toHaveCount(0)
   await expect(page).toHaveURL('/dashboard?r=7&payer=INSURED')
+
+  // The two modes, which no browser test had pressed (Phase 10 review): a stage — a set a case can
+  // carry several of, which the lone finding holds to exactly — excluded, and alone.
+  await page.goto('/dashboard?r=7')
+  await page.getByRole('button', { name: 'Filter' }).click()
+  await panel.getByRole('group', { name: 'Stage' }).getByRole('button', { name: 'Admission process' }).click()
+  await panel.getByRole('button', { name: 'Exclude', exact: true }).click()
+  await panel.getByRole('button', { name: 'The lone finding', exact: true }).click()
+  await panel.getByRole('button', { name: 'Apply', exact: true }).click()
+  await expect(page).toHaveURL('/dashboard?r=7&stage=adm&not=1&lone=1')
+  // describeFilter's sentence for one dimension: "Excluding <part> · the lone finding".
+  await expect(page.locator('[data-filter-note]')).toHaveText(
+    'Filtered: Excluding Stage: Admission process · the lone finding',
+  )
+  // Opened again, the panel shows the modes the page is drawn with.
+  await page.getByRole('button', { name: /^Filter/ }).click()
+  await expect(panel.getByRole('button', { name: 'Exclude', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(panel.getByRole('button', { name: 'The lone finding', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
 })
 
 /**
