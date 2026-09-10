@@ -31,9 +31,13 @@ describe('dictationErrorLine', () => {
     expect(dictationErrorLine('service-not-allowed')).toBe(blocked)
   })
 
-  it('names a missing microphone, a lost network and a silence', () => {
+  it('names a missing microphone, an unreachable speech service and a silence', () => {
     expect(dictationErrorLine('audio-capture')).toBe('No microphone was found on this device.')
-    expect(dictationErrorLine('network')).toBe('Dictation needs a network connection.')
+    // Not "needs a network connection": a Chromium build without Google's speech service
+    // (Playwright's own, some forks) fails every session with 'network' on a working connection.
+    expect(dictationErrorLine('network')).toBe(
+      'Dictation could not reach the speech service. Check the connection, or type instead.',
+    )
     expect(dictationErrorLine('no-speech')).toBe('Nothing was heard. Tap the microphone and speak again.')
   })
 

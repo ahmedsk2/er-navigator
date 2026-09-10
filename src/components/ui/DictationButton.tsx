@@ -92,6 +92,11 @@ const BLOCKED_LINE =
  * nurse who had once refused the prompt was left tapping it. The codes that name something she
  * can act on get a line; "aborted" (the page stopping its own session) and any code not listed
  * here get none, because a line that explains nothing is worse than no line.
+ *
+ * "network" says the speech service could not be reached, not that the phone is offline: a
+ * Chromium build without Google's speech service (Playwright's own, some forks) fails every
+ * session with it on a working connection, and "needs a network connection" sent the nurse to
+ * check a wifi that was fine.
  */
 export function dictationErrorLine(code: string | undefined): string | null {
   switch (code) {
@@ -101,7 +106,7 @@ export function dictationErrorLine(code: string | undefined): string | null {
     case 'audio-capture':
       return 'No microphone was found on this device.'
     case 'network':
-      return 'Dictation needs a network connection.'
+      return 'Dictation could not reach the speech service. Check the connection, or type instead.'
     case 'no-speech':
       return 'Nothing was heard. Tap the microphone and speak again.'
     default:
