@@ -594,7 +594,9 @@ export function WhereTimeGoesSection({ kpi, range, filter, wide = false }: WideP
           const carried = p.stages.filter((s) => s.value > 0)
           return (
             <div key={p.key} data-phase-stages={p.key}>
-              <PanelLabel>Reasons recorded in the {p.name.toLowerCase()}</PanelLabel>
+              <PanelLabel>
+                {p.key === 'after' ? 'Reasons recorded after the decision' : `Reasons recorded in the ${p.name.toLowerCase()}`}
+              </PanelLabel>
               {carried.length > 0 ? (
                 <DataTable
                   head={['Stage', 'Cases']}

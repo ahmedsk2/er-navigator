@@ -53,7 +53,11 @@ export function lastActivityAt(row: BoardRow): Date {
 /** Hours since the last activity, on an open case only — a resolved case cannot go stale. */
 export function idleHours(row: BoardRow, now: Date): number | null {
   if (row.status !== 'OPEN') return null
-  return duration(lastActivityAt(row), now)
+  const since = lastActivityAt(row)
+  // The board's clock is the phone's, set just before the poll's answer arrives: an update written
+  // in between is "after now" by a few seconds, and is the freshest a row can be, not no row at all.
+  if (since.getTime() > now.getTime()) return 0
+  return duration(since, now)
 }
 
 export function isStale(idle: number | null): boolean {

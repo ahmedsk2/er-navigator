@@ -700,15 +700,15 @@ export function CaseEditor(props: CaseEditorProps) {
           aria-label="Jump to"
           className="no-print sticky top-0 z-10 mb-2.5 border-b border-line bg-bg px-4 py-1.5 lg:static lg:border-b-0 lg:py-0"
         >
-          {/* Six equal chips across a 390 px screen, so each label gets its whole width: no
-              side padding to speak of, and a 4 px gap. */}
-          <ul className="flex gap-1 lg:gap-1.5">
+          {/* The chips share the width and each keeps its whole label: at 390 px six fit; on a
+              narrower phone the row scrolls sideways rather than cutting "Updates" in half. */}
+          <ul className="flex gap-1 overflow-x-auto [scrollbar-width:none] lg:gap-1.5">
             {jumps.map((jump) => (
-              <li key={jump.id} className="min-w-0 flex-1 lg:flex-none">
+              <li key={jump.id} className="flex-auto shrink-0 lg:flex-none">
                 <a
                   href={`#${jump.id}`}
                   onClick={(event) => jumpTo(event, jump.id)}
-                  className="flex min-h-11 items-center justify-center rounded-chip border border-line bg-panel px-0.5 text-label font-semibold text-ink-2 hover:bg-accent-soft lg:px-3.5"
+                  className="flex min-h-11 items-center justify-center whitespace-nowrap rounded-chip border border-line bg-panel px-2 text-label font-semibold text-ink-2 hover:bg-accent-soft lg:px-3.5"
                 >
                   {jump.label}
                 </a>

@@ -41,8 +41,9 @@ const CROSS: Record<MarkTone, string> = {
 }
 
 /**
- * How much the cross's bars are grown, in units of its 48-unit grid, for a mark `size` px wide.
- * Nothing at 42 px and up; enough below that to keep a bar about a pixel and a half wide.
+ * How much the cross's bars are grown, in the cross's own 48-unit grid (the stroke is drawn inside
+ * its scaled group, as the icon script draws it), for a mark `size` px wide. A little at 42 px and
+ * up, more below; never so much that the gaps between the parallel paths close.
  */
 export function markGrow(size: number): number {
   if (size < 32) return 1
@@ -70,7 +71,7 @@ export function Mark({ size = 36, tone = 'onTeal', className = '' }: { size?: nu
       {badge ? <rect width={unit} height={unit} rx={unit * PATHS.tile.radius} className={badge} /> : null}
       <g
         transform={`translate(${inset} ${inset}) scale(${glyph})`}
-        strokeWidth={markGrow(size) / glyph}
+        strokeWidth={markGrow(size)}
         strokeLinejoin="miter"
         className={CROSS[tone]}
       >

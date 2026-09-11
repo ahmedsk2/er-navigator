@@ -18,10 +18,22 @@ import { WEEKDAY_NAMES, blockHours } from '@/src/lib/dashboard/drill'
 import { heatLegend, heatStep, type HeatStep } from '@/src/lib/dashboard/panels'
 
 const STEP_FILL: Record<Exclude<HeatStep, 0>, string> = {
-  1: 'bg-accent-soft text-ink',
-  2: 'bg-accent/35 text-ink',
-  3: 'bg-accent/65 text-ink',
-  4: 'bg-accent text-white',
+  1: 'bg-accent-soft',
+  2: 'bg-accent/35',
+  3: 'bg-accent/65',
+  4: 'bg-accent',
+}
+
+/**
+ * The count's colour sits on the cell, not the link: the print stylesheet sets every dashboard
+ * link to `color: inherit`, and a link that carried its own white printed the fullest cells in ink
+ * on teal, about 3:1.
+ */
+const STEP_TEXT: Record<Exclude<HeatStep, 0>, string> = {
+  1: 'text-ink',
+  2: 'text-ink',
+  3: 'text-ink',
+  4: 'text-white',
 }
 
 export type ArrivalTableRow = {
@@ -57,7 +69,12 @@ export function ArrivalTable({ rows, max }: { rows: ReadonlyArray<ArrivalTableRo
               {row.cells.map((cell) => {
                 const step = heatStep(cell.value, max)
                 return (
-                  <td key={cell.block} className="p-px" data-count={cell.value} data-step={step || undefined}>
+                  <td
+                    key={cell.block}
+                    className={`p-px ${step === 0 ? '' : STEP_TEXT[step]}`}
+                    data-count={cell.value}
+                    data-step={step || undefined}
+                  >
                     {step === 0 ? (
                       // Plain, and silent to the eye; a screen reader still hears the count.
                       <span className="flex min-h-11 items-center justify-center rounded-[4px] bg-bg">
@@ -69,7 +86,7 @@ export function ArrivalTable({ rows, max }: { rows: ReadonlyArray<ArrivalTableRo
                         aria-label={`${WEEKDAY_NAMES[row.weekday] ?? row.weekday} ${blockHours(cell.block)}: ${cell.value} ${
                           cell.value === 1 ? 'case' : 'cases'
                         }`}
-                        className={`flex min-h-11 items-center justify-center rounded-[4px] font-semibold ${STEP_FILL[step]}`}
+                        className={`flex min-h-11 items-center justify-center rounded-[4px] font-semibold text-inherit ${STEP_FILL[step]}`}
                       >
                         {cell.value}
                       </Link>

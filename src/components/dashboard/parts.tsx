@@ -268,7 +268,8 @@ export function BarLinks({
   unit,
 }: {
   caption: string
-  rows: ReadonlyArray<{ name: string; value: number; href: string }>
+  /** `detail` follows the count, for a chart with a second series (the trend's median stay). */
+  rows: ReadonlyArray<{ name: string; value: number; href: string; detail?: string }>
   unit: string
 }) {
   return (
@@ -278,6 +279,7 @@ export function BarLinks({
         <li key={row.name}>
           <Link href={row.href}>
             {row.name}: {row.value} {unit}
+            {row.detail ? `, ${row.detail}` : ''}
           </Link>
         </li>
       ))}

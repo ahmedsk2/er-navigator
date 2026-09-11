@@ -984,11 +984,13 @@ test('the stay splits overall and by outcome, and a stage with no case is left o
 
   const bar = (key: string) => split.locator(`[data-split="${key}"]`)
   await expect(bar('all')).toContainText('All outcomes')
-  for (const text of ['4%', '0h 30m', '34%', '3h 42m', '62%', '3h 00m']) await expect(bar('all')).toContainText(text)
+  // Each segment's own item, in order: a whole-bar toContainText('4%') is satisfied by '34%'.
+  const items = (key: string) => bar(key).locator('ul.num > li')
+  await expect(items('all')).toHaveText(['Front end: 4% · 0h 30m', 'Decision: 34% · 3h 42m', 'After the decision: 62% · 3h 00m'])
   await expect(bar('admitted')).toContainText('Admitted')
   await expect(bar('admitted')).toContainText('3 cases')
   for (const text of ['3%', '21%', '75%', '22h 00m']) await expect(bar('admitted')).toContainText(text)
-  for (const text of ['5%', '65%', '31%']) await expect(bar('discharged')).toContainText(text)
+  await expect(items('discharged')).toHaveText([/^Front end: 5% · /, /^Decision: 65% · /, /^After the decision: 31% · /])
 
   // Three segments in time order, to scale: after the decision is three quarters of the admitted bar.
   const segments = bar('admitted').locator('[data-segment]')

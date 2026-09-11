@@ -58,6 +58,15 @@ export function TrendChart({
     const point = points[index]
     if (point) router.push(point.href)
   }
+  /**
+   * The whole column is the target, on both panels: thirty-one bars in a phone's 290 px are 7 px
+   * each, and a short bar is shorter still. Recharts reports the column under the pointer as
+   * `activeTooltipIndex`, a number or its string.
+   */
+  const onColumn = (state: { activeTooltipIndex?: unknown } | null | undefined) => {
+    const index = Number(state?.activeTooltipIndex)
+    if (Number.isInteger(index) && index >= 0) go(index)
+  }
   // A month of days is thirty-one labels in 330 px: every fourth or so, always on a whole step,
   // so the labels fall on regular days rather than wherever the library finds room.
   const interval = kind === 'daily' ? Math.max(0, Math.ceil(points.length / 8) - 1) : undefined
@@ -70,7 +79,13 @@ export function TrendChart({
       <PanelLabel>Cases flagged</PanelLabel>
       <div style={{ height: PANEL_HEIGHT }} data-chart-panel="cases">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={points} margin={{ left: 0, right: 8, top: 6, bottom: 0 }} accessibilityLayer>
+          <ComposedChart
+            data={points}
+            margin={{ left: 0, right: 8, top: 6, bottom: 0 }}
+            accessibilityLayer
+            onClick={onColumn}
+            style={{ cursor: 'pointer' }}
+          >
             <XAxis dataKey="name" tick={false} height={4} axisLine={{ stroke: CHART.line }} interval={interval} />
             <YAxis tick={CHART_TICK} width={28} tickLine={false} axisLine={false} allowDecimals={false} />
             <Tooltip
@@ -89,9 +104,7 @@ export function TrendChart({
               stroke={CHART.accent}
               radius={[3, 3, 0, 0]}
               maxBarSize={24}
-              cursor="pointer"
               isAnimationActive={false}
-              onClick={(_entry, index) => go(index)}
             />
           </ComposedChart>
         </ResponsiveContainer>
@@ -102,7 +115,13 @@ export function TrendChart({
       </PanelLabel>
       <div style={{ height: PANEL_HEIGHT }} data-chart-panel="median">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={points} margin={{ left: 0, right: 8, top: 6, bottom: 0 }} accessibilityLayer>
+          <ComposedChart
+            data={points}
+            margin={{ left: 0, right: 8, top: 6, bottom: 0 }}
+            accessibilityLayer
+            onClick={onColumn}
+            style={{ cursor: 'pointer' }}
+          >
             {/* A band scale, as the bars above have: a line on its own gets a point scale, which
                 runs its first and last points out to the edges — off their bars by half a band,
                 and the last date label past the edge of the chart. */}

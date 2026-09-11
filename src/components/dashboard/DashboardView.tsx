@@ -67,7 +67,7 @@ import {
 } from '@/src/lib/domain/case-filter'
 import { SHIFT_LABELS } from '@/src/lib/domain/taxonomy'
 import { weekPoint } from '@/src/lib/dashboard/weeks'
-import { MIN_N } from '@/src/lib/domain/time'
+import { MIN_N, fmtHours } from '@/src/lib/domain/time'
 
 type DashboardData = ReturnType<typeof dashboard>
 
@@ -169,6 +169,14 @@ export function DashboardView({
  * shift" and "By day of week" up among the other "when" sections; nothing else changed places.
  * The report is one column in the order it has always printed.
  */
+/**
+ * A trend point's median in words, for the chart's text equivalent: the median line is otherwise
+ * only a tooltip, and the tooltip drops a point with no median rather than saying "n<3".
+ */
+function medianDetail(med: number | null): string {
+  return med == null ? `median stay n<${MIN_N}` : `median stay ${fmtHours(med)}`
+}
+
 export function DashboardBody({
   data,
   range,
@@ -280,7 +288,9 @@ export function DashboardBody({
       {/* The days a bar can be seen on: a day with no case has nothing to list. */}
       <BarLinks
         caption="By day"
-        rows={dayPoints.filter((d) => d.cases > 0).map((d) => ({ name: d.label!, value: d.cases, href: d.href }))}
+        rows={dayPoints
+          .filter((d) => d.cases > 0)
+          .map((d) => ({ name: d.label!, value: d.cases, href: d.href, detail: medianDetail(d.med) }))}
         unit="cases"
       />
       <Footnote>
@@ -294,7 +304,7 @@ export function DashboardBody({
       <TrendChart points={weekPoints} kind="weekly" />
       <BarLinks
         caption="By week"
-        rows={weekPoints.map((w) => ({ name: w.name, value: w.cases, href: w.href }))}
+        rows={weekPoints.map((w) => ({ name: w.name, value: w.cases, href: w.href, detail: medianDetail(w.med) }))}
         unit="cases"
       />
       <Footnote>

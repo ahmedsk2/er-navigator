@@ -359,6 +359,25 @@ The Kuma UI sits behind a Traefik basic-auth middleware (`kuma-auth`, a label in
 
 OCI alarms already cover host down and CPU.
 
+## Hands-on demo (Phase 11)
+
+A full walk-through on the production build over a throwaway database, never the production one
+(the audit log is append-only and cases can only be voided, so demo users and patients there would
+be permanent). The same script produced the before-and-after screens of the Phase 11 gate.
+
+1. `bash scripts/demo-reset.sh` drops and recreates the demo database (compose project
+   `ernav-demo`, port 55450), migrates it, reconciles the app role and seeds it; the first admin's
+   password is `DEMO_ADMIN_PASSWORD`, or `demo-only-admin-password`.
+2. `pnpm build`, then start the app against it:
+   `PORT=3300 DATABASE_URL=postgresql://ernav_app:devapp@localhost:55450/ernav?schema=public pnpm start`.
+3. `pnpm exec playwright test --config tests/demo/playwright.demo.config.ts`: the admin creates two
+   navigators, a charge nurse and the medical director; the navigators open five invented patients
+   and work each to resolution; the charge nurse reviews three and pulls the workbook and the report;
+   the medical director reads the dashboard on a phone and a laptop. Screens (`NN-step.png`) and a
+   per-step log of actions and seconds (`log.json`) land in `test-results/demo-shots`, or in
+   `DEMO_SHOTS`.
+4. `docker compose -p ernav-demo -f docker-compose.dev.yml down -v` when done.
+
 ## Security headers
 
 Since Phase 10 the Permissions-Policy allows the microphone to this origin only (`microphone=(self)`): the in-app dictation button uses the browser's speech recognition where it exists (Chrome, Android); every other feature in the header stays denied. `tests/e2e/headers.spec.ts` pins the exact string.

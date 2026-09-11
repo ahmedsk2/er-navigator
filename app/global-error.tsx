@@ -27,33 +27,23 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
             gap: 10,
           }}
         >
-          <span
-            aria-hidden="true"
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              background: '#ffffff',
-              color: '#1f7a8c',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <svg
-              width="17"
-              height="17"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2.2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
+          {/* The mark (Phase 11), a hand copy of `Mark tone="onTeal"` at 28 px: this page replaces the
+              root layout, so neither the component's classes nor the stylesheet are there. The
+              outlines are those of src/components/brand/mark-paths.json; brand.test.ts checks. */}
+          <svg aria-hidden="true" focusable="false" width={28} height={28} viewBox="0 0 48 48">
+            <rect width={48} height={48} rx={10.56} fill="#ffffff" />
+            <g
+              transform="translate(6.72 6.72) scale(0.72)"
+              fill="#0f4d5c"
+              stroke="#0f4d5c"
+              strokeWidth={1}
+              strokeLinejoin="miter"
             >
-              <path d="M12 21s-7-4.5-7-11a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 6.5-7 11-7 11z" />
-              <path d="M6 12h3l1.5-3 2 6 1.5-3H18" />
-            </svg>
-          </span>
+              <path d="M30.851 1.984L30.851 28.322L44.033 28.322L44.033 15.166L34.818 15.166L34.818 17.149L42.049 17.149L42.049 26.338L32.834 26.338L32.834 0L15.166 0L15.166 1.984Z" />
+              <path d="M46.016 15.166L46.016 30.851L28.867 30.851L28.867 3.967L15.166 3.967L15.166 13.182L22.916 13.182L22.916 36.802L30.851 36.802L30.851 42.049L21.117 42.049L21.117 15.166L0 15.166L0 32.834L1.984 32.834L1.984 17.149L19.133 17.149L19.133 44.033L32.834 44.033L32.834 34.818L24.9 34.818L24.9 11.198L17.149 11.198L17.149 5.951L26.883 5.951L26.883 32.834L48 32.834L48 15.166Z" />
+              <path d="M17.149 46.016L17.149 19.678L3.967 19.678L3.967 32.834L13.182 32.834L13.182 30.851L5.951 30.851L5.951 21.662L15.166 21.662L15.166 48L32.834 48L32.834 46.016Z" />
+            </g>
+          </svg>
           <b style={{ fontSize: 15 }}>ER Navigator</b>
         </div>
         <main style={{ maxWidth: '28rem', margin: '0 auto', padding: '1.5rem 1rem' }}>

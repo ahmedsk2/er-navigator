@@ -26,6 +26,9 @@ test.describe.configure({ mode: 'serial' })
 async function shoot(page: Page, name: string, suffix: string, fullPage = true): Promise<void> {
   const path = `design/screens/phase11-fixes-${name}-${suffix}.png`
   await page.evaluate(() => document.fonts.ready)
+  // A full-page capture paints a sticky element where the page was last scrolled; from the top it
+  // is painted where it rests.
+  if (fullPage) await page.evaluate(() => window.scrollTo(0, 0))
   await page.screenshot({ path, fullPage })
   expect(statSync(path).size, `${path} looks blank`).toBeGreaterThan(MIN_BYTES)
 }
