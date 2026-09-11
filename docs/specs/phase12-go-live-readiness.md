@@ -11,10 +11,11 @@ and no alert push URL. Production is not touched by any of it.
 
 This spec is the build. Item ids in brackets are the audit's.
 
-**Status at the Phase 12 close (11 September 2026): reviewed, corrected, not yet implemented.**
-Slices 12A, 12B and 12C did not run. No code in this document is in the app, and
-`demo-nav.towardpcc.com` does not exist. The six corrections of the review round [P12.4a–g] are
-already folded into the text below, so the next session builds straight from it.
+**Status (11 September 2026): reviewed, corrected, being built.** The six corrections of the
+review round [P12.4a to g] are folded into the text below, so this document is what the slices
+build from. 12C, the documents, is done. 12A is in progress; 12B follows once 12A is live, and
+`demo-nav.towardpcc.com` does not exist until it runs. The gate report records what each slice
+shipped.
 
 ## What the audit found that this phase answers
 
