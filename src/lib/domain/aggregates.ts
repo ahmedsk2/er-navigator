@@ -260,6 +260,131 @@ export function byWeek(cases: ReadonlyArray<CaseForStats>, now: Date): WeekRow[]
     }))
 }
 
+// --- Phase 11: the last days, and when the patients arrive ---------------------------------------
+
+export type Weekday = (typeof DAYS)[number]
+
+/**
+ * One formatter for the Riyadh day and hour of an instant, made once: `byDay` and `arrivalGrid`
+ * ask it once per case, and an all-time dashboard is every case the department has flagged.
+ * `hourCycle: 'h23'`, because 'hour12: false' prints midnight as "24" on some engines.
+ */
+const RIYADH_CLOCK = new Intl.DateTimeFormat('en-US', {
+  timeZone: TIMEZONE,
+  hourCycle: 'h23',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  weekday: 'short',
+  hour: '2-digit',
+})
+
+/** The Asia/Riyadh calendar day (YYYY-MM-DD), weekday (0 = Sunday) and hour (0–23) of an instant. */
+export function riyadhClock(d: Date): { date: string; weekday: number; hour: number } {
+  const parts = RIYADH_CLOCK.formatToParts(d)
+  const get = (type: Intl.DateTimeFormatPartTypes): string => parts.find((p) => p.type === type)?.value ?? ''
+  return {
+    date: `${get('year')}-${get('month')}-${get('day')}`,
+    weekday: DAYS.indexOf(get('weekday') as Weekday),
+    hour: Number(get('hour')),
+  }
+}
+
+/** A calendar date plus whole days, as dates rather than instants (no DST in Riyadh, but no drift either). */
+function addCalendarDays(date: string, days: number): string {
+  const [y, m, d] = date.split('-').map(Number) as [number, number, number]
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
+}
+
+export type DayRow = {
+  /** The Riyadh calendar day, YYYY-MM-DD. Also the drill key (`day:2026-09-08`). */
+  date: string
+  /** "dd/mm", the axis label. */
+  name: string
+  weekday: Weekday
+  cases: number
+  ids: string[]
+  /** Median total ED stay over the day's cases with a computable stay; null below MIN_N of them. */
+  med: number | null
+}
+
+/**
+ * The last days, one row per Asia/Riyadh calendar day keyed by registration (Phase 11): every day
+ * from the one the range's window opens on to today, the empty ones included, so a quiet day is a
+ * gap on the chart rather than a day that is not there. The window is `inRange`'s — the last N x
+ * 24 hours — so it opens part way through a day, and seven days is eight bars.
+ *
+ * 'all' has no window, so it runs from the first case's day. Either way the list is stretched to
+ * cover every case it is given, a registration dated after today included, so that the bars
+ * always add up to the cases on the page.
+ *
+ * Unlike `byWeek`, the median is guarded here and not in the chart: a day is a small bucket, and
+ * "a day under 3 cases shows no median" belongs where it cannot be forgotten. It counts the stays
+ * that can be computed, not the cases, so three cases with one impossible leaving time are two.
+ */
+export function byDay(cases: ReadonlyArray<CaseForStats>, range: Range, now: Date): DayRow[] {
+  const byDate = new Map<string, CaseForStats[]>()
+  for (const c of cases) {
+    if (c.status === 'VOIDED') continue
+    const date = riyadhClock(c.registrationAt).date
+    ;(byDate.get(date) ?? byDate.set(date, []).get(date)!).push(c)
+  }
+  const dates = [...byDate.keys()].sort()
+  const today = riyadhClock(now).date
+  const opens = range === 'all' ? (dates[0] ?? today) : riyadhClock(new Date(now.getTime() - Number(range) * 864e5)).date
+  const first = dates[0] != null && dates[0] < opens ? dates[0] : opens
+  const last = dates.at(-1) != null && dates.at(-1)! > today ? dates.at(-1)! : today
+
+  const rows: DayRow[] = []
+  for (let date = first; date <= last; date = addCalendarDays(date, 1)) {
+    const cs = byDate.get(date) ?? []
+    const stays = cs.map((c) => elapsedHours(c, now)).filter((h): h is number => h != null)
+    const [y, m, d] = date.split('-').map(Number) as [number, number, number]
+    rows.push({
+      date,
+      name: `${date.slice(8, 10)}/${date.slice(5, 7)}`,
+      weekday: DAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]!,
+      cases: cs.length,
+      ids: cs.map((c) => c.id),
+      med: stays.length >= MIN_N ? median(stays) : null,
+    })
+  }
+  return rows
+}
+
+/** The eight three-hour blocks of the arrivals table, by Riyadh registration time. */
+export const ARRIVAL_BLOCKS = ['00–03', '03–06', '06–09', '09–12', '12–15', '15–18', '18–21', '21–24'] as const
+export type ArrivalBlock = (typeof ARRIVAL_BLOCKS)[number]
+export type ArrivalCell = { block: ArrivalBlock; value: number; ids: string[] }
+export type ArrivalGrid = {
+  /** Sunday to Saturday, each with all eight blocks, the empty cells kept. */
+  rows: Array<{ weekday: Weekday; cells: ArrivalCell[] }>
+  /** The fullest cell's count, which the table steps its fills against; 0 when there is nothing. */
+  max: number
+}
+
+/**
+ * When the delayed patients arrive (Phase 11): each case under the Asia/Riyadh weekday and the
+ * three-hour block of its registration. A block starts on its hour — 03:00:00 is "03–06", a
+ * second before it "00–03".
+ */
+export function arrivalGrid(cases: ReadonlyArray<CaseForStats>): ArrivalGrid {
+  const rows = DAYS.map((weekday) => ({
+    weekday,
+    cells: ARRIVAL_BLOCKS.map((block): ArrivalCell => ({ block, value: 0, ids: [] })),
+  }))
+  for (const c of cases) {
+    if (c.status === 'VOIDED') continue
+    const { weekday, hour } = riyadhClock(c.registrationAt)
+    const cell = rows[weekday]?.cells[Math.floor(hour / 3)]
+    if (!cell) continue
+    cell.value += 1
+    cell.ids.push(c.id)
+  }
+  const max = Math.max(0, ...rows.flatMap((r) => r.cells.map((c) => c.value)))
+  return { rows, max }
+}
+
 export type ConsultRow = { name: string; n: number; ids: string[]; toSeen: number | null; toReply: number | null }
 
 /** Per team: cases with a consultedAt for that team; medians of consult→seen and consult→reply. */
@@ -489,6 +614,9 @@ export function dashboard(all: ReadonlyArray<CaseForStats>, range: Range, now: D
     tiles: tiles(cases, now),
     thresholds: thresholdTable(cases, now),
     weeks: byWeek(cases, now),
+    /** Phase 11: drawn on the 7- and 30-day ranges, where the weekly chart has too few weeks. */
+    days: byDay(cases, range, now),
+    arrivals: arrivalGrid(cases),
     byPrimary: byPrimaryReason(cases).slice(0, 8),
     byStage: byStage(cases),
     byDept: byDepartment(cases).slice(0, 8),

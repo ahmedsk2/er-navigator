@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ARRIVAL_BLOCKS,
   admissionStats,
+  arrivalGrid,
+  byDay,
   byDepartment,
   byDisposition,
   byPrimaryReason,
@@ -425,5 +428,162 @@ describe('Phase 11 panels', () => {
     const split = dashboard(onlyHome, '30', NOW).kpi.staySplit
     expect(split[0]!.split.completeIds).toEqual(['C6', 'C7'])
     expect(split.find((r) => r.key === 'admitted')!.split.completeIds).toEqual([])
+  })
+})
+
+/** A fixture case moved to another registration instant (and, for a stay, another leaving one). */
+const at = (id: string, registrationAt: string, over: Partial<(typeof FIXTURE)[number]> = {}) => ({
+  ...FIXTURE[0]!,
+  id,
+  mrn: `2${id}`,
+  registrationAt: new Date(registrationAt),
+  ...over,
+})
+
+/**
+ * Phase 11: the last days, one bar per Asia/Riyadh calendar day. Registration in Riyadh, from the
+ * fixture's own comments: C8 Sat 29 Aug 15:00, C7 Sat 5 Sep 13:00, C6 Sun 6 Sep 13:00, C5 Mon 7 Sep
+ * 09:00, C4 Mon 14:00, C12 Mon 19:00, C3 Tue 8 Sep 02:00, C2 Tue 08:00, C11 Tue 11:00, C1 Tue
+ * 12:00; NOW is Tue 8 Sep 15:00.
+ */
+describe('Phase 11: by day', () => {
+  it('thirty days is one row per Riyadh day from the window start to today, the empty ones kept', () => {
+    const days = byDay(inRange(FIXTURE, '30', NOW), '30', NOW)
+    // The window opens at 15:00 on Sun 9 Aug, thirty days before NOW, so that partial day is the
+    // first bar and today is the thirty-first.
+    expect(days).toHaveLength(31)
+    expect(days[0]).toEqual({ date: '2026-08-09', name: '09/08', weekday: 'Sun', cases: 0, ids: [], med: null })
+    expect(days.at(-1)).toMatchObject({ date: '2026-09-08', name: '08/09', weekday: 'Tue' })
+    expect(days.filter((d) => d.cases > 0).map((d) => [d.date, d.ids])).toEqual([
+      ['2026-08-29', ['C8']],
+      ['2026-09-05', ['C7']],
+      ['2026-09-06', ['C6']],
+      ['2026-09-07', ['C4', 'C5', 'C12']],
+      ['2026-09-08', ['C1', 'C2', 'C3', 'C11']],
+    ])
+    expect(days.reduce((n, d) => n + d.cases, 0)).toBe(10)
+    // Consecutive calendar days, nothing skipped and nothing twice.
+    const step = days.slice(1).map((d, i) => (Date.parse(d.date) - Date.parse(days[i]!.date)) / 864e5)
+    expect(new Set(step)).toEqual(new Set([1]))
+  })
+
+  it('gives a median only to a day with three stays: Mon 25, 8, 2 -> 8; Tue 3, 7, 13, 4 -> 5.5', () => {
+    const days = byDay(inRange(FIXTURE, '30', NOW), '30', NOW)
+    const day = (date: string) => days.find((d) => d.date === date)!
+    expect(day('2026-09-07').med).toBe(8)
+    expect(day('2026-09-08').med).toBe(5.5)
+    for (const date of ['2026-08-29', '2026-09-05', '2026-09-06']) expect(day(date).med, date).toBeNull()
+  })
+
+  it('seven days is eight bars, because the window starts part way through a day', () => {
+    const days = byDay(inRange(FIXTURE, '7', NOW), '7', NOW)
+    expect(days.map((d) => d.date)).toEqual([
+      '2026-09-01',
+      '2026-09-02',
+      '2026-09-03',
+      '2026-09-04',
+      '2026-09-05',
+      '2026-09-06',
+      '2026-09-07',
+      '2026-09-08',
+    ])
+    expect(days.map((d) => d.cases)).toEqual([0, 0, 0, 0, 1, 1, 3, 4])
+  })
+
+  it('all time runs from the first case to today', () => {
+    const days = byDay(inRange(FIXTURE, 'all', NOW), 'all', NOW)
+    // C9 registered at 15:00 on Thu 30 Jul, forty days before NOW.
+    expect(days[0]).toMatchObject({ date: '2026-07-30', weekday: 'Thu', ids: ['C9'] })
+    expect(days).toHaveLength(41)
+    expect(days.reduce((n, d) => n + d.cases, 0)).toBe(11)
+    expect(byDay([], 'all', NOW).map((d) => d.date)).toEqual(['2026-09-08'])
+  })
+
+  it('cuts the day at Riyadh midnight, which is 21:00 UTC', () => {
+    const days = byDay([at('late', '2026-09-07T20:59:59Z'), at('early', '2026-09-07T21:00:00Z')], '7', NOW)
+    expect(days.find((d) => d.date === '2026-09-07')!.ids).toEqual(['late'])
+    expect(days.find((d) => d.date === '2026-09-08')!.ids).toEqual(['early'])
+  })
+
+  it('never loses a case: a registration dated after today gets its own bar', () => {
+    // 01:00 on Wed 9 Sep in Riyadh, ten hours after NOW: a clock that ran ahead.
+    const days = byDay([at('ahead', '2026-09-08T22:00:00Z')], '7', NOW)
+    expect(days.at(-1)).toMatchObject({ date: '2026-09-09', ids: ['ahead'] })
+    expect(days.reduce((n, d) => n + d.cases, 0)).toBe(1)
+  })
+
+  it('leaves a voided case out, and counts a stay it cannot compute as no median', () => {
+    expect(byDay(FIXTURE.filter((c) => c.id === 'C10'), '7', NOW).every((d) => d.cases === 0)).toBe(true)
+    // Three cases on Mon 7 Sep, one of them leaving before it registered: three cases, two stays.
+    const day = byDay(
+      [
+        at('m1', '2026-09-07T06:00:00Z', { status: 'RESOLVED', departedAt: new Date('2026-09-07T10:00:00Z'), resolvedAt: new Date('2026-09-07T10:00:00Z') }),
+        at('m2', '2026-09-07T07:00:00Z', { status: 'RESOLVED', departedAt: new Date('2026-09-07T12:00:00Z'), resolvedAt: new Date('2026-09-07T12:00:00Z') }),
+        at('m3', '2026-09-07T08:00:00Z', { status: 'RESOLVED', departedAt: new Date('2026-09-07T05:00:00Z'), resolvedAt: new Date('2026-09-07T05:00:00Z') }),
+      ],
+      '7',
+      NOW,
+    ).find((d) => d.date === '2026-09-07')!
+    expect(day.cases).toBe(3)
+    expect(day.med).toBeNull()
+  })
+})
+
+/** Phase 11: when the delayed patients arrive, by Riyadh weekday and three-hour block. */
+describe('Phase 11: arrivals by day and time', () => {
+  it('is seven weekdays of eight blocks, Sunday first, every cell kept', () => {
+    const grid = arrivalGrid(inRange(FIXTURE, '30', NOW))
+    expect(ARRIVAL_BLOCKS).toEqual(['00–03', '03–06', '06–09', '09–12', '12–15', '15–18', '18–21', '21–24'])
+    expect(grid.rows.map((r) => r.weekday)).toEqual(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'])
+    expect(grid.rows.every((r) => r.cells.map((c) => c.block).join() === ARRIVAL_BLOCKS.join())).toBe(true)
+  })
+
+  it('files each case under its Riyadh weekday and block', () => {
+    const grid = arrivalGrid(inRange(FIXTURE, '30', NOW))
+    const filled = grid.rows.flatMap((r) => r.cells.filter((c) => c.value > 0).map((c) => [r.weekday, c.block, c.ids]))
+    expect(filled).toEqual([
+      ['Sun', '12–15', ['C6']],
+      ['Mon', '09–12', ['C5']],
+      ['Mon', '12–15', ['C4']],
+      ['Mon', '18–21', ['C12']],
+      ['Tue', '00–03', ['C3']],
+      ['Tue', '06–09', ['C2']],
+      ['Tue', '09–12', ['C11']],
+      ['Tue', '12–15', ['C1']],
+      ['Sat', '12–15', ['C7']],
+      ['Sat', '15–18', ['C8']],
+    ])
+    expect(grid.max).toBe(1)
+    expect(grid.rows.flatMap((r) => r.cells).reduce((n, c) => n + c.value, 0)).toBe(10)
+  })
+
+  it('starts a block on its hour, in Riyadh time, and counts two arrivals in one cell as two', () => {
+    const grid = arrivalGrid([
+      at('b1', '2026-09-06T23:59:59Z'), // Mon 7 Sep 02:59:59
+      at('b2', '2026-09-07T00:00:00Z'), // Mon 03:00:00
+      at('b3', '2026-09-07T20:30:00Z'), // Mon 23:30
+      at('b4', '2026-09-07T20:59:00Z'), // Mon 23:59
+      FIXTURE.find((c) => c.id === 'C10')!, // voided: nowhere
+    ])
+    const mon = grid.rows.find((r) => r.weekday === 'Mon')!
+    const cell = (block: string) => mon.cells.find((c) => c.block === block)!
+    expect(cell('00–03').ids).toEqual(['b1'])
+    expect(cell('03–06').ids).toEqual(['b2'])
+    expect(cell('21–24')).toEqual({ block: '21–24', value: 2, ids: ['b3', 'b4'] })
+    expect(grid.max).toBe(2)
+    expect(grid.rows.flatMap((r) => r.cells).reduce((n, c) => n + c.value, 0)).toBe(4)
+    expect(arrivalGrid([]).max).toBe(0)
+  })
+})
+
+describe('Phase 11: the dashboard carries both, over its own cases', () => {
+  it('hands the range and the filtered cases to byDay and arrivalGrid', () => {
+    const seven = dashboard(FIXTURE, '7', NOW)
+    expect(seven.days).toEqual(byDay(inRange(FIXTURE, '7', NOW), '7', NOW))
+    expect(seven.arrivals).toEqual(arrivalGrid(inRange(FIXTURE, '7', NOW)))
+    // C8 is ten days old: on the thirty-day grid, not the seven-day one.
+    const sat = (d: ReturnType<typeof dashboard>) => d.arrivals.rows.find((r) => r.weekday === 'Sat')!
+    expect(sat(seven).cells.find((c) => c.block === '15–18')!.ids).toEqual([])
+    expect(sat(dashboard(FIXTURE, '30', NOW)).cells.find((c) => c.block === '15–18')!.ids).toEqual(['C8'])
   })
 })
