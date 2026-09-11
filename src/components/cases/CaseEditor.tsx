@@ -32,6 +32,7 @@ import {
   FieldGroup,
   Input,
   LocalTimeInput,
+  MrnOnlyHint,
   Section,
   Select,
   TimeRow,
@@ -848,6 +849,7 @@ export function CaseEditor(props: CaseEditorProps) {
               onChange={(e) => set({ diagnosis: e.target.value })}
             />
           </DictationRow>
+          <MrnOnlyHint />
         </Field>
         <FieldGroup label="ED area">
           <Chips
@@ -905,28 +907,31 @@ export function CaseEditor(props: CaseEditorProps) {
                 disabled={disabled}
               />
               {otherSelected && other ? (
-                <DictationRow
-                  disabled={disabled}
-                  onText={(text) =>
-                    setOtherText(
-                      other.id,
-                      appendDictated(
-                        mine.find((r) => r.reasonId === other.id)?.otherText ?? '',
-                        text,
-                        OTHER_TEXT_MAX,
-                      ),
-                    )
-                  }
-                >
-                  <Input
-                    maxLength={OTHER_TEXT_MAX}
-                    placeholder="Describe the other reason (goes to the review queue)"
+                <>
+                  <DictationRow
                     disabled={disabled}
-                    aria-label={`Other reason under ${stage.name}`}
-                    value={mine.find((r) => r.reasonId === other.id)?.otherText ?? ''}
-                    onChange={(e) => setOtherText(other.id, e.target.value)}
-                  />
-                </DictationRow>
+                    onText={(text) =>
+                      setOtherText(
+                        other.id,
+                        appendDictated(
+                          mine.find((r) => r.reasonId === other.id)?.otherText ?? '',
+                          text,
+                          OTHER_TEXT_MAX,
+                        ),
+                      )
+                    }
+                  >
+                    <Input
+                      maxLength={OTHER_TEXT_MAX}
+                      placeholder="Describe the other reason (goes to the review queue)"
+                      disabled={disabled}
+                      aria-label={`Other reason under ${stage.name}`}
+                      value={mine.find((r) => r.reasonId === other.id)?.otherText ?? ''}
+                      onChange={(e) => setOtherText(other.id, e.target.value)}
+                    />
+                  </DictationRow>
+                  <MrnOnlyHint />
+                </>
               ) : null}
             </div>
           )
@@ -1211,7 +1216,7 @@ export function CaseEditor(props: CaseEditorProps) {
                   Add
                 </Button>
               </div>
-              <p className="mt-1.5 text-caption text-muted">MRN only, no names.</p>
+              <MrnOnlyHint />
               {updateWarnings.map((w) => (
                 <p key={w} className="mt-1.5 text-caption text-band-h4-ink" role="status">
                   {w}
@@ -1312,6 +1317,7 @@ export function CaseEditor(props: CaseEditorProps) {
                 onChange={(e) => set({ resolutionNote: e.target.value })}
               />
             </DictationRow>
+            <MrnOnlyHint />
           </Field>
           {readOnly ? null : status === 'OPEN' ? (
             <Button
@@ -1406,6 +1412,7 @@ export function CaseEditor(props: CaseEditorProps) {
                   value={voidReasonText}
                   onChange={(e) => setVoidReasonText(e.target.value)}
                 />
+                <MrnOnlyHint />
               </Field>
               {/* Two taps on the destructive step, the prototype's guard: the first arms the
                   button for three seconds, the second commits. Nothing is deleted; the case is
