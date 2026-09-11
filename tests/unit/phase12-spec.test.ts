@@ -122,6 +122,23 @@ describe('the changelog names real audit actions', () => {
   })
 })
 
+/**
+ * The two Phase 12 guides are read by people standing in front of the app: a presenter with
+ * fifteen staff watching, and a navigator at the desk. A control named in bold that the screen
+ * does not have is worse than no sentence at all, so each claim is checked against the component
+ * that renders it rather than against prose.
+ */
+describe('the guides name the controls the app actually renders', () => {
+  it('calls the case summary button by its own name', () => {
+    const script = readFileSync(path.join(ROOT, 'docs/guide/demo-script.md'), 'utf8')
+    const sheet = readFileSync(path.join(ROOT, 'src/components/cases/CaseSummarySheet.tsx'), 'utf8')
+    // `<Button tone="main" onClick={onCopy}>Copy</Button>`, and tests/e2e/cases.spec.ts:786 clicks
+    // it by that exact name. The feature is still "copy the summary as text"; the control is not.
+    expect(sheet).toMatch(/onClick=\{onCopy\}>\s*Copy\s*</)
+    expect([...script.matchAll(/\*\*(Copy[^*]*)\*\*/g)].map((m) => m[1]!)).toEqual(['Copy'])
+  })
+})
+
 describe('item 6: the alert email retry pass', () => {
   const compose = readFileSync(path.join(ROOT, 'docker-compose.production.yml'), 'utf8')
   const worker = readFileSync(path.join(ROOT, 'worker/alerts.ts'), 'utf8')

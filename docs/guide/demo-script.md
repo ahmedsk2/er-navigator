@@ -98,8 +98,8 @@ Go back to the board.
 - **The colours.** Green under 4 hours, amber from 4, red from 6, purple from 12, near-black from
   24. Point at one of each on the seeded rows.
 - **The counts line**, again, now that the colours mean something.
-- Tap a row's **Summary** and show the one-screen picture of a case, with a **Copy as text** button
-  for pasting into a message.
+- Tap a row's **Summary** and show the one-screen picture of a case, with a **Copy** button that
+  puts it on the clipboard as text for pasting into a message.
 - **Filter**: narrow to one stage, for example Admission process, and show the count line change.
 - **The handover sheet.** Open the menu at the top right and tap **Print handover**. Show the print
   preview: the same rows in the same order, plain black and white, with a line saying the board was
