@@ -359,3 +359,33 @@ test('the way to the account says so, the admin screens fit a phone, and every s
   if (mobile) await expect(emailHeader).toBeHidden()
   else await expect(emailHeader).toBeVisible()
 })
+
+/**
+ * Finding 7: the sign-in hero's ECG trace ran through the headline — "seen in time." sat on the
+ * line. It is drawn below the headline block now, at both widths, and behind no text at all: not
+ * the wordmark, the headline, the laptop's purpose line and band labels, or the hospital line.
+ */
+test('the sign-in trace sits below the headline and behind no text', async ({ page }) => {
+  await page.goto('/login')
+  const hero = page.locator('[data-login-hero]')
+  // The trace is the hero's one polyline; the laptop's band bars are rects.
+  const trace = hero.locator('svg:has(polyline)')
+  await expect(trace).toBeVisible()
+
+  const headline = hero.getByText('Every long stay, seen in time.', { exact: true })
+  const traceBox = (await trace.boundingBox())!
+  const headlineBox = (await headline.boundingBox())!
+  expect(traceBox.y).toBeGreaterThanOrEqual(headlineBox.y + headlineBox.height)
+
+  const overlapped = await hero.evaluate((section) => {
+    const line = section.querySelector('svg:has(polyline)')!.getBoundingClientRect()
+    return [...section.querySelectorAll('h1, p, text')]
+      .filter((el) => {
+        const box = el.getBoundingClientRect()
+        const shown = box.width > 0 && box.height > 0
+        return shown && box.left < line.right && line.left < box.right && box.top < line.bottom && line.top < box.bottom
+      })
+      .map((el) => el.textContent?.trim())
+  })
+  expect(overlapped).toEqual([])
+})
