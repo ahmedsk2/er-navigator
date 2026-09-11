@@ -57,6 +57,39 @@ test('the board still fits under the banner, and every signed-in page carries on
   await expect(page.locator('[data-instance-banner]')).toHaveCount(1)
 })
 
+/**
+ * Phase 12 review round, finding 4. The banner is in normal flow, so on a laptop it pushes the
+ * whole grid — including the sticky navy rail, which was `lg:top-0 lg:h-dvh`. A full viewport
+ * height starting one banner down ends one banner below the fold, and the last thing in the rail
+ * is the link to /account: at 1280 x 800 with nothing scrolled, "Account and password" was cut
+ * off. Production is unaffected (no banner, so nothing to subtract), which is exactly why the
+ * assertion has to live in this suite.
+ */
+test('the desktop rail ends at the fold, so its last link is reachable without scrolling', async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'the rail only exists from lg; a phone has the tab bar')
+  await fromClientIp(page, '198.51.100.213')
+  await signIn(page, E2E_USERS.supervisor)
+
+  const viewport = page.viewportSize()!
+  expect(await page.evaluate(() => window.scrollY)).toBe(0)
+
+  const nav = page.getByRole('navigation', { name: 'Sections' })
+  const banner = page.locator('[data-instance-banner]')
+  const account = nav.getByRole('link', { name: 'Account and password' })
+
+  const bannerBox = (await banner.boundingBox())!
+  const navBox = (await nav.boundingBox())!
+  const accountBox = (await account.boundingBox())!
+
+  // The rail starts below the banner and gives back exactly what the banner took.
+  expect(navBox.y).toBeCloseTo(bannerBox.height, 0)
+  expect(navBox.y + navBox.height).toBeLessThanOrEqual(viewport.height + 1)
+  expect(accountBox.y + accountBox.height).toBeLessThanOrEqual(viewport.height)
+  await expect(account).toBeInViewport({ ratio: 1 })
+})
+
 test('it cannot be dismissed and survives a reload', async ({ page }, testInfo) => {
   await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.205' : '198.51.100.206')
   await page.goto('/login')

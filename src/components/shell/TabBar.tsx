@@ -49,10 +49,16 @@ export function TabBar({
   const pathname = usePathname()
   const tabs = [...BOARD_TABS, ...(showExport ? [EXPORT_TAB] : []), ...(showAdmin ? [ADMIN_TAB] : [])]
 
+  // The rail's `--instance-banner` is the height of the in-flow banner above the shell, set by
+  // `app/layout.tsx` only on a labelled instance (Phase 12 review round, finding 4). The rail is
+  // sticky and a full viewport tall, so a banner that pushed it down by 28 px pushed the same
+  // 28 px — and the "Account and password" link at its foot — below the fold at 1280 x 800 with
+  // nothing scrolled. It now gives that height back and sticks below the banner. Production sets
+  // no variable, so both uses fall back to `0px`: `top: 0px` and `100dvh`, exactly as before.
   return (
     <nav
       aria-label="Sections"
-      className="no-print fixed inset-x-0 bottom-0 z-10 border-t border-line bg-panel lg:sticky lg:inset-x-auto lg:top-0 lg:bottom-auto lg:z-auto lg:flex lg:h-dvh lg:w-[232px] lg:flex-col lg:gap-4 lg:border-t-0 lg:border-r lg:border-navy lg:bg-navy lg:p-3.5 lg:text-rail-ink"
+      className="no-print fixed inset-x-0 bottom-0 z-10 border-t border-line bg-panel lg:sticky lg:inset-x-auto lg:top-[var(--instance-banner,0px)] lg:bottom-auto lg:z-auto lg:flex lg:h-[calc(100dvh_-_var(--instance-banner,0px))] lg:w-[232px] lg:flex-col lg:gap-4 lg:border-t-0 lg:border-r lg:border-navy lg:bg-navy lg:p-3.5 lg:text-rail-ink"
     >
       {/* The rail owns the brand on a laptop, where there is a column to put it in, and its
           wordmark is the page's h1 there (the header's h1 is `lg:hidden`, so there is one per

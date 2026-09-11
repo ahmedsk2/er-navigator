@@ -25,3 +25,20 @@ export function instanceLabel(env: NodeJS.ProcessEnv = process.env): string | nu
 export function instanceBannerText(label: string): string {
   return `${label}: invented patients only`
 }
+
+/**
+ * How tall the banner is, published to the rest of the page (Phase 12 review round, finding 4).
+ *
+ * The banner is in normal flow, so on a laptop it pushes the whole shell down — including the
+ * sticky navy rail, which is a full viewport tall. A full height starting one banner down ends
+ * one banner below the fold, and the last thing in the rail is the link to /account: at
+ * 1280 x 800 with nothing scrolled, "Account and password" was cut off.
+ *
+ * So `app/layout.tsx` sets `--instance-banner` on `<body>` — only when a label is set, so
+ * production's rail reads the `0px` fallback and is unchanged — `InstanceBanner` takes its own
+ * height *from* the variable, which is what keeps the two from drifting apart, and
+ * `TabBar` subtracts it from the rail's height and adds it to the rail's sticky top.
+ *
+ * 1.75rem is `h-7`: 12 px of caption text at line-height 1.3 with the 6 px padding it had before.
+ */
+export const INSTANCE_BANNER_HEIGHT = '1.75rem'
