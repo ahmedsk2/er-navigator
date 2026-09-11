@@ -3,6 +3,7 @@ import type { BoardPayload } from '../../src/lib/board/types'
 import { inRange, type CaseForStats, type Range } from '../../src/lib/domain/aggregates'
 import { headline } from '../../src/lib/domain/kpi'
 import { MIN_N, fmtHours } from '../../src/lib/domain/time'
+import { riyadhDateKey } from '../../src/lib/export/range'
 import { fromClientIp, signIn } from './fixtures/case-flow'
 import {
   DASHBOARD_CASES,
@@ -1220,6 +1221,186 @@ test('the bar sections show whole labels and stay links to their cases', async (
   await row.click()
   await expect(page.locator('[data-drill-label]')).toHaveText('Awaiting consulted team response/callback')
   await expect(rowFor(page, '3200003')).toHaveCount(1)
+})
+
+/**
+ * Items 5 and 7, the layout. The screen groups its sections — overview, time, reasons, KPIs,
+ * teams, outcomes, quality — so that a phone's jump chips can land on the first section of each;
+ * the report keeps its own order, the arrivals table placed after "By day of week". Every section
+ * below is one the fixture earns, so both lists are the whole page. The "Other" queue's heading
+ * carries a count, which is read as "(n)".
+ */
+const SCREEN_ORDER = [
+  'Cases past each threshold',
+  'Stay bands',
+  'Where the time goes',
+  'By day: cases and median stay',
+  'Arrivals by day and time',
+  'By shift',
+  'By day of week',
+  'Primary delay reason',
+  'Pathways',
+  'Departments involved',
+  'Adaa KPIs, tracked cases only',
+  'Working targets',
+  'Admission to unit',
+  'Turnaround: order to result',
+  'Exam to consult, median',
+  'Consulted team response, median',
+  'Investigation turnaround, median from order',
+  'Admission chain, median',
+  'Longest stays',
+  'Actions documented',
+  'Outcomes',
+  'Discharge communication',
+  'By CTAS',
+  'By ED area',
+  'By payer',
+  'Repeat visits',
+  'Documentation',
+  'Other reasons awaiting review (n)',
+]
+const REPORT_ORDER = [
+  'Stay bands',
+  'Adaa KPIs, tracked cases only',
+  'Working targets',
+  'Where the time goes',
+  'Cases past each threshold',
+  'By week: cases and median stay',
+  'Primary delay reason',
+  'Pathways',
+  'Departments involved',
+  'Admission to unit',
+  'Turnaround: order to result',
+  'Exam to consult, median',
+  'Consulted team response, median',
+  'Investigation turnaround, median from order',
+  'Admission chain, median',
+  'Longest stays',
+  'Actions documented',
+  'By shift',
+  'By day of week',
+  'Arrivals by day and time',
+  'Outcomes',
+  'Discharge communication',
+  'By CTAS',
+  'By ED area',
+  'By payer',
+  'Repeat visits',
+  'Documentation',
+  'Other reasons awaiting review (n)',
+]
+const headingsOf = (page: Page): Promise<string[]> =>
+  page
+    .locator('.dash h3')
+    .evaluateAll((els) => els.map((e) => (e.textContent ?? '').trim().replace(/\(\d+\)$/, '(n)')))
+
+test('the dashboard is two columns on a laptop and jumps by group on a phone; the report keeps its order', async ({
+  page,
+}, testInfo) => {
+  const mobile = testInfo.project.name === 'mobile'
+  await fromClientIp(page, '198.51.100.246')
+  // A viewer: the dashboard, and the printable report, and nothing to change on either.
+  await signIn(page, E2E_USERS.viewer)
+  await page.goto('/dashboard')
+  expect(await headingsOf(page)).toEqual(SCREEN_ORDER)
+
+  // Each group's anchor opens on its first section.
+  for (const [id, first] of [
+    ['dash-overview', 'Cases past each threshold'],
+    ['dash-time', 'Where the time goes'],
+    ['dash-reasons', 'Primary delay reason'],
+    ['dash-kpis', 'Adaa KPIs, tracked cases only'],
+    ['dash-teams', 'Turnaround: order to result'],
+    ['dash-outcomes', 'Longest stays'],
+    ['dash-quality', 'Documentation'],
+  ] as const) {
+    await expect(page.locator(`#${id} h3`).first(), id).toHaveText(first)
+  }
+
+  // The chips: a phone's, not a laptop's, and never on paper.
+  const jump = page.getByRole('navigation', { name: 'Jump to a section' })
+  if (mobile) {
+    await expect(jump).toBeVisible()
+    expect(
+      await jump.getByRole('link').evaluateAll((els) => els.map((e) => [(e.textContent ?? '').trim(), e.getAttribute('href')])),
+    ).toEqual([
+      ['Overview', '#dash-overview'],
+      ['Time', '#dash-time'],
+      ['Reasons', '#dash-reasons'],
+      ['KPIs', '#dash-kpis'],
+      ['Teams', '#dash-teams'],
+      ['Outcomes', '#dash-outcomes'],
+      ['Quality', '#dash-quality'],
+    ])
+    await jump.getByRole('link', { name: 'KPIs', exact: true }).click()
+    await expect(page).toHaveURL(/#dash-kpis$/)
+    const adaa = page.getByRole('heading', { name: 'Adaa KPIs, tracked cases only', exact: true })
+    await expect.poll(() => adaa.evaluate((e) => Math.round(e.getBoundingClientRect().top))).toBeLessThan(120)
+    expect(await adaa.evaluate((e) => e.getBoundingClientRect().top)).toBeGreaterThanOrEqual(0)
+  } else {
+    await expect(jump).toBeHidden()
+  }
+
+  // Short sections pair up side by side from lg; the wide ones run across both columns.
+  const box = async (title: string) => {
+    const b = await page.getByRole('heading', { name: title, exact: true }).locator('xpath=..').boundingBox()
+    if (!b) throw new Error(`no box for "${title}"`)
+    return b
+  }
+  const primary = await box('Primary delay reason')
+  const pathways = await box('Pathways')
+  const adaa = await box('Adaa KPIs, tracked cases only')
+  const longest = await box('Longest stays')
+  if (mobile) {
+    expect(pathways.x).toBeCloseTo(primary.x, 0)
+    expect(pathways.y).toBeGreaterThanOrEqual(primary.y + primary.height)
+    expect(adaa.width).toBeCloseTo(primary.width, 0)
+  } else {
+    expect(pathways.y).toBeCloseTo(primary.y, 0)
+    expect(pathways.x).toBeGreaterThan(primary.x + primary.width)
+    expect(adaa.width).toBeGreaterThan(primary.width * 1.9)
+    expect(longest.width).toBeCloseTo(adaa.width, 0)
+  }
+
+  // Item 1 at both widths: the Adaa table stays under its charts, which on a laptop run two to a row.
+  const bullets = await page.locator('[data-chart="bullets"]').boundingBox()
+  const kpiTable = await page
+    .getByRole('heading', { name: 'Adaa KPIs, tracked cases only', exact: true })
+    .locator('xpath=../table[1]')
+    .boundingBox()
+  expect(kpiTable!.y).toBeGreaterThanOrEqual(bullets!.y + bullets!.height - 1)
+  const kpi1 = await page.locator('[data-bullet="kpi1"]').boundingBox()
+  const kpi2 = await page.locator('[data-bullet="kpi2"]').boundingBox()
+  if (mobile) expect(kpi2!.y).toBeGreaterThan(kpi1!.y)
+  else expect(kpi2!.y).toBeCloseTo(kpi1!.y, 0)
+
+  // The Range tile is two tiles wide, so its value has room and no row has a hole in it.
+  const range = await page.locator('[data-tile-card="Range"]').boundingBox()
+  const cases = await page.locator('[data-tile-card="Cases"]').boundingBox()
+  expect(range!.width).toBeGreaterThan(cases!.width * 1.9)
+  expect(await page.locator('[data-tile="Range"]').evaluate((e) => e.getClientRects().length)).toBe(1)
+
+  await page.emulateMedia({ media: 'print' })
+  await expect(jump).toBeHidden()
+  await page.emulateMedia({ media: 'screen' })
+
+  // The report: one column, and its own order, as before this phase.
+  const today = riyadhDateKey(new Date())
+  const monthAgo = riyadhDateKey(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))
+  await page.goto(`/report?from=${monthAgo}&to=${today}&status=all`)
+  await expect(page.locator('[data-report-header]')).toBeVisible()
+  expect(await headingsOf(page)).toEqual(REPORT_ORDER)
+  const columns = await page
+    .locator('.dash h3')
+    .evaluateAll((els) =>
+      els.map((e) => {
+        const r = e.parentElement!.getBoundingClientRect()
+        return `${Math.round(r.x)}:${Math.round(r.width)}`
+      }),
+    )
+  expect(new Set(columns).size, 'every report section is the one column').toBe(1)
+  await expect(page.getByRole('navigation', { name: 'Jump to a section' })).toHaveCount(0)
 })
 
 test('an unknown drill key renders the dashboard rather than an error', async ({ page }, testInfo) => {

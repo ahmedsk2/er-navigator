@@ -10,6 +10,7 @@
  * with JavaScript off and print it.
  */
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 import {
   Activity,
   BarChart3,
@@ -127,6 +128,26 @@ export function DashboardView({
         options={filterOptions}
       />
 
+      {/* Phase 11: the phone's way down a page of twenty-odd sections — one chip per group, each an
+          in-page link, so it works with JavaScript off. A laptop has the two-column grid instead,
+          and paper has neither. Nothing to jump to when the range is empty. */}
+      {data.inRange > 0 ? (
+        <nav aria-label="Jump to a section" className="no-print px-4 pb-3 lg:hidden" data-jump>
+          <ul className="m-0 flex list-none flex-wrap items-center gap-2 p-0">
+            {DASHBOARD_GROUPS.map((group) => (
+              <li key={group.id}>
+                <a
+                  href={`#dash-${group.id}`}
+                  className="inline-flex min-h-11 items-center rounded-chip border border-line-soft bg-accent-soft px-3 text-label font-semibold text-accent-ink"
+                >
+                  {group.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      ) : null}
+
       <DashboardBody data={data} range={range} filter={filter} />
     </div>
   )
@@ -138,10 +159,15 @@ export function DashboardView({
  * range, which is what "the dashboard sections for that range" means: one implementation of every
  * section, printed by the same Phase 4 stylesheet, so the report can never drift from the screen.
  *
- * `variant` is the one thing the two differ in, and it changes order, never content: a printed
- * report opens with the four sections a reader of the deck looks for first — the headline, the
- * stay bands, the Adaa panel and the working targets — and the screen keeps them where a reader
- * scrolling the page expects them (Phase 8 spec, Slice E).
+ * `variant` is the one thing the two differ in, and it changes order and layout, never content: a
+ * printed report opens with the four sections a reader of the deck looks for first — the headline,
+ * the stay bands, the Adaa panel and the working targets — and the screen keeps them where a
+ * reader scrolling the page expects them (Phase 8 spec, Slice E).
+ *
+ * Phase 11 grouped the screen — overview, time, reasons, KPIs, teams, outcomes, quality — so a
+ * phone can jump to a group and a laptop can pair the short sections two to a row. That moved "By
+ * shift" and "By day of week" up among the other "when" sections; nothing else changed places.
+ * The report is one column in the order it has always printed.
  */
 export function DashboardBody({
   data,
@@ -208,218 +234,359 @@ export function DashboardBody({
     ],
   }))
 
-  /** What a printed report opens with, and what the screen keeps further down the page. */
-  const lead = (
-    <>
-      <StayBandsSection kpi={kpi} range={range} filter={filter} />
-      <AdaaPanel kpi={kpi} range={range} filter={filter} />
-      <WorkingTargets kpi={kpi} range={range} filter={filter} />
-      <WhereTimeGoesSection kpi={kpi} range={range} filter={filter} />
-    </>
+  // Phase 11: every section is built once, here, and the two variants below only order them.
+  const screen = variant === 'screen'
+
+  const thresholds =
+    data.inRange > 0 ? (
+      <DashSection title="Cases past each threshold" icon={<Clock size={18} />}>
+        {/* Across both columns on a laptop, so capped: three columns of a table 1,000 px wide put
+            every number that far from its label. */}
+        <DataTable
+          head={['Threshold', 'Open now', 'All cases']}
+          rows={thresholdRows}
+          className={screen ? 'lg:max-w-2xl' : ''}
+        />
+        <Footnote>
+          Tap a row to see the cases. Open now counts wait so far; All cases counts total stay
+          including resolved.
+        </Footnote>
+      </DashSection>
+    ) : null
+
+  const empty = (
+    <section className="mx-4 mb-2.5 rounded-card border border-line bg-panel p-6 text-center shadow-card lg:mx-0">
+      <p className="m-0 text-body text-muted">
+        {/* Under a filter `total` is the filtered population too, so a filter that matches
+            nothing would otherwise read "No cases yet." — a claim about the whole department
+            that only the filter made. */}
+        {filter && !isEmptyFilter(filter)
+          ? 'No case in this range matches this filter.'
+          : data.total
+            ? 'No cases registered in this range.'
+            : 'No cases yet.'}
+      </p>
+    </section>
   )
 
+  const stayBands = <StayBandsSection kpi={kpi} range={range} filter={filter} />
+  const whereTime = <WhereTimeGoesSection kpi={kpi} range={range} filter={filter} wide={screen} />
+  const adaa = <AdaaPanel kpi={kpi} range={range} filter={filter} wide={screen} />
+  const targets = <WorkingTargets kpi={kpi} range={range} filter={filter} />
+
+  const trend = daily ? (
+    <DashSection title="By day: cases and median stay" icon={<Activity size={18} />}>
+      <TrendChart points={dayPoints} kind="daily" reference={{ hours: 6, label: '6 h' }} />
+      {/* The days a bar can be seen on: a day with no case has nothing to list. */}
+      <BarLinks
+        caption="By day"
+        rows={dayPoints.filter((d) => d.cases > 0).map((d) => ({ name: d.label!, value: d.cases, href: d.href }))}
+        unit="cases"
+      />
+      <Footnote>
+        Bars: cases flagged each day, by registration in Asia/Riyadh, the empty days kept; the first bar is the part
+        of its day inside the range. Line: median total ED stay; a day with fewer than {MIN_N} cases shows no median.
+        The dashed line is 6 h.
+      </Footnote>
+    </DashSection>
+  ) : data.weeks.length > 1 ? (
+    <DashSection title="By week: cases and median stay" icon={<Activity size={18} />}>
+      <TrendChart points={weekPoints} kind="weekly" />
+      <BarLinks
+        caption="By week"
+        rows={weekPoints.map((w) => ({ name: w.name, value: w.cases, href: w.href }))}
+        unit="cases"
+      />
+      <Footnote>
+        Bars: cases flagged that week. Line: median total ED stay; a week with fewer than {MIN_N} cases
+        shows no median.
+      </Footnote>
+    </DashSection>
+  ) : null
+
+  const primary = (
+    <BarSection
+      title="Primary delay reason"
+      icon={<TriangleAlert size={18} />}
+      rows={hbarRows(data.byPrimary, range, 'primary', filter)}
+      color="accent"
+    />
+  )
+  // The weekly deck's "delay pathway" classification, expressed through the locked stage taxonomy
+  // rather than a second one (brief, section 6).
+  const pathways = (
+    <BarSection
+      title="Pathways"
+      icon={<Activity size={18} />}
+      rows={hbarRows(data.byStage, range, 'stage', filter)}
+      color="ink"
+      unit={`of ${data.inRange} cases`}
+      footnote="The journey stage each delay reason belongs to. A case whose reasons span several stages is counted in each, so the bars add to more than the number of cases."
+    />
+  )
+  const departments = (
+    <BarSection
+      title="Departments involved"
+      icon={<Users size={18} />}
+      rows={hbarRows(data.byDept, range, 'dept', filter)}
+      color="plum"
+    />
+  )
+
+  const admissionToUnit = <AdmissionToUnit kpi={kpi} range={range} filter={filter} />
+  const turnaround = <TurnaroundSection kpi={kpi} range={range} filter={filter} />
+  const examToConsult = <ExamToConsultSection kpi={kpi} range={range} filter={filter} />
+
+  const consulted = (
+    <DashSection title="Consulted team response, median" icon={<Users size={18} />}>
+      {consultRows.length ? (
+        <DataTable head={['Team', 'n', 'To seen', 'To reply']} rows={consultRows} />
+      ) : (
+        <EmptyNote>Enter consulted, seen, and replied times under each team to see this.</EmptyNote>
+      )}
+    </DashSection>
+  )
+
+  const investigations = (
+    <DashSection title="Investigation turnaround, median from order" icon={<Activity size={18} />}>
+      {investigationRows.length ? (
+        <DataTable head={['Test', 'n', 'To done', 'To result']} rows={investigationRows} />
+      ) : (
+        <EmptyNote>Enter investigation times under a case to see this.</EmptyNote>
+      )}
+    </DashSection>
+  )
+
+  const admissionChain = (
+    <DashSection title="Admission chain, median" icon={<ClipboardList size={18} />}>
+      {admission.n ? (
+        <DataTable
+          head={['Step', 'Hours']}
+          rows={[
+            {
+              key: 'order',
+              cells: ['Order written to bed assigned', <Median key="v" value={admission.orderToBed} n={admission.n} />],
+            },
+            {
+              key: 'request',
+              cells: ['Bed requested to bed assigned', <Median key="v" value={admission.requestToBed} n={admission.n} />],
+            },
+            {
+              key: 'bed',
+              cells: ['Bed assigned to left ED', <Median key="v" value={admission.bedToLeave} n={admission.n} />],
+            },
+          ]}
+        />
+      ) : (
+        <EmptyNote>Enter admission times under a case to see this.</EmptyNote>
+      )}
+    </DashSection>
+  )
+
+  const longest = <LongestStays kpi={kpi} range={range} filter={filter} />
+  const actions = <ActionsDocumented kpi={kpi} range={range} filter={filter} />
+
+  const byShift =
+    shiftRows.length > 0 ? (
+      <DashSection title="By shift" icon={<History size={18} />}>
+        <DataTable head={['Shift', 'Cases', 'Median stay']} rows={shiftRows} />
+      </DashSection>
+    ) : null
+
+  const byWeekday =
+    data.byWeekday.length > 1 ? (
+      <BarSection
+        title="By day of week"
+        icon={<BarChart3 size={18} />}
+        rows={hbarRows(data.byWeekday, range, 'weekday', filter)}
+        color="muted"
+      />
+    ) : null
+  const arrivals = <ArrivalsSection arrivals={data.arrivals} range={range} filter={filter} />
+
+  const outcomes = <OutcomesSection kpi={kpi} range={range} filter={filter} />
+  const communication = <DischargeCommunication kpi={kpi} range={range} filter={filter} />
+  const byCtas = <ByCtasSection kpi={kpi} range={range} filter={filter} />
+  const byArea = <ByAreaSection kpi={kpi} range={range} filter={filter} />
+  const byPayer = <ByPayerSection kpi={kpi} range={range} filter={filter} />
+  const repeats = <RepeatVisits kpi={kpi} range={range} filter={filter} />
+  const documentation = <DocumentationSection kpi={kpi} range={range} filter={filter} />
+
+  const otherQueue = (
+    <DashSection title={`Other reasons awaiting review (${data.otherQueue.length})`} icon={<Ellipsis size={18} />}>
+      {data.otherQueue.length === 0 ? (
+        <EmptyNote>
+          Nothing queued. Anything typed into an &quot;Other&quot; box shows up here so it can be
+          promoted to a real category.
+        </EmptyNote>
+      ) : (
+        <ul>
+          {data.otherQueue.map((row, i) => (
+            <li key={`${row.id}-${row.stageName}-${i}`} className="border-b border-line-soft last:border-b-0">
+              <Link
+                href={`/cases/${row.id}`}
+                className="block min-h-11 py-1.5 text-body text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
+              >
+                <span className="block text-caption text-muted">
+                  {row.stageName} · <span className="num">{row.mrn}</span>
+                </span>
+                {row.text}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </DashSection>
+  )
+
+  // Paper: one column, in the order the report has always printed — the deck's opening four
+  // first, then the rest as the screen listed them before Phase 11 — with the arrivals table
+  // beside the other "when" sections, after "By day of week".
+  if (!screen) {
+    return (
+      <>
+        <HeadlineTiles kpi={kpi} range={range} filter={filter} />
+        {stayBands}
+        {adaa}
+        {targets}
+        {whereTime}
+        {thresholds}
+        {data.inRange === 0 ? (
+          empty
+        ) : (
+          <>
+            {trend}
+            {primary}
+            {pathways}
+            {departments}
+            {admissionToUnit}
+            {turnaround}
+            {examToConsult}
+            {consulted}
+            {investigations}
+            {admissionChain}
+            {longest}
+            {actions}
+            {byShift}
+            {byWeekday}
+            {arrivals}
+            {outcomes}
+            {communication}
+            {byCtas}
+            {byArea}
+            {byPayer}
+            {repeats}
+            {documentation}
+            {otherQueue}
+          </>
+        )}
+      </>
+    )
+  }
+
+  // The screen: the sections in seven groups, each the target of a jump chip on the phone, the
+  // wide sections across both columns from `lg` and the short ones paired under them.
   return (
     <>
-      <HeadlineTiles kpi={kpi} range={range} filter={filter} />
-
-      {variant === 'report' ? lead : null}
-
-      {data.inRange > 0 && (
-        <DashSection title="Cases past each threshold" icon={<Clock size={18} />}>
-          <DataTable head={['Threshold', 'Open now', 'All cases']} rows={thresholdRows} />
-          <Footnote>
-            Tap a row to see the cases. Open now counts wait so far; All cases counts total stay
-            including resolved.
-          </Footnote>
-        </DashSection>
-      )}
-
+      <Group id="overview">
+        <HeadlineTiles kpi={kpi} range={range} filter={filter} />
+        {thresholds}
+        <Pairs>{data.inRange > 0 ? stayBands : null}</Pairs>
+      </Group>
       {data.inRange === 0 ? (
-        <section className="mx-4 mb-2.5 rounded-card border border-line bg-panel p-6 text-center shadow-card lg:mx-0">
-          <p className="m-0 text-body text-muted">
-            {/* Under a filter `total` is the filtered population too, so a filter that matches
-                nothing would otherwise read "No cases yet." — a claim about the whole department
-                that only the filter made. */}
-            {filter && !isEmptyFilter(filter)
-              ? 'No case in this range matches this filter.'
-              : data.total
-                ? 'No cases registered in this range.'
-                : 'No cases yet.'}
-          </p>
-        </section>
+        empty
       ) : (
         <>
-          {variant === 'screen' ? <StayBandsSection kpi={kpi} range={range} filter={filter} /> : null}
-          {variant === 'screen' ? <WhereTimeGoesSection kpi={kpi} range={range} filter={filter} /> : null}
-
-          {daily ? (
-            <DashSection title="By day: cases and median stay" icon={<Activity size={18} />}>
-              <TrendChart points={dayPoints} kind="daily" reference={{ hours: 6, label: '6 h' }} />
-              {/* The days a bar can be seen on: a day with no case has nothing to list. */}
-              <BarLinks
-                caption="By day"
-                rows={dayPoints.filter((d) => d.cases > 0).map((d) => ({ name: d.label!, value: d.cases, href: d.href }))}
-                unit="cases"
-              />
-              <Footnote>
-                Bars: cases flagged each day, by registration in Asia/Riyadh, the empty days kept; the first bar is the
-                part of its day inside the range. Line: median total ED stay; a day with fewer than {MIN_N} cases shows no
-                median. The dashed line is 6 h.
-              </Footnote>
-            </DashSection>
-          ) : (
-            data.weeks.length > 1 && (
-              <DashSection title="By week: cases and median stay" icon={<Activity size={18} />}>
-                <TrendChart points={weekPoints} kind="weekly" />
-                <BarLinks
-                  caption="By week"
-                  rows={weekPoints.map((w) => ({ name: w.name, value: w.cases, href: w.href }))}
-                  unit="cases"
-                />
-                <Footnote>
-                  Bars: cases flagged that week. Line: median total ED stay; a week with fewer than {MIN_N} cases
-                  shows no median.
-                </Footnote>
-              </DashSection>
-            )
-          )}
-
-          <BarSection
-            title="Primary delay reason"
-            icon={<TriangleAlert size={18} />}
-            rows={hbarRows(data.byPrimary, range, 'primary', filter)}
-            color="accent"
-          />
-          {/* The weekly deck's "delay pathway" classification, expressed through the locked stage
-              taxonomy rather than a second one (brief, section 6). */}
-          <BarSection
-            title="Pathways"
-            icon={<Activity size={18} />}
-            rows={hbarRows(data.byStage, range, 'stage', filter)}
-            color="ink"
-            unit={`of ${data.inRange} cases`}
-            footnote="The journey stage each delay reason belongs to. A case whose reasons span several stages is counted in each, so the bars add to more than the number of cases."
-          />
-          <BarSection
-            title="Departments involved"
-            icon={<Users size={18} />}
-            rows={hbarRows(data.byDept, range, 'dept', filter)}
-            color="plum"
-          />
-
-          {variant === 'screen' ? (
-            <>
-              <AdaaPanel kpi={kpi} range={range} filter={filter} />
-              <WorkingTargets kpi={kpi} range={range} filter={filter} />
-            </>
-          ) : null}
-
-          <AdmissionToUnit kpi={kpi} range={range} filter={filter} />
-          <TurnaroundSection kpi={kpi} range={range} filter={filter} />
-          <ExamToConsultSection kpi={kpi} range={range} filter={filter} />
-
-          <DashSection title="Consulted team response, median" icon={<Users size={18} />}>
-            {consultRows.length ? (
-              <DataTable head={['Team', 'n', 'To seen', 'To reply']} rows={consultRows} />
-            ) : (
-              <EmptyNote>Enter consulted, seen, and replied times under each team to see this.</EmptyNote>
-            )}
-          </DashSection>
-
-          <DashSection title="Investigation turnaround, median from order" icon={<Activity size={18} />}>
-            {investigationRows.length ? (
-              <DataTable head={['Test', 'n', 'To done', 'To result']} rows={investigationRows} />
-            ) : (
-              <EmptyNote>Enter investigation times under a case to see this.</EmptyNote>
-            )}
-          </DashSection>
-
-          <DashSection title="Admission chain, median" icon={<ClipboardList size={18} />}>
-            {admission.n ? (
-              <DataTable
-                head={['Step', 'Hours']}
-                rows={[
-                  {
-                    key: 'order',
-                    cells: [
-                      'Order written to bed assigned',
-                      <Median key="v" value={admission.orderToBed} n={admission.n} />,
-                    ],
-                  },
-                  {
-                    key: 'request',
-                    cells: [
-                      'Bed requested to bed assigned',
-                      <Median key="v" value={admission.requestToBed} n={admission.n} />,
-                    ],
-                  },
-                  {
-                    key: 'bed',
-                    cells: [
-                      'Bed assigned to left ED',
-                      <Median key="v" value={admission.bedToLeave} n={admission.n} />,
-                    ],
-                  },
-                ]}
-              />
-            ) : (
-              <EmptyNote>Enter admission times under a case to see this.</EmptyNote>
-            )}
-          </DashSection>
-
-          <LongestStays kpi={kpi} range={range} filter={filter} />
-          <ActionsDocumented kpi={kpi} range={range} filter={filter} />
-
-          {shiftRows.length > 0 && (
-            <DashSection title="By shift" icon={<History size={18} />}>
-              <DataTable head={['Shift', 'Cases', 'Median stay']} rows={shiftRows} />
-            </DashSection>
-          )}
-
-          {data.byWeekday.length > 1 && (
-            <BarSection
-              title="By day of week"
-              icon={<BarChart3 size={18} />}
-              rows={hbarRows(data.byWeekday, range, 'weekday', filter)}
-              color="muted"
-            />
-          )}
-          <ArrivalsSection arrivals={data.arrivals} range={range} filter={filter} />
-
-          <OutcomesSection kpi={kpi} range={range} filter={filter} />
-          <DischargeCommunication kpi={kpi} range={range} filter={filter} />
-          <ByCtasSection kpi={kpi} range={range} filter={filter} />
-          <ByAreaSection kpi={kpi} range={range} filter={filter} />
-          <ByPayerSection kpi={kpi} range={range} filter={filter} />
-          <RepeatVisits kpi={kpi} range={range} filter={filter} />
-          <DocumentationSection kpi={kpi} range={range} filter={filter} />
-
-          <DashSection title={`Other reasons awaiting review (${data.otherQueue.length})`} icon={<Ellipsis size={18} />}>
-            {data.otherQueue.length === 0 ? (
-              <EmptyNote>
-                Nothing queued. Anything typed into an &quot;Other&quot; box shows up here so it can be
-                promoted to a real category.
-              </EmptyNote>
-            ) : (
-              <ul>
-                {data.otherQueue.map((row, i) => (
-                  <li key={`${row.id}-${row.stageName}-${i}`} className="border-b border-line-soft last:border-b-0">
-                    <Link
-                      href={`/cases/${row.id}`}
-                      className="block min-h-11 py-1.5 text-body text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
-                    >
-                      <span className="block text-caption text-muted">
-                        {row.stageName} · <span className="num">{row.mrn}</span>
-                      </span>
-                      {row.text}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </DashSection>
+          <Group id="time">
+            {whereTime}
+            <Pairs>
+              {trend}
+              {arrivals}
+              {byShift}
+              {byWeekday}
+            </Pairs>
+          </Group>
+          <Group id="reasons">
+            <Pairs>
+              {primary}
+              {pathways}
+              {departments}
+            </Pairs>
+          </Group>
+          <Group id="kpis">
+            {adaa}
+            <Pairs>
+              {targets}
+              {admissionToUnit}
+            </Pairs>
+          </Group>
+          <Group id="teams">
+            <Pairs>
+              {turnaround}
+              {examToConsult}
+              {consulted}
+              {investigations}
+              {admissionChain}
+            </Pairs>
+          </Group>
+          <Group id="outcomes">
+            {longest}
+            <Pairs>
+              {actions}
+              {outcomes}
+              {communication}
+              {byCtas}
+              {byArea}
+              {byPayer}
+              {repeats}
+            </Pairs>
+          </Group>
+          <Group id="quality">
+            <Pairs>
+              {documentation}
+              {otherQueue}
+            </Pairs>
+          </Group>
         </>
       )}
     </>
+  )
+}
+
+/**
+ * The screen's section groups (Phase 11, item 5), in page order: the jump chips link to them, and
+ * each wraps its sections so the chip lands on the first. The ids are the anchors.
+ */
+export const DASHBOARD_GROUPS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'time', label: 'Time' },
+  { id: 'reasons', label: 'Reasons' },
+  { id: 'kpis', label: 'KPIs' },
+  { id: 'teams', label: 'Teams' },
+  { id: 'outcomes', label: 'Outcomes' },
+  { id: 'quality', label: 'Quality' },
+] as const
+
+function Group({ id, children }: { id: (typeof DASHBOARD_GROUPS)[number]['id']; children: ReactNode }) {
+  // A little air above the first section when a chip scrolls to it.
+  return (
+    <div id={`dash-${id}`} data-dash-group={id} className="scroll-mt-3">
+      {children}
+    </div>
+  )
+}
+
+/**
+ * The short sections of a group, two to a row from `lg`. A section with nothing to show renders
+ * nothing, so which one ends up alone on the last row depends on the data: whichever it is spans
+ * both columns rather than leaving half a row empty, and its tables keep a short section's width
+ * so their numbers stay near their labels. Paper takes the grid away (`.dash-pairs` in
+ * app/globals.css), so a printed page is one column whatever the window was.
+ */
+function Pairs({ children }: { children: ReactNode }) {
+  return (
+    <div className="dash-pairs lg:grid lg:grid-cols-2 lg:gap-x-2.5 lg:[&>:last-child:nth-child(odd)]:col-span-2 lg:[&>:last-child:nth-child(odd)_table]:max-w-2xl">
+      {children}
+    </div>
   )
 }

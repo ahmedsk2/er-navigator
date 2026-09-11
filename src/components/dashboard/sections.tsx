@@ -69,6 +69,16 @@ import { fmtHours } from '@/src/lib/domain/time'
  */
 type Props = { kpi: DashboardKpi; range: Range; filter?: CaseFilter }
 
+/**
+ * A section the screen runs across both columns from `lg` (Phase 11) may lay its own contents out
+ * in columns there, so its numbers are not a thousand pixels from their labels. The report passes
+ * nothing: on paper, and on its own screen, every section is one column as before.
+ */
+type WideProps = Props & { wide?: boolean }
+
+/** Two columns inside a wide section, with the heading and the footnotes across both. */
+const WIDE_SPLIT = 'dash-split lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-6 lg:[&>h3]:col-span-2 lg:[&>p]:col-span-2'
+
 const href = (range: Range, filter: CaseFilter | undefined, section: DrillSection, name: string | number): string =>
   dashboardHref(range, drillKey(section, name), filter)
 
@@ -149,6 +159,9 @@ export function HeadlineTiles({ kpi, range }: Props) {
   const h = kpi.headline
   return (
     <>
+      {/* Seven tiles, the Range one two columns wide (Phase 11): eight cells, so neither the
+          phone's two columns nor the laptop's four end on an empty one, and a range of two
+          durations has the room not to wrap. */}
       <div className="grid grid-cols-2 gap-2 px-4 pb-2 sm:grid-cols-4 lg:px-0">
         {tiles.map((tile) => (
           <Tile
@@ -159,6 +172,7 @@ export function HeadlineTiles({ kpi, range }: Props) {
             href={tile.href}
             tone={tile.tone}
             icon={TILE_ICONS[tile.key]}
+            wide={tile.key === 'range'}
           />
         ))}
       </div>
@@ -189,17 +203,18 @@ export function StayBandsSection({ kpi, range, filter }: Props) {
 
 // --- 4. the Adaa panel ------------------------------------------------------------------------
 
-export function AdaaPanel({ kpi, range, filter }: Props) {
+export function AdaaPanel({ kpi, range, filter, wide = false }: WideProps) {
   const rows = adaaRows(kpi.adaaOverall)
   const { painkillerYesN, pethidineYesN } = kpi.adaaOverall
   // The form's Pain Killer Statistics block. Nothing to show until a painkiller or a pethidine has
   // been recorded on one case: four zero bands beside three zero doses is not a finding.
   const pain = painkillerYesN > 0 || pethidineYesN > 0
   return (
-    <DashSection title="Adaa KPIs, tracked cases only" icon={<ListChecks size={18} />}>
+    // Wide on a laptop: the charts across the top, then the KPI table beside "treated within".
+    <DashSection title="Adaa KPIs, tracked cases only" icon={<ListChecks size={18} />} className={wide ? WIDE_SPLIT : ''}>
       {/* Phase 11: the same six benchmarked KPIs as pictures first; the table stays under them, and
           stays the section's first table, which is how the suites find it. */}
-      <AdaaBullets bullets={adaaBullets(kpi.adaaOverall)} />
+      <AdaaBullets bullets={adaaBullets(kpi.adaaOverall)} wide={wide} />
       <DataTable
         head={['KPI', 'n', 'Value']}
         rows={rows.map((row) => ({
@@ -215,10 +230,12 @@ export function AdaaPanel({ kpi, range, filter }: Props) {
           ],
         }))}
       />
-      <PanelLabel>Treated within (door to disposition)</PanelLabel>
-      <DataTable head={['Band', 'Cases']} rows={countRows(kpi.treated, range, 'treated', filter)} />
+      <div data-treated>
+        <PanelLabel>Treated within (door to disposition)</PanelLabel>
+        <DataTable head={['Band', 'Cases']} rows={countRows(kpi.treated, range, 'treated', filter)} />
+      </div>
       {pain ? (
-        <div className="grid gap-x-6 sm:grid-cols-2" data-pain-block>
+        <div className="grid gap-x-6 sm:grid-cols-2 lg:col-span-2" data-pain-block>
           <div>
             <PanelLabel>
               Door to painkiller · <span className="num">{painkillerYesN}</span> prescribed
@@ -543,52 +560,57 @@ export function DocumentationSection({ kpi, range, filter }: Props) {
  * each phase — only the stages some case in the range carries, and a line saying so when a phase
  * has none. Every row drills down; the grid key is `phase|what`.
  */
-export function WhereTimeGoesSection({ kpi, range, filter }: Props) {
+export function WhereTimeGoesSection({ kpi, range, filter, wide = false }: WideProps) {
   const { phases, completeN } = kpi.phases
   if (!phases.some((p) => p.n > 0)) return null
   return (
-    <DashSection title="Where the time goes" icon={<Clock size={18} />}>
+    // Wide on a laptop: the bars beside the two phase tables, the three stage lists side by side.
+    <DashSection title="Where the time goes" icon={<Clock size={18} />} className={wide ? WIDE_SPLIT : ''}>
       <StaySplit rows={kpi.staySplit} />
-      {/* The share is text only now: the bars above draw it, where it was an 80 px sliver here. */}
-      <DataTable
-        head={['Phase', 'Cases', 'Median', 'Share']}
-        rows={phases.map((p) => ({
-          key: p.key,
-          href: href(range, filter, 'phase', gridKey(p.key, 'median')),
-          cells: [p.name, p.n, <Median key="m" value={p.med} n={p.n} />, fmtShare(p.share)],
-        }))}
-      />
-      <PanelLabel>Longest phase of the stay, over the {completeN} cases with all three measured</PanelLabel>
-      <DataTable
-        head={['Phase', 'Cases']}
-        rows={phases.map((p) => ({
-          key: `longest-${p.key}`,
-          href: href(range, filter, 'phase', gridKey(p.key, 'longest')),
-          cells: [p.name, p.longestN],
-        }))}
-      />
-      {phases.map((p) => {
-        // `phaseSplit` keeps every stage, zero rows included; a stage no case carries is not a
-        // finding, so it is left out here rather than in the figure (Phase 11, item 7).
-        const carried = p.stages.filter((s) => s.value > 0)
-        return (
-          <div key={p.key} data-phase-stages={p.key}>
-            <PanelLabel>Reasons recorded in the {p.name.toLowerCase()}</PanelLabel>
-            {carried.length > 0 ? (
-              <DataTable
-                head={['Stage', 'Cases']}
-                rows={carried.map((s) => ({
-                  key: `${p.key}-${s.name}`,
-                  href: href(range, filter, 'phase', gridKey(p.key, s.name)),
-                  cells: [s.name, s.value],
-                }))}
-              />
-            ) : (
-              <EmptyNote>No case in this range carries one.</EmptyNote>
-            )}
-          </div>
-        )
-      })}
+      <div>
+        {/* The share is text only now: the bars draw it, where it was an 80 px sliver here. */}
+        <DataTable
+          head={['Phase', 'Cases', 'Median', 'Share']}
+          rows={phases.map((p) => ({
+            key: p.key,
+            href: href(range, filter, 'phase', gridKey(p.key, 'median')),
+            cells: [p.name, p.n, <Median key="m" value={p.med} n={p.n} />, fmtShare(p.share)],
+          }))}
+        />
+        <PanelLabel>Longest phase of the stay, over the {completeN} cases with all three measured</PanelLabel>
+        <DataTable
+          head={['Phase', 'Cases']}
+          rows={phases.map((p) => ({
+            key: `longest-${p.key}`,
+            href: href(range, filter, 'phase', gridKey(p.key, 'longest')),
+            cells: [p.name, p.longestN],
+          }))}
+        />
+      </div>
+      <div className={wide ? 'dash-split lg:col-span-2 lg:grid lg:grid-cols-3 lg:gap-x-6' : ''}>
+        {phases.map((p) => {
+          // `phaseSplit` keeps every stage, zero rows included; a stage no case carries is not a
+          // finding, so it is left out here rather than in the figure (Phase 11, item 7).
+          const carried = p.stages.filter((s) => s.value > 0)
+          return (
+            <div key={p.key} data-phase-stages={p.key}>
+              <PanelLabel>Reasons recorded in the {p.name.toLowerCase()}</PanelLabel>
+              {carried.length > 0 ? (
+                <DataTable
+                  head={['Stage', 'Cases']}
+                  rows={carried.map((s) => ({
+                    key: `${p.key}-${s.name}`,
+                    href: href(range, filter, 'phase', gridKey(p.key, s.name)),
+                    cells: [s.name, s.value],
+                  }))}
+                />
+              ) : (
+                <EmptyNote>No case in this range carries one.</EmptyNote>
+              )}
+            </div>
+          )
+        })}
+      </div>
       <Footnote>
         Front end is door to physician; decision is physician to the disposition decision; after the decision is
         decision to leaving, so it counts resolved cases only. Shares are summed hours over the cases with all three

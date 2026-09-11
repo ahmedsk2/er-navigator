@@ -24,11 +24,12 @@ const TIER_FILL: Record<Benchmark, string> = {
   unacceptable: 'bg-band-h6/50',
 }
 
-export function AdaaBullets({ bullets }: { bullets: AdaaBullet[] }) {
+export function AdaaBullets({ bullets, wide = false }: { bullets: AdaaBullet[]; wide?: boolean }) {
   return (
-    // Backgrounds are not printed unless asked for, and these tints are the chart.
-    <div data-chart="bullets" className="mb-3 [print-color-adjust:exact]">
-      <ul className="m-0 list-none p-0">
+    // Backgrounds are not printed unless asked for, and these tints are the chart. Across a wide
+    // section on a laptop the six charts run two to a row, so no value is a page-width from its KPI.
+    <div data-chart="bullets" className={`mb-3 [print-color-adjust:exact] ${wide ? 'lg:col-span-2' : ''}`}>
+      <ul className={`m-0 list-none p-0 ${wide ? 'lg:grid lg:grid-cols-2 lg:gap-x-6' : ''}`}>
         {bullets.map((b) => (
           <li key={b.kpi} data-bullet={b.kpi} className="py-1.5">
             <div className="flex items-baseline justify-between gap-3 text-label">
