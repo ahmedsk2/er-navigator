@@ -225,6 +225,16 @@ describe('staleness', () => {
     expect(stalenessText(idleHours(over, NOW))).toBe('No update for 2h 01m')
   })
 
+  it('reads an update a few seconds after the board clock as "just now", not as nothing (Phase 11 review)', () => {
+    // The board sets its clock from the phone just before the poll answers; an update written in
+    // between is "after now". It is the freshest a row can be, and the line must not go blank.
+    const ahead = row({ id: 'a', mrn: '1', createdAt: hoursBefore(3), lastUpdateAt: hoursBefore(-5 / 3600) })
+    expect(idleHours(ahead, NOW)).toBe(0)
+    expect(stalenessText(idleHours(ahead, NOW))).toBe('Updated just now')
+    // A resolved case still has no staleness at all.
+    expect(idleHours(row({ id: 'b', mrn: '2', status: 'RESOLVED', createdAt: hoursBefore(3) }), NOW)).toBeNull()
+  })
+
   it('says "Updated just now" under a minute rather than "Updated 0h 00m ago" (Phase 11)', () => {
     expect(stalenessText(0)).toBe('Updated just now')
     expect(stalenessText(30 / 3600)).toBe('Updated just now')
