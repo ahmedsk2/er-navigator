@@ -273,7 +273,9 @@ test('every section the seeded data earns is on the page, charts included', asyn
     // payer table, which the seed earns by recording a payer on two cases.
     'Where the time goes',
     'By payer',
-    'By week: cases and median stay',
+    // Phase 11: the thirty-day page draws its last days by day; the weekly chart is 90 days and
+    // all time now (the test of the daily chart below checks both).
+    'By day: cases and median stay',
     'Primary delay reason',
     // Phase 8 renamed "Journey stage where delays occur" to the weekly deck's own word.
     'Pathways',
@@ -1015,6 +1017,77 @@ test('the stay splits overall and by outcome, and a stage with no case is left o
   await expect(stages('front')).toContainText('No case in this range carries one.')
   await expect(stages('front').getByRole('table')).toHaveCount(0)
   await expect(stages('after').getByRole('link', { name: 'Admission process', exact: true })).toBeVisible()
+})
+
+/** The Asia/Riyadh calendar day of an instant, `YYYY-MM-DD` (en-CA writes dates that way round). */
+const riyadhDate = (iso: string): string =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(
+    new Date(iso),
+  )
+
+/** A seeded case's registration instant, read off the board API rather than guessed from the clock. */
+async function registeredAt(page: Page, mrn: string): Promise<string> {
+  const response = await page.request.get('/api/board?f=all')
+  const payload = (await response.json()) as BoardPayload
+  const row = payload.rows.find((r) => r.mrn === mrn)
+  if (!row) throw new Error(`${mrn} is not on the board`)
+  return row.registrationAt
+}
+
+/**
+ * Item 3. On the seven- and thirty-day ranges the weekly chart gives way to one bar per Riyadh
+ * day — eight bars and thirty-one, because the window is the last N x 24 hours and opens part way
+ * through a day — with a 6 h line on the median panel. Each day with a case is a drill-down.
+ */
+test('the last days are drawn by day, with a 6 h line, and each day drills to its cases', async ({ page }, testInfo) => {
+  await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.245' : '198.51.100.246')
+  await signIn(page, E2E_USERS.navigator)
+
+  const byDay = page.getByRole('heading', { name: 'By day: cases and median stay', exact: true })
+  const byWeek = page.getByRole('heading', { name: 'By week: cases and median stay', exact: true })
+  for (const [query, days] of [
+    ['', 31],
+    ['?r=7', 8],
+  ] as const) {
+    await page.goto(`/dashboard${query}`)
+    await expect(byDay, query).toBeVisible()
+    await expect(byWeek, query).toHaveCount(0)
+    const chart = page.locator('[data-chart="daily"]')
+    await expect(chart).toHaveAttribute('data-points', String(days))
+    await expect(chart.locator('[data-chart-panel="cases"] svg[role="application"]')).toBeVisible()
+    await expect(chart.locator('[data-chart-panel="median"] .recharts-reference-line')).toHaveCount(1)
+    await expect(chart.locator('[data-chart-panel="median"]')).toContainText('6 h')
+  }
+  // Ninety days and all time keep the weekly chart.
+  for (const query of ['?r=90', '?r=all']) {
+    await page.goto(`/dashboard${query}`)
+    await expect(byWeek, query).toBeVisible()
+    await expect(byDay, query).toHaveCount(0)
+  }
+
+  // A day's drill-down, reached from the link list, inside the filter the page is drawn with.
+  // 3200008 is a Government case registered twenty-six hours ago; 3200009, self-pay, is not listed.
+  const day = riyadhDate(await registeredAt(page, '3200008'))
+  await page.goto('/dashboard?payer=GOVERNMENT')
+  const link = page.locator(`[data-chart="daily"] ~ ul a[href*="drill=day%3A${day}"]`)
+  await expect(link).toHaveCount(1)
+  const href = (await link.getAttribute('href')) ?? ''
+  expect(new URL(href, 'http://dashboard.invalid').searchParams.getAll('payer')).toEqual(['GOVERNMENT'])
+  await page.goto(href)
+  await expect(page.locator('[data-drill-label]')).toHaveText(
+    new RegExp(`^Registered on (Sun|Mon|Tue|Wed|Thu|Fri|Sat) ${day.slice(8, 10)}/${day.slice(5, 7)}$`),
+  )
+  await expect(rowFor(page, '3200008')).toHaveCount(1)
+  await expect(rowFor(page, '3200009')).toHaveCount(0)
+
+  // And a bar is a way in too: the tallest bar of the week opens its own day.
+  await page.goto('/dashboard?r=7')
+  const bars = page.locator('[data-chart="daily"] [data-chart-panel="cases"] .recharts-bar-rectangle')
+  await expect(bars.first()).toBeVisible()
+  const heights = await bars.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height))
+  await bars.nth(heights.indexOf(Math.max(...heights))).click()
+  await expect(page).toHaveURL(/[?&]drill=day%3A\d{4}-\d{2}-\d{2}/)
+  await expect(page.locator('[data-drill-label]')).toHaveText(/^Registered on /)
 })
 
 test('an unknown drill key renders the dashboard rather than an error', async ({ page }, testInfo) => {

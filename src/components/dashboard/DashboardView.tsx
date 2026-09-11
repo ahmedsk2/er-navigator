@@ -19,7 +19,7 @@ import {
   TriangleAlert,
   Users,
 } from '@/src/components/icons'
-import { WeeklyChart, type WeekPoint } from '@/src/components/dashboard/charts/WeeklyChart'
+import { TrendChart, type TrendPoint } from '@/src/components/dashboard/charts/TrendChart'
 import {
   BarLinks,
   DashSection,
@@ -162,7 +162,17 @@ export function DashboardBody({
     cells: [<ThresholdLabel key="t" hours={row.threshold} />, row.openNow, row.allCases],
   }))
 
-  const weekPoints: WeekPoint[] = data.weeks.map((week) => weekPoint(week, href('week', week.weekStart)))
+  const weekPoints: TrendPoint[] = data.weeks.map((week) => weekPoint(week, href('week', week.weekStart)))
+  // Phase 11: on the 7- and 30-day ranges a week is too coarse — thirty days is four or five bars —
+  // so the chart is by day there; 90 days and all time keep the weeks.
+  const daily = range === '7' || range === '30'
+  const dayPoints: TrendPoint[] = data.days.map((day) => ({
+    name: day.name,
+    label: `${day.weekday} ${day.name}`,
+    cases: day.cases,
+    med: day.med,
+    href: href('day', day.date),
+  }))
 
   const consultRows: TableRow[] = data.consults.map((row) => ({
     key: row.name,
@@ -240,19 +250,36 @@ export function DashboardBody({
           {variant === 'screen' ? <StayBandsSection kpi={kpi} range={range} filter={filter} /> : null}
           {variant === 'screen' ? <WhereTimeGoesSection kpi={kpi} range={range} filter={filter} /> : null}
 
-          {data.weeks.length > 1 && (
-            <DashSection title="By week: cases and median stay" icon={<Activity size={18} />}>
-              <WeeklyChart weeks={weekPoints} />
+          {daily ? (
+            <DashSection title="By day: cases and median stay" icon={<Activity size={18} />}>
+              <TrendChart points={dayPoints} kind="daily" reference={{ hours: 6, label: '6 h' }} />
+              {/* The days a bar can be seen on: a day with no case has nothing to list. */}
               <BarLinks
-                caption="By week"
-                rows={weekPoints.map((w) => ({ name: w.name, value: w.cases, href: w.href }))}
+                caption="By day"
+                rows={dayPoints.filter((d) => d.cases > 0).map((d) => ({ name: d.label!, value: d.cases, href: d.href }))}
                 unit="cases"
               />
               <Footnote>
-                Bars: cases flagged that week. Line: median total ED stay; a week with fewer than {MIN_N} cases
-                shows no median.
+                Bars: cases flagged each day, by registration in Asia/Riyadh, the empty days kept; the first bar is the
+                part of its day inside the range. Line: median total ED stay; a day with fewer than {MIN_N} cases shows no
+                median. The dashed line is 6 h.
               </Footnote>
             </DashSection>
+          ) : (
+            data.weeks.length > 1 && (
+              <DashSection title="By week: cases and median stay" icon={<Activity size={18} />}>
+                <TrendChart points={weekPoints} kind="weekly" />
+                <BarLinks
+                  caption="By week"
+                  rows={weekPoints.map((w) => ({ name: w.name, value: w.cases, href: w.href }))}
+                  unit="cases"
+                />
+                <Footnote>
+                  Bars: cases flagged that week. Line: median total ED stay; a week with fewer than {MIN_N} cases
+                  shows no median.
+                </Footnote>
+              </DashSection>
+            )
           )}
 
           <BarSection
