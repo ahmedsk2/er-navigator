@@ -4,6 +4,7 @@ One line per finished slice, newest first. The gate reports reference this file.
 
 ## Phase 12
 
+- 2026-09-11 [ERN-P12.1] Put the mark on the printed report masthead and the handover sheet, tone onWhite (a teal tile with a white cross that prints without background colour); the h1 text and every existing selector unchanged; three e2e tests (mark present on both, no horizontal overflow at 390 px) and six gate captures in design/screens/phase12-mark-*.png. Built in a worktree that shares node_modules by junction; note for future worktrees: Turbopack refuses a junctioned node_modules, so either build with --webpack or set turbopack.root to the main checkout.
 - 2026-09-11 [ERN-P12.2] Revise the playbook after Phases 10 and 11: Opus does the work, Fable leads (the brief, the gate, tie-breaks); a phase runs in an Opus session; from a Fable session every agent is started with `model: 'opus'`; reviewers at effort `high`. `CLAUDE.md` "Cost discipline" and `docs/PLAN.md` Section 6.
 
 ## Phase 11
