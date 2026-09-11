@@ -92,6 +92,36 @@ describe('item 3: the demo seed', () => {
   })
 })
 
+/**
+ * The changelog is the handoff between phases (CLAUDE.md), and an audit action named there that
+ * does not exist sends the next reader looking for a row that can never be written. The Phase 12
+ * line for [ERN-P12.30] said `export.download`; the action the code writes, the permission in the
+ * matrix and the filter on /admin/audit are all `export.xlsx`.
+ */
+describe('the changelog names real audit actions', () => {
+  const changelog = readFileSync(path.join(ROOT, 'docs/CHANGELOG.md'), 'utf8')
+  const audit = readFileSync(path.join(ROOT, 'src/lib/audit.ts'), 'utf8')
+  const actions = new Set([...audit.matchAll(/^\s*\|\s*'([a-z][a-z.]+)'$/gm)].map((m) => m[1]!))
+
+  it('reads its own action list, so this test is not a second copy of it', () => {
+    expect(actions.size).toBeGreaterThan(20)
+    expect(actions.has('export.xlsx')).toBe(true)
+    expect(actions.has('report.print')).toBe(true)
+  })
+
+  it('claims no action the audit module does not define', () => {
+    // Only the prefixes the module actually uses, so `pnpm.overrides` and `worker.js` are not
+    // mistaken for action names.
+    const prefixes = [...new Set([...actions].map((a) => a.split('.')[0]!))].join('|')
+    const claimed = [...changelog.matchAll(new RegExp(`\`((?:${prefixes})\\.[a-z.]+)\``, 'g'))]
+      .map((m) => m[1]!)
+      // `export.spec.ts` is a file, not an action.
+      .filter((a) => !/\.(ts|tsx|js|mjs|cjs|json|md|sh|yml|css|png)$/.test(a))
+    expect(claimed.length, 'the changelog names no audit action at all').toBeGreaterThan(0)
+    expect([...new Set(claimed)].filter((a) => !actions.has(a))).toEqual([])
+  })
+})
+
 describe('item 6: the alert email retry pass', () => {
   const compose = readFileSync(path.join(ROOT, 'docker-compose.production.yml'), 'utf8')
   const worker = readFileSync(path.join(ROOT, 'worker/alerts.ts'), 'utf8')
