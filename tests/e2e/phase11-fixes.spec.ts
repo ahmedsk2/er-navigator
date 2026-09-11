@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { fromClientIp, openCase, signIn, uniqueMrn } from './fixtures/case-flow'
+import { CASE_URL, fromClientIp, openCase, signIn, uniqueMrn } from './fixtures/case-flow'
 import { E2E_USERS } from './fixtures/seed-users'
 
 /**
@@ -191,4 +191,49 @@ test('on a worked case every recorded time shows its whole value, and the strip 
     // Not sticky: after the jump to Resolve it has gone off the top with the header.
     expect((await strip.boundingBox())!.y).toBeLessThan(0)
   }
+})
+
+/**
+ * Finding 3. "Open case" was at the foot of a form that grows with every chip — about 1,500 px
+ * below the reason a nurse had just tapped, on a phone — under sections that mean nothing before
+ * the case exists. The bar now sticks to the foot of the screen, so the case opens the moment the
+ * MRN, the stage and the reason are in, with no scroll; the sections stay where they were.
+ */
+test('a new case opens from the bar at the foot of the screen', async ({ page }, testInfo) => {
+  const mobile = testInfo.project.name === 'mobile'
+  await fromClientIp(page, mobile ? '198.51.100.233' : '198.51.100.234')
+  await signIn(page, E2E_USERS.navigator)
+  await page.getByRole('link', { name: '+ New case' }).click()
+  await expect(page).toHaveURL('/cases/new')
+
+  const open = page.getByRole('button', { name: 'Open case', exact: true })
+  const viewport = page.viewportSize()!
+  const atTheFoot = async (): Promise<void> => {
+    await expect(open).toBeInViewport({ ratio: 1 })
+    const box = (await open.boundingBox())!
+    expect(box.y + box.height).toBeGreaterThan(viewport.height - 80)
+    // The page goes on below the screen, so this is the bar and not the end of the form.
+    const [seen, total] = await page.evaluate(() => [window.scrollY + window.innerHeight, document.documentElement.scrollHeight])
+    expect(seen).toBeLessThan(total)
+  }
+
+  // On screen before anything is typed, and dead until the case can be opened.
+  await atTheFoot()
+  await expect(open).toBeDisabled()
+
+  const mrn = uniqueMrn()
+  await page.getByLabel('MRN (digits only)', { exact: true }).fill(mrn)
+  await page.getByRole('group', { name: 'Stages' }).getByRole('button', { name: 'Admission process' }).click()
+  await page
+    .getByRole('group', { name: 'Admission process reasons' })
+    .getByRole('button', { name: 'No bed available on accepting ward' })
+    .click()
+
+  // The form has grown by the reasons, the teams, pain, admission times and case management, and
+  // the bar is still where the thumb is.
+  await atTheFoot()
+  await expect(open).toBeEnabled()
+  await open.click()
+  await expect(page).toHaveURL(CASE_URL)
+  await expect(page.getByRole('heading', { name: `Case ${mrn}` })).toBeVisible()
 })
