@@ -66,6 +66,7 @@ async function makeUser(role: Role): Promise<AuthUser> {
     role: user.role,
     active: user.active,
     lastShift: user.lastShift,
+    mustChangePassword: user.mustChangePassword,
   }
 }
 

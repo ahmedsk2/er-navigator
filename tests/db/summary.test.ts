@@ -44,6 +44,7 @@ beforeAll(async () => {
     role: user.role,
     active: user.active,
     lastShift: user.lastShift,
+    mustChangePassword: user.mustChangePassword,
   }
 })
 

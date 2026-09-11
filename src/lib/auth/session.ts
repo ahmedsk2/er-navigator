@@ -35,6 +35,12 @@ export const SESSION_TTL_MS = 12 * 60 * 60 * 1000
 /** A session's lastSeenAt/expiresAt are refreshed at most this often: one UPDATE per five minutes. */
 export const SLIDING_REFRESH_MS = 5 * 60 * 1000
 
+/**
+ * The one page a user who must change their password may reach (Phase 12, P12). Exactly one, and
+ * the route gate stamps the request path into `x-pathname` so this module can compare against it.
+ */
+export const ACCOUNT_PATH = '/account'
+
 /** The user as the app sees it. `passwordHash` is deliberately absent from the type and the query. */
 export type AuthUser = {
   id: string
@@ -43,6 +49,11 @@ export type AuthUser = {
   role: Role
   active: boolean
   lastShift: Shift | null
+  /**
+   * Phase 12 (P12): the account is still on the password an Admin read out across a ward desk.
+   * `requireUser` sends every signed-in page to /account until the user sets their own.
+   */
+  mustChangePassword: boolean
 }
 
 export type CurrentSession = {
@@ -58,6 +69,7 @@ export const AUTH_USER_SELECT = {
   role: true,
   active: true,
   lastShift: true,
+  mustChangePassword: true,
 } as const satisfies Prisma.UserSelect
 
 export class UnauthorizedError extends Error {
@@ -293,7 +305,10 @@ export async function auditContext(actorId: string | null): Promise<AuditContext
  */
 export async function requireUser(opts: { as?: 'page' | 'api' } = {}): Promise<AuthUser> {
   const current = await getSession()
-  if (current) return current.user
+  if (current) {
+    await assertPasswordChanged(current.user, opts)
+    return current.user
+  }
   if (opts.as === 'api') throw new UnauthorizedError()
   /**
    * `?expired=1`, not a bare /login: reaching this line means the gate saw a session cookie and
@@ -303,6 +318,33 @@ export async function requireUser(opts: { as?: 'page' | 'api' } = {}): Promise<A
    * the still-cookied browser straight back here and the two would loop.
    */
   redirect('/login?expired=1')
+}
+
+/**
+ * Phase 12 item 5 (P12): while `mustChangePassword` is set, the only page this account may reach
+ * is /account, where it can set its own.
+ *
+ * One choke point, here, and not a layout: `tests/unit/page-guards.test.ts` records why — Next
+ * skips ancestor layouts on an RSC request whose router state already holds the segment — and the
+ * `(app)` layout would loop on /account anyway. Every signed-in page reaches this function,
+ * directly or through `requireAction()` / `requireRole()`.
+ *
+ * An API caller is refused rather than redirected: a `fetch` cannot use a 307 to HTML. Refused,
+ * not waved through — `/api/export.xlsx` is a plain `<a href>` in ExportPanel, a bookmarkable
+ * top-level navigation, and `parseExportRange` defaults every missing parameter, so a bare URL
+ * returns a workbook of MRNs. Skipping the check there would leave exactly the indefinitely
+ * shared credential this item exists to end.
+ *
+ * The path comes from `x-pathname`, stamped by the route gate beside the nonce. A missing header
+ * — which only a direct unit call can produce — is treated as "not /account", so the rule fails
+ * closed. Sign-out and the change-password action both use `getSession()`, not this, so neither
+ * needs an exemption.
+ */
+async function assertPasswordChanged(user: AuthUser, opts: { as?: 'page' | 'api' }): Promise<void> {
+  if (!user.mustChangePassword) return
+  if (opts.as === 'api') throw new UnauthorizedError()
+  const pathname = (await headers()).get('x-pathname')
+  if (pathname !== ACCOUNT_PATH) redirect(ACCOUNT_PATH)
 }
 
 /**

@@ -103,6 +103,12 @@ function withCsp(request: NextRequest, build: (init: { request: { headers: Heade
   const csp = contentSecurityPolicy(nonce)
   const headers = new Headers(request.headers)
   headers.set('x-nonce', nonce)
+  /**
+   * Phase 12 (P12): a server component cannot read its own pathname, and `requireUser()` needs
+   * it to let /account through while sending every other signed-in page there. Stamped here, on
+   * every request the gate returns, from the one place that already rewrites the request headers.
+   */
+  headers.set('x-pathname', request.nextUrl.pathname)
   headers.set('content-security-policy', csp)
   const response = build({ request: { headers } })
   response.headers.set('Content-Security-Policy', csp)

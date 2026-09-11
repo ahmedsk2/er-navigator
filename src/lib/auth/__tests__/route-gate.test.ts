@@ -19,6 +19,20 @@ describe('the route gate agrees with the session module', () => {
     expect(proxy).toContain(`COOKIE_MAX_AGE_S = ${SESSION_TTL_MS / 1000 / 60 / 60} * 60 * 60`)
   })
 
+  /**
+   * Phase 12 item 5 (P12): `requireUser` needs to know which path it is on, to let /account
+   * through while sending every other signed-in page there. A server component cannot read the
+   * pathname, so the gate stamps it beside the nonce; the same duplication argument as the cookie
+   * name above, and the same kind of guard.
+   */
+  it('stamps the request path for requireUser to read', () => {
+    expect(proxy).toContain('x-pathname')
+    const session = readFileSync(path.resolve(__dirname, '../session.ts'), 'utf8')
+    expect(session).toContain('x-pathname')
+    // Exactly one exempt path, and it is spelled the same on both sides of the header.
+    expect(session).toContain("'/account'")
+  })
+
   it('imports nothing from src/lib', () => {
     expect(proxy).not.toMatch(/from '@\/src\/lib/)
   })

@@ -44,7 +44,14 @@ export async function changePassword(input: {
 
   await prisma.user.update({
     where: { id: user.id },
-    data: { passwordHash: await hashPassword(input.newPassword), failedLogins: 0, lockedUntil: null },
+    // Phase 12 (P12): this is the one place the must-change flag is cleared — the user has now
+    // set a password only they know.
+    data: {
+      passwordHash: await hashPassword(input.newPassword),
+      failedLogins: 0,
+      lockedUntil: null,
+      mustChangePassword: false,
+    },
   })
 
   // Every session goes, including the caller's — then the caller gets a fresh one, so the
@@ -57,7 +64,7 @@ export async function changePassword(input: {
       action: 'user.password',
       entity: 'User',
       entityId: user.id,
-      after: { username: user.username, self: true, sessionsDeleted },
+      after: { username: user.username, self: true, sessionsDeleted, mustChangePassword: false },
     },
     ctx,
   )

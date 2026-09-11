@@ -27,7 +27,7 @@ const ADMIN = { username: 'admin', password: process.env.DEMO_ADMIN_PASSWORD ?? 
 /** "YYYY-MM-DDTHH:mm" in Asia/Riyadh (UTC+3, no DST), `hoursAgo` before the demo started. */
 const at = (hoursAgo: number): string => new Date(NOW - hoursAgo * 3_600_000 + 3 * 3_600_000).toISOString().slice(0, 16)
 
-type Staff = { username: string; displayName: string; role: 'NAVIGATOR' | 'SUPERVISOR' | 'VIEWER'; email: string; ip: string; password?: string }
+type Staff = { username: string; displayName: string; role: 'NAVIGATOR' | 'SUPERVISOR' | 'VIEWER'; email: string; ip: string; password?: string; changed?: boolean }
 const TEAM: Staff[] = [
   { username: 'nadia', displayName: 'Nadia Salem', role: 'NAVIGATOR', email: 'nadia.salem@qch.example', ip: '10.20.0.11' },
   { username: 'omar', displayName: 'Omar Faris', role: 'NAVIGATOR', email: 'omar.faris@qch.example', ip: '10.20.0.12' },
@@ -76,13 +76,38 @@ async function shot(page: Page, name: string, opts: { full?: boolean; mask?: Loc
 // ---------------------------------------------------------------------------------------------
 // The moves a nurse makes, each counted.
 
-async function signIn(page: Page, username: string, password: string): Promise<void> {
+async function signIn(page: Page, username: string, password: string, lands: '/' | '/account' = '/'): Promise<void> {
   await page.goto('/login')
   await page.getByLabel('Username', { exact: true }).fill(username)
   await page.getByLabel('Password', { exact: true }).fill(password)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   act(3)
-  await expect(page).toHaveURL('/')
+  await expect(page).toHaveURL(lands)
+}
+
+/**
+ * Phase 12 item 5 (P12): an account the Admin screen has just created is still on the temporary
+ * password that was read out, so its first sign-in lands on /account and reaches nothing else
+ * until it sets its own. Nadia does this by hand in test 2 because the presenter shows it; Omar,
+ * Sara and Huda do it here so the rest of the kit can run.
+ */
+async function firstSignIn(page: Page, person: Staff): Promise<void> {
+  await signIn(page, person.username, person.password!, '/account')
+  const fresh = `demo-only-${person.username}-password`
+  await fill(page.getByLabel('Current password', { exact: true }), person.password!)
+  await fill(page.getByLabel('New password', { exact: true }), fresh)
+  await fill(page.getByLabel('New password again', { exact: true }), fresh)
+  await tap(page.getByRole('button', { name: 'Change password', exact: true }))
+  await page.waitForTimeout(800)
+  person.password = fresh
+  person.changed = true
+  await page.goto('/')
+}
+
+/** Their first sign-in if they still hold a temporary password, an ordinary one after that. */
+async function enter(page: Page, person: Staff): Promise<void> {
+  if (person.changed) await signIn(page, person.username, person.password!)
+  else await firstSignIn(page, person)
 }
 
 async function newSession(browser: Browser, who: Staff | typeof ADMIN & { ip: string }, desktop = false): Promise<{ ctx: BrowserContext; page: Page }> {
@@ -419,20 +444,13 @@ test('1. The admin creates the team', async ({ browser }) => {
 test('2. Nadia signs in for the first time and sets her own password', async ({ browser }) => {
   const nadia = staff('nadia')
   const { ctx, page } = await newSession(browser, nadia)
-  begin('Nadia signs in with the temporary password', 'nadia')
-  await signIn(page, nadia.username, nadia.password!)
-  await shot(page, 'nadia-first-board')
+  begin('Nadia signs in with the temporary password and is sent to /account', 'nadia')
+  await signIn(page, nadia.username, nadia.password!, '/account')
+  await expect(page.locator('[data-must-change]')).toBeVisible()
+  await shot(page, 'nadia-first-account')
   end(page)
 
   begin('Nadia changes her password at /account', 'nadia')
-  const menu = page.getByRole('button', { name: 'Menu' })
-  if (await menu.isVisible().catch(() => false)) {
-    await tap(menu)
-    const account = page.getByRole('menuitem', { name: /Account and password/ }).first()
-    if (await account.isVisible().catch(() => false)) await tap(account)
-    else note('No account link in the menu')
-  }
-  if (!page.url().includes('/account')) await page.goto('/account')
   await shot(page, 'account')
   const fresh = 'demo-only-nadia-password'
   await fill(page.getByLabel('Current password', { exact: true }), nadia.password!)
@@ -442,6 +460,12 @@ test('2. Nadia signs in for the first time and sets her own password', async ({ 
   await page.waitForTimeout(800)
   await shot(page, 'account-changed')
   nadia.password = fresh
+  nadia.changed = true
+  end(page)
+
+  begin('And now the board opens', 'nadia')
+  await page.goto('/')
+  await shot(page, 'nadia-first-board')
   end(page)
   await ctx.close()
 })
@@ -490,7 +514,7 @@ test('3. The navigators open five patients as the delays arise', async ({ browse
     const person = staff(who)
     const { ctx, page } = await newSession(browser, person)
     begin(`${person.displayName} signs in`, who)
-    await signIn(page, person.username, person.password!)
+    await enter(page, person)
     end(page)
     for (const p of PATIENTS.filter((x) => x.by === who)) {
       await page.goto('/')
@@ -589,7 +613,7 @@ test('5. The navigators work each case and resolve it', async ({ browser }) => {
   for (const who of ['nadia', 'omar']) {
     const person = staff(who)
     const { ctx, page } = await newSession(browser, person)
-    await signIn(page, person.username, person.password!)
+    await enter(page, person)
     for (const p of PATIENTS.filter((x) => x.by === who)) await workPatient(page, p)
     await ctx.close()
   }
@@ -599,7 +623,7 @@ test('6. Sara, the charge nurse, reviews and exports', async ({ browser }) => {
   const sara = staff('sara')
   const { ctx, page } = await newSession(browser, sara)
   begin('Sara signs in', 'sara')
-  await signIn(page, sara.username, sara.password!)
+  await enter(page, sara)
   await shot(page, 'sara-board-empty-open-tab')
   end(page)
 
@@ -649,7 +673,7 @@ test('7. Dr Huda reads the dashboard on her phone and on her laptop', async ({ b
   const phone = await newSession(browser, huda)
   let page = phone.page
   begin('Dr Huda signs in (read-only)', 'huda')
-  await signIn(page, huda.username, huda.password!)
+  await enter(page, huda)
   await expect(page.getByRole('link', { name: '+ New case' })).toHaveCount(0)
   end(page)
 

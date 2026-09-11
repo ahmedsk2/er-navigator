@@ -62,6 +62,7 @@ function actorOf(user: User): AuthUser {
     role: user.role,
     active: user.active,
     lastShift: user.lastShift,
+    mustChangePassword: user.mustChangePassword,
   }
 }
 
@@ -245,13 +246,21 @@ describe('admin users', () => {
     const row = await prisma.user.findUniqueOrThrow({ where: { id: result.id } })
     expect(row.role).toBe('NAVIGATOR')
     expect(row.active).toBe(true)
+    // Phase 12 (P12): the temporary password above is read out across a ward desk, so the account
+    // reaches nothing but /account until its owner sets one of their own.
+    expect(row.mustChangePassword).toBe(true)
     // The plaintext is never stored anywhere.
     expect(row.passwordHash).not.toContain(result.temporaryPassword)
 
     const audits = await prisma.auditLog.findMany({ where: { entity: 'User', entityId: result.id } })
     expect(audits).toHaveLength(1)
     expect(audits[0]!.action).toBe('user.create')
-    expect(audits[0]!.after).toMatchObject({ username, role: 'NAVIGATOR', active: true })
+    expect(audits[0]!.after).toMatchObject({
+      username,
+      role: 'NAVIGATOR',
+      active: true,
+      mustChangePassword: true,
+    })
     expect(JSON.stringify(audits[0]!.after)).not.toContain(result.temporaryPassword)
   })
 
@@ -304,9 +313,13 @@ describe('admin users', () => {
     expect(after.passwordHash).not.toBe(before.passwordHash)
     expect(after.failedLogins).toBe(0)
     expect(after.lockedUntil).toBeNull()
+    // Phase 12 (P12): a reset hands out another temporary password, so the flag goes back on.
+    expect(before.mustChangePassword).toBe(false)
+    expect(after.mustChangePassword).toBe(true)
 
     const audits = await prisma.auditLog.findMany({ where: { entity: 'User', entityId: nurse.id } })
     expect(audits.map((a) => a.action)).toEqual(['user.password'])
+    expect(audits[0]!.after).toMatchObject({ mustChangePassword: true })
     expect(JSON.stringify(audits[0]!.after)).not.toContain(result.temporaryPassword)
   })
 

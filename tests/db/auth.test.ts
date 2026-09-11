@@ -53,6 +53,7 @@ function authUser(user: User): AuthUser {
     role: user.role,
     active: user.active,
     lastShift: user.lastShift,
+    mustChangePassword: user.mustChangePassword,
   }
 }
 
@@ -270,6 +271,37 @@ describe('change password', () => {
     expect(audits).toHaveLength(1)
     expect(JSON.stringify(audits[0]!.after)).not.toContain('a-brand-new-passphrase')
   }, 20_000)
+
+  /**
+   * Phase 12 item 5 (P12). Setting your own password is the one thing that clears the flag, and a
+   * row written before the migration reads false, so an existing account is never locked out of
+   * the board by a deploy.
+   */
+  it('clears the must-change flag, and says so on the audit row', async () => {
+    const user = await makeUser()
+    await prisma.user.update({ where: { id: user.id }, data: { mustChangePassword: true } })
+
+    const outcome = await changePassword({
+      userId: user.id,
+      currentPassword: PASSWORD,
+      newPassword: 'another-brand-new-passphrase',
+      ip: null,
+      userAgent: null,
+    })
+    if (!outcome.ok) throw new Error(`expected the change to succeed, got ${outcome.error}`)
+
+    const after = await prisma.user.findUniqueOrThrow({ where: { id: user.id } })
+    expect(after.mustChangePassword).toBe(false)
+    const audits = await prisma.auditLog.findMany({ where: { actorId: user.id, action: 'user.password' } })
+    expect(audits.at(-1)!.after).toMatchObject({ self: true, mustChangePassword: false })
+  }, 20_000)
+
+  it('leaves a row created before the migration reading false', async () => {
+    const user = await makeUser()
+    expect(user.mustChangePassword).toBe(false)
+    expect((await resolveSessionToken((await createSession({ userId: user.id, ip: null, userAgent: null })).token))!.user)
+      .toMatchObject({ mustChangePassword: false })
+  })
 
   it('refuses a wrong current password, changes nothing, and audits the failure', async () => {
     const user = await makeUser()
