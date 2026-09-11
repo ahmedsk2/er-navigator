@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  DEFAULT_LOGIN_RATE_LIMIT,
   LOGIN_RATE_LIMIT,
+  loginRateLimitFrom,
   LOGIN_RATE_WINDOW_MS,
   loginRateLimiter,
   SlidingWindowLimiter,
@@ -99,5 +101,41 @@ describe('sliding window rate limiter', () => {
     for (let i = 0; i < LOGIN_RATE_LIMIT; i += 1) expect(loginRateLimiter.check('probe').allowed).toBe(true)
     expect(loginRateLimiter.check('probe').allowed).toBe(false)
     loginRateLimiter.reset()
+  })
+})
+
+/**
+ * Phase 12 item 8 (readiness audit P3). Fifteen staff behind one hospital NAT address at a demo
+ * are one client IP, and the sixth of them in a minute would be turned away. The limit becomes
+ * configurable per instance; production leaves the variable unset and stays at five.
+ */
+describe('the configurable login limit', () => {
+  const env = (vars: Record<string, string> = {}): NodeJS.ProcessEnv => ({ NODE_ENV: 'test', ...vars })
+
+  it('is five when the variable is unset', () => {
+    expect(DEFAULT_LOGIN_RATE_LIMIT).toBe(5)
+    expect(loginRateLimitFrom(env())).toBe(5)
+  })
+
+  it('takes an integer', () => {
+    expect(loginRateLimitFrom(env({ LOGIN_RATE_LIMIT_PER_MINUTE: '60' }))).toBe(60)
+    expect(loginRateLimitFrom(env({ LOGIN_RATE_LIMIT_PER_MINUTE: '1' }))).toBe(1)
+    expect(loginRateLimitFrom(env({ LOGIN_RATE_LIMIT_PER_MINUTE: '1000' }))).toBe(1000)
+  })
+
+  it('falls back to the default rather than throwing on anything else', () => {
+    // The login page must not fail to render because someone typed "five" into Coolify.
+    for (const value of ['', '   ', 'five', '0', '-3', '1.5', '99999', 'NaN', '6e1']) {
+      expect(loginRateLimitFrom(env({ LOGIN_RATE_LIMIT_PER_MINUTE: value })), value).toBe(5)
+    }
+  })
+
+  it('a limiter built at the raised number admits that many in one window', () => {
+    const clock = fakeClock()
+    const limiter = new SlidingWindowLimiter(loginRateLimitFrom(env({ LOGIN_RATE_LIMIT_PER_MINUTE: '60' })), LOGIN_RATE_WINDOW_MS, clock.now)
+    for (let i = 0; i < 60; i += 1) expect(limiter.check('10.0.0.9').allowed).toBe(true)
+    expect(limiter.check('10.0.0.9').allowed).toBe(false)
+    clock.advance(LOGIN_RATE_WINDOW_MS + 1)
+    expect(limiter.check('10.0.0.9').allowed).toBe(true)
   })
 })

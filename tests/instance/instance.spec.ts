@@ -88,3 +88,21 @@ test('it survives the printer', async ({ page }, testInfo) => {
   // demo handover sheet indistinguishable from a real one.
   await expect(banner).toHaveCSS('print-color-adjust', 'exact')
 })
+
+/**
+ * Phase 12 item 8 (readiness audit P3), the demo shape. Fifteen staff behind one hospital NAT
+ * address are one client IP, and five attempts a minute would turn the sixth of them away at the
+ * door. The config starts this server with LOGIN_RATE_LIMIT_PER_MINUTE=60; production leaves it
+ * unset and `tests/e2e/auth.spec.ts` proves the sixth attempt is still refused there.
+ */
+test('the raised login limit lets a whole ward through one address', async ({ page }, testInfo) => {
+  await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.211' : '198.51.100.212')
+  for (let i = 0; i < 8; i += 1) {
+    await page.goto('/login')
+    await page.getByLabel('Username').fill('nobody_at_all')
+    await page.getByLabel('Password', { exact: true }).fill('definitely-not-the-password')
+    await page.getByRole('button', { name: 'Sign in' }).click()
+    await expect(page.getByText('Wrong username or password.')).toBeVisible()
+  }
+  await expect(page.getByText('Too many attempts from this device. Wait a minute and try again.')).toHaveCount(0)
+})

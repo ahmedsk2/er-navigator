@@ -81,6 +81,22 @@ test.describe('signing in', () => {
     await expect(page.getByText(/^Too many attempts\. Try again in \d+ minutes?\.$/)).toBeVisible()
   })
 
+  /**
+   * Phase 12 item 8 (readiness audit P3): the limit becomes configurable, and production leaves
+   * the variable unset. This is the proof that unset still means exactly five, at both viewports.
+   * The demo shape — the number raised — is `tests/instance/instance.spec.ts`.
+   */
+  test('five attempts a minute from one address, and the sixth is refused', async ({ page }, testInfo) => {
+    const ip = testInfo.project.name === 'mobile' ? '198.51.100.181' : '198.51.100.182'
+    await fromClientIp(page, ip)
+    for (let i = 0; i < 5; i += 1) {
+      await signIn(page, 'nobody_at_all', 'definitely-not-the-password')
+      await expect(page.getByText('Wrong username or password.')).toBeVisible()
+    }
+    await signIn(page, 'nobody_at_all', 'definitely-not-the-password')
+    await expect(page.getByText('Too many attempts from this device. Wait a minute and try again.')).toBeVisible()
+  })
+
   test('signing in again on the same browser goes to the board, not the form', async ({ page }) => {
     await fromClientIp(page, '198.51.100.25')
     await signIn(page, ADMIN_USERNAME, ADMIN_PASSWORD)

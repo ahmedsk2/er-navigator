@@ -20,7 +20,7 @@ const keepLine = entrypoint.match(/^KEEP="([^"]*)"$/m)?.[1] ?? ''
 const keep = keepLine.trim().split(/\s+/)
 
 /** Every variable the app process reads at runtime and cannot be given a build-time default. */
-const RUNTIME_VARS = ['REPORT_HEADER', 'INSTANCE_LABEL'] as const
+const RUNTIME_VARS = ['REPORT_HEADER', 'INSTANCE_LABEL', 'LOGIN_RATE_LIMIT_PER_MINUTE'] as const
 
 describe('docker/entrypoint.sh KEEP allowlist', () => {
   it('is one quoted, space-padded line', () => {
@@ -51,8 +51,16 @@ describe('docker-compose.production.yml', () => {
     })
   }
 
-  it('does not put INSTANCE_LABEL on the worker: it renders nothing', () => {
+  it('puts neither on the worker: it renders nothing and it has no login form', () => {
     const worker = compose.slice(compose.indexOf('\n  worker:'))
     expect(worker).not.toContain('INSTANCE_LABEL')
+    expect(worker).not.toContain('LOGIN_RATE_LIMIT_PER_MINUTE')
+  })
+
+  it('deliberately leaves DEMO_USER_PASSWORD off the allowlist', () => {
+    // It is passed on the `docker exec` line of the demo seed and never lives in the app process:
+    // `docker exec` does not run the ENTRYPOINT, so nothing there strips it.
+    expect(keep).not.toContain('DEMO_USER_PASSWORD')
+    expect(compose).not.toContain('DEMO_USER_PASSWORD')
   })
 })

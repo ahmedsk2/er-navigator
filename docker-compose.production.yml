@@ -96,6 +96,9 @@ services:
       # Phase 12 (D6): set on the demo instance only. Unset here, so nothing renders and
       # production is byte-identical to before. Not on the worker: it renders nothing.
       INSTANCE_LABEL: ${INSTANCE_LABEL:-}
+      # Phase 12 (P3): unset here, so the limit stays 5 per minute per client IP. Raised on the
+      # demo, where fifteen staff behind one hospital NAT address are one address.
+      LOGIN_RATE_LIMIT_PER_MINUTE: ${LOGIN_RATE_LIMIT_PER_MINUTE:-}
       TZ: UTC
       # Outgoing mail for threshold alerts (Phase 6). Empty host = alerts logged, not sent.
       SMTP_HOST: ${SMTP_HOST:-}

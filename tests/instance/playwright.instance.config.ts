@@ -21,7 +21,9 @@ export default defineConfig({
   webServer: {
     command: 'pnpm start',
     url: 'http://localhost:3401/api/health',
-    env: { INSTANCE_LABEL: 'DEMO', PORT: '3401' },
+    // Both new variables at once: this is the demo instance's shape, and item 8's raised login
+    // limit can only be observed on a server that was started with it.
+    env: { INSTANCE_LABEL: 'DEMO', LOGIN_RATE_LIMIT_PER_MINUTE: '60', PORT: '3401' },
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
   },
