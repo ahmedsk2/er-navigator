@@ -42,6 +42,9 @@ import {
   byPayer,
   phaseHours,
   phaseSplit,
+  OUTCOME_GROUPS,
+  outcomeGroupOf,
+  phaseSplitByOutcome,
 } from '../kpi'
 
 /** 2026-09-09 12:00 UTC = 15:00 Riyadh. Every fixture time is relative to this. */
@@ -894,5 +897,136 @@ describe('Phase 10: where the time goes, by payer', () => {
     // Every group is below MIN_N here, so no median is a number.
     expect(rows.map((r) => r.med)).toEqual([null, null, null, null])
     expect(byPayer([c, d, e], NOW).map((r) => r.name)).toEqual(['Government', 'Insured', 'Self-pay'])
+  })
+})
+
+/**
+ * Phase 11: the stay split by outcome. Every case below is resolved with all three phases
+ * measured unless it says otherwise, so each group's figures can be summed by hand (hours are
+ * front end, decision, after the decision):
+ *
+ *   Admitted      A1 (1, 1, 6)  A2 (0.5, 2, 8)  c (0.5, 2.5, 7)             sums 2, 5.5, 21     total 28.5
+ *   Discharged    d DAMA (1, 1, 4)  e (0.25, 2.75, 1.5)  D3 (0.5, 3, 0.5)   sums 1.75, 6.75, 6  total 14.5
+ *   Transferred   T1 (1, 1, 1)
+ *   Other         O1 deceased (2, 1, 1)  O2 referred to UCC (1, 2, 3)
+ *   None          N1, resolved with no disposition (1, 1, 2): in the overall bar, in no group
+ *
+ * Not complete, so in nothing: b (open), a (nothing measured), A3 (admitted, no decision time),
+ * vv (voided, although it carries every time).
+ */
+describe('Phase 11: the stay split by outcome', () => {
+  const resolved = (id: string, reg: number, physician: number, decision: number, left: number, disposition: string | null) =>
+    base(id, {
+      status: 'RESOLVED',
+      registrationAt: T(reg),
+      physicianAt: T(physician),
+      decisionAt: T(decision),
+      departedAt: T(left),
+      resolvedAt: T(left),
+      disposition,
+    })
+  const A1 = resolved('A1', 10, 9, 8, 2, 'ADMITTED')
+  const A2 = resolved('A2', 12, 11.5, 9.5, 1.5, 'ADMITTED')
+  const A3 = base('A3', { status: 'RESOLVED', registrationAt: T(9), physicianAt: T(8), departedAt: T(1), resolvedAt: T(1), disposition: 'ADMITTED' })
+  const D3 = resolved('D3', 6, 5.5, 2.5, 2, 'DISCHARGED_HOME')
+  const T1 = resolved('T1', 5, 4, 3, 2, 'TRANSFERRED')
+  const O1 = resolved('O1', 6, 4, 3, 2, 'DECEASED')
+  const O2 = resolved('O2', 7, 6, 4, 1, 'REFERRED_UCC')
+  const N1 = resolved('N1', 5, 4, 3, 1, null)
+  const vv = base('vv', {
+    status: 'VOIDED',
+    registrationAt: T(13),
+    physicianAt: T(12.5),
+    decisionAt: T(10),
+    departedAt: T(3),
+    resolvedAt: T(3),
+    disposition: 'ADMITTED',
+  })
+  const CASES = [a, b, c, d, e, v, vv, A1, A2, A3, D3, T1, O1, O2, N1]
+  const rows = phaseSplitByOutcome(CASES)
+  const row = (key: string) => rows.find((r) => r.key === key)!
+
+  it('files every disposition under one of the four groups, and a missing one under none', () => {
+    expect(OUTCOME_GROUPS.map((g) => [g.key, g.name])).toEqual([
+      ['admitted', 'Admitted'],
+      ['discharged', 'Discharged (home and DAMA)'],
+      ['transferred', 'Transferred'],
+      ['other', 'Other outcomes'],
+    ])
+    expect(outcomeGroupOf('ADMITTED')).toBe('admitted')
+    expect(outcomeGroupOf('DISCHARGED_HOME')).toBe('discharged')
+    expect(outcomeGroupOf('DISCHARGED_DAMA')).toBe('discharged')
+    expect(outcomeGroupOf('TRANSFERRED')).toBe('transferred')
+    for (const other of ['DECEASED', 'REFERRED_UCC', 'LEFT_WITHOUT_BEING_SEEN', 'OTHER']) {
+      expect(outcomeGroupOf(other), other).toBe('other')
+    }
+    expect(outcomeGroupOf(null)).toBeNull()
+  })
+
+  it('is the overall bar, then the four groups, in a fixed order', () => {
+    expect(rows.map((r) => [r.key, r.name])).toEqual([
+      ['all', 'All outcomes'],
+      ['admitted', 'Admitted'],
+      ['discharged', 'Discharged (home and DAMA)'],
+      ['transferred', 'Transferred'],
+      ['other', 'Other outcomes'],
+    ])
+  })
+
+  it('draws the overall bar over the complete cases only', () => {
+    const all = row('all').split
+    expect(all.completeIds).toEqual(['c', 'd', 'e', 'A1', 'A2', 'D3', 'T1', 'O1', 'O2', 'N1'])
+    // Sums over the ten: front 2 + 1.75 + 1 + 2 + 1 + 1 = 8.75; decision 5.5 + 6.75 + 1 + 1 + 2 + 1
+    // = 17.25; after 21 + 6 + 1 + 1 + 3 + 2 = 34; total 60.
+    const [front, decision, after] = all.phases
+    expect(front!.share).toBeCloseTo(8.75 / 60, 12)
+    expect(decision!.share).toBeCloseTo(17.25 / 60, 12)
+    expect(after!.share).toBeCloseTo(34 / 60, 12)
+    // The shares are the ones phaseSplit gives over every case, because a share only ever counts
+    // the complete ones.
+    const whole = phaseSplit(CASES)
+    expect(all.phases.map((p) => p.share)).toEqual(whole.phases.map((p) => p.share))
+    // The medians are over the same ten, not over each phase's own measured cases: the open case b
+    // and the half-measured A3 are in phaseSplit's medians and not in these.
+    expect(whole.phases.map((p) => p.n)).toEqual([12, 11, 10])
+    expect(all.phases.map((p) => p.n)).toEqual([10, 10, 10])
+    // front 0.25 0.5 0.5 0.5 1 1 1 1 1 2 -> 1; decision 1 1 1 1 1 2 2 2.5 2.75 3 -> 1.5;
+    // after 0.5 1 1 1.5 2 3 4 6 7 8 -> 2.5.
+    expect(all.phases.map((p) => p.med)).toEqual([1, 1.5, 2.5])
+  })
+
+  it('splits the admitted and the discharged, whose stays go to different phases', () => {
+    const admitted = row('admitted').split
+    expect(admitted.completeIds).toEqual(['c', 'A1', 'A2'])
+    expect(admitted.phases.map((p) => p.share)).toEqual([2 / 28.5, 5.5 / 28.5, 21 / 28.5])
+    expect(admitted.phases.map((p) => p.med)).toEqual([0.5, 2, 7])
+    const discharged = row('discharged').split
+    expect(discharged.completeIds).toEqual(['d', 'e', 'D3'])
+    expect(discharged.phases.map((p) => p.share)).toEqual([1.75 / 14.5, 6.75 / 14.5, 6 / 14.5])
+    expect(discharged.phases.map((p) => p.med)).toEqual([0.5, 2.75, 1.5])
+    // Admitted patients spend most of the stay after the decision; the discharged, deciding.
+    expect(admitted.phases[2]!.share!).toBeGreaterThan(0.5)
+    expect(discharged.phases[1]!.share!).toBeGreaterThan(discharged.phases[2]!.share!)
+  })
+
+  it('guards a group under three complete cases, and puts a case with no disposition in none', () => {
+    expect(row('transferred').split.completeIds).toEqual(['T1'])
+    expect(row('other').split.completeIds).toEqual(['O1', 'O2'])
+    for (const key of ['transferred', 'other']) {
+      expect(row(key).split.phases.map((p) => [p.share, p.med]), key).toEqual([
+        [null, null],
+        [null, null],
+        [null, null],
+      ])
+    }
+    const grouped = rows.filter((r) => r.key !== 'all').flatMap((r) => r.split.completeIds)
+    expect(grouped).not.toContain('N1')
+    expect([...grouped].sort()).toEqual(row('all').split.completeIds.filter((id) => id !== 'N1').sort())
+  })
+
+  it('leaves out the voided, the open and the half-measured', () => {
+    const everywhere = rows.flatMap((r) => r.split.completeIds)
+    for (const id of ['vv', 'v', 'b', 'a', 'A3']) expect(everywhere, id).not.toContain(id)
+    expect(phaseSplitByOutcome([vv, b, A3]).every((r) => r.split.completeN === 0)).toBe(true)
   })
 })

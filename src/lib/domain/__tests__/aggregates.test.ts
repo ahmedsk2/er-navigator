@@ -387,3 +387,43 @@ describe('Phase 10 panels', () => {
     expect(k.byPayer.map((r) => r.name)).toEqual(['Government', 'Insured', 'Self-pay', 'Not recorded'])
   })
 })
+
+/**
+ * Phase 11: the stay split arrives on `kpi` over the same case list as every other panel — the
+ * range's, already narrowed by any filter. The maths is `kpi.ts`'s and is hand-checked there; the
+ * fixture records no physician or decision time, so four resolved cases are given both here:
+ * C5 (admitted) 1, 2 and 5 h; C6 (home) 1, 4 and 5; C7 (home) 0.5, 3.5 and 2; and C9 (transferred,
+ * forty days ago) 1, 4 and 4.
+ */
+describe('Phase 11 panels', () => {
+  const timed = FIXTURE.map((c) => {
+    const at = (hoursAgo: number) => new Date(NOW.getTime() - hoursAgo * 36e5)
+    if (c.id === 'C5') return { ...c, physicianAt: at(29), decisionAt: at(27) }
+    if (c.id === 'C6') return { ...c, physicianAt: at(49), decisionAt: at(45) }
+    if (c.id === 'C7') return { ...c, physicianAt: at(73.5), decisionAt: at(70) }
+    if (c.id === 'C9') return { ...c, physicianAt: at(959), decisionAt: at(955) }
+    return c
+  })
+
+  it('splits the stay over the range, then by outcome', () => {
+    const split = dashboard(timed, '30', NOW).kpi.staySplit
+    expect(split.map((r) => r.key)).toEqual(['all', 'admitted', 'discharged', 'transferred', 'other'])
+    expect(split[0]!.split.completeIds).toEqual(['C5', 'C6', 'C7'])
+    // front 1 + 1 + 0.5, decision 2 + 4 + 3.5, after 5 + 5 + 2: 2.5, 9.5 and 12 of 24 hours.
+    expect(split[0]!.split.phases.map((p) => p.share)).toEqual([2.5 / 24, 9.5 / 24, 12 / 24])
+    expect(split.find((r) => r.key === 'discharged')!.split.completeIds).toEqual(['C6', 'C7'])
+    // C9 registered forty days ago: in no bar of the thirty-day page, and in the all-time one.
+    expect(split.find((r) => r.key === 'transferred')!.split.completeIds).toEqual([])
+    const all = dashboard(timed, 'all', NOW).kpi.staySplit
+    expect(all[0]!.split.completeIds).toEqual(['C5', 'C6', 'C7', 'C9'])
+    expect(all.find((r) => r.key === 'transferred')!.split.completeIds).toEqual(['C9'])
+  })
+
+  it('draws over the filtered population, because the filter narrows the cases first', () => {
+    // The page applies the filter before `dashboard()` runs; handing it fewer cases is the filter.
+    const onlyHome = timed.filter((c) => c.disposition === 'DISCHARGED_HOME')
+    const split = dashboard(onlyHome, '30', NOW).kpi.staySplit
+    expect(split[0]!.split.completeIds).toEqual(['C6', 'C7'])
+    expect(split.find((r) => r.key === 'admitted')!.split.completeIds).toEqual([])
+  })
+})
