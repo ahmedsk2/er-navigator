@@ -180,6 +180,10 @@ test('an admin acknowledges an alert from the admin screen', async ({ page }, te
   await expect(row).toBeVisible()
   await expect(row).toContainText(`${ALERT_THRESHOLD_HOURS}h`)
   await expect(row.locator('[data-acknowledged="no"]')).toBeVisible()
+  // Phase 12 item 6 (C1): the fixture's alert has two failed send attempts and no email sent, so
+  // the Emailed cell says so instead of the bare dash it used to, which was indistinguishable
+  // from "this threshold is not due an email at all".
+  await expect(row.getByText('Failed ×2')).toBeVisible()
 
   await row.getByRole('button', { name: /^Acknowledge/ }).click()
   await expect(page.locator(`[data-alert="${alert.id}"] [data-acknowledged="yes"]`)).toBeVisible()

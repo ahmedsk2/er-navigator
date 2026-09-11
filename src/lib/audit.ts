@@ -23,6 +23,12 @@ export type AuditAction =
   | 'case.review'
   | 'alert.acknowledge'
   | 'alert.fire'
+  /**
+   * Phase 12 (C1): an alert's email failed again. Written by the store inside the same
+   * transaction that increments the counter, actor = the system user, exactly as `alert.fire` is.
+   * MRN-free: the case is named by id. after: { caseId, thresholdHours, attempts }.
+   */
+  | 'alert.email.failed'
   | 'user.create'
   | 'user.update'
   | 'user.password'

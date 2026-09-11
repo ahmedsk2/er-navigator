@@ -22,6 +22,7 @@ import {
 } from '@/src/lib/admin/users'
 import type { AuditContext } from '@/src/lib/audit'
 import { ForbiddenError, createSession, type AuthUser } from '@/src/lib/auth/session'
+import { EMAIL_MAX_ATTEMPTS } from '@/src/lib/alerts/rules'
 import { SYSTEM_USERNAME } from '@/src/lib/auth/system-user'
 import { loadReference } from '@/src/lib/cases/reference'
 import { createCase } from '@/src/lib/cases/service'
@@ -892,5 +893,104 @@ describe('isUniqueViolation', () => {
     expect(isUniqueViolation(caught)).toBe(true)
     expect(isUniqueViolation(new Error('boom'))).toBe(false)
     expect(isUniqueViolation(null)).toBe(false)
+  })
+
+  /**
+   * Phase 12 item 6 (readiness audit C1). `sendWithOneRetry` gave up after two attempts, the
+   * Alert row was already committed, and `firedThresholds()` made every later cycle a no-op for
+   * it — so a wrong SMTP password stopped every 6 h+ escalation while both monitors stayed green.
+   * These are the store's half: which alerts come back for another try, and what a failure leaves
+   * behind. The cycle's half is `src/lib/alerts/__tests__/cycle.test.ts`.
+   */
+  describe('the email retry queue', () => {
+    async function alertOn(mrn: string, hoursAgo: number, over: Record<string, unknown> = {}) {
+      const nurse = actorOf(await makeUser('NAVIGATOR'))
+      const caseId = await openCase(nurse, {
+        mrn,
+        registrationAt: new Date(Date.now() - hoursAgo * HOUR).toISOString(),
+        reasons: [{ reasonId: stage('adm').reasons[0]!.id, otherText: null }],
+      })
+      const alert = await prisma.alert.create({
+        data: { caseId, thresholdHours: 6, firedAt: new Date(Date.now() - hoursAgo * HOUR), ...over },
+        select: { id: true },
+      })
+      return { caseId, alertId: alert.id }
+    }
+
+    const queue = async () =>
+      prismaAlertStore(await requireSystemUserId(SYSTEM_USERNAME)).pendingEmails(new Date())
+
+    it('returns a fired 6 h alert on an OPEN case that has had no email', async () => {
+      const { alertId } = await alertOn('661580', 7)
+      expect((await queue()).map((p) => p.alertId)).toContain(alertId)
+    })
+
+    it('carries what the email template needs, so nothing is loaded twice', async () => {
+      const { alertId, caseId } = await alertOn('661581', 8)
+      const row = (await queue()).find((p) => p.alertId === alertId)!
+      expect(row).toMatchObject({ caseId, thresholdHours: 6, attempts: 0, mrn: '661581', status: 'OPEN' })
+      // Nullable, like the column: a case may carry reasons without one of them being primary.
+      expect(row).toHaveProperty('primaryReason')
+      expect(Array.isArray(row.departments)).toBe(true)
+    })
+
+    it('leaves out a case that is no longer open: a patient who has left is not escalated', async () => {
+      const { alertId, caseId } = await alertOn('661582', 9)
+      await prisma.case.update({
+        where: { id: caseId },
+        data: { status: 'RESOLVED', departedAt: new Date(), resolvedAt: new Date(), disposition: 'ADMITTED' },
+      })
+      expect((await queue()).map((p) => p.alertId)).not.toContain(alertId)
+    })
+
+    it('leaves out one below the email threshold, one already sent, and one exhausted', async () => {
+      const below = await alertOn('661583', 5, { thresholdHours: 4 })
+      const sent = await alertOn('661584', 7, { emailSentAt: new Date() })
+      const spent = await alertOn('661585', 7, { emailAttempts: EMAIL_MAX_ATTEMPTS })
+
+      const ids = (await queue()).map((p) => p.alertId)
+      expect(ids).not.toContain(below.alertId)
+      expect(ids).not.toContain(sent.alertId)
+      expect(ids).not.toContain(spent.alertId)
+    })
+
+    it('markEmailFailed counts the attempt, stamps it and writes exactly one audit row', async () => {
+      const { alertId, caseId } = await alertOn('661586', 7)
+      const systemId = await requireSystemUserId(SYSTEM_USERNAME)
+      const store = prismaAlertStore(systemId)
+      const alertCount = await prisma.alert.count()
+
+      const at = new Date()
+      await store.markEmailFailed(alertId, at)
+
+      const after = await prisma.alert.findUniqueOrThrow({ where: { id: alertId } })
+      expect(after.emailAttempts).toBe(1)
+      expect(after.emailFailedAt).toEqual(at)
+      expect(after.emailSentAt).toBeNull()
+
+      const audits = await prisma.auditLog.findMany({
+        where: { entity: 'Alert', entityId: alertId, action: 'alert.email.failed' },
+      })
+      expect(audits).toHaveLength(1)
+      expect(audits[0]!.actorId).toBe(systemId)
+      expect(audits[0]!.after).toEqual({ caseId, thresholdHours: 6, attempts: 1 })
+      // MRN-free: the case is named by id.
+      expect(JSON.stringify(audits[0]!.after)).not.toContain('661586')
+
+      // A retry never inserts: the unique index on (caseId, thresholdHours) is untouched.
+      await store.markEmailFailed(alertId, new Date())
+      expect((await prisma.alert.findUniqueOrThrow({ where: { id: alertId } })).emailAttempts).toBe(2)
+      expect(
+        await prisma.auditLog.count({ where: { entityId: alertId, action: 'alert.email.failed' } }),
+      ).toBe(2)
+      expect(await prisma.alert.count()).toBe(alertCount)
+    })
+
+    it('takes them oldest first, so a backlog drains in the order it built up', async () => {
+      const older = await alertOn('661587', 30)
+      const newer = await alertOn('661588', 7)
+      const ids = (await queue()).map((p) => p.alertId)
+      expect(ids.indexOf(older.alertId)).toBeLessThan(ids.indexOf(newer.alertId))
+    })
   })
 })

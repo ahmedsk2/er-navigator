@@ -423,6 +423,10 @@ model Alert {
   thresholdHours   Int // 4, 6, 12, 24
   firedAt          DateTime  @default(now())
   emailSentAt      DateTime?
+  /// Phase 12 (C1): how many send attempts this alert's email has cost, and when the last one
+  /// failed. The unique index on (caseId, thresholdHours) is unchanged: a retry never inserts.
+  emailAttempts    Int       @default(0)
+  emailFailedAt    DateTime?
   acknowledgedById String?
   acknowledgedAt   DateTime?
 

@@ -122,8 +122,17 @@ export async function seedAdminCases(): Promise<void> {
       },
       select: { id: true },
     })
+    // Phase 12 item 6 (C1): two failed send attempts and no email sent, so Admin -> Alerts has a
+    // row that reads "Failed x2" rather than the "-" that used to mean both "not due an email"
+    // and "the mail server has been refusing this one for an hour".
     await prisma.alert.create({
-      data: { caseId: alerted.id, thresholdHours: ALERT_THRESHOLD_HOURS, firedAt: ago(1) },
+      data: {
+        caseId: alerted.id,
+        thresholdHours: ALERT_THRESHOLD_HOURS,
+        firedAt: ago(1),
+        emailAttempts: 2,
+        emailFailedAt: ago(1),
+      },
     })
     await prisma.caseUpdate.create({
       data: {
