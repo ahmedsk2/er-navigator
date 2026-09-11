@@ -6,7 +6,9 @@ import { ChangePasswordForm } from './change-password-form'
 export const metadata: Metadata = { title: 'Account · ER Navigator' }
 
 export default async function AccountPage() {
-  const user = await requireUser()
+  // Phase 12 item 5 (P12): the one exempt page. This is where the password is changed, so a
+  // must-change user has to be able to open it.
+  const user = await requireUser({ allowMustChange: true })
 
   // The shell no longer pads its <main>, because the board's rows are full-bleed; every other
   // page in the group brings its own padding — `PageHeader` for the title, this wrapper for the

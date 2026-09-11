@@ -87,7 +87,9 @@ test.describe('signing in', () => {
    * The demo shape — the number raised — is `tests/instance/instance.spec.ts`.
    */
   test('five attempts a minute from one address, and the sixth is refused', async ({ page }, testInfo) => {
-    const ip = testInfo.project.name === 'mobile' ? '198.51.100.181' : '198.51.100.182'
+    // Its own address, like every other test here: this one deliberately exhausts a bucket,
+    // so sharing one with board.spec or cases.spec would turn their sign-in into a refusal.
+    const ip = testInfo.project.name === 'mobile' ? '198.51.100.179' : '198.51.100.180'
     await fromClientIp(page, ip)
     for (let i = 0; i < 5; i += 1) {
       await signIn(page, 'nobody_at_all', 'definitely-not-the-password')
@@ -217,7 +219,7 @@ test.describe('the first password must be changed', () => {
   }, testInfo) => {
     const mobile = testInfo.project.name === 'mobile'
     const username = `${E2E_TEMP_USER_PREFIX}${randomBytes(4).toString('hex')}`
-    await fromClientIp(page, mobile ? '198.51.100.171' : '198.51.100.172')
+    await fromClientIp(page, mobile ? '198.51.100.175' : '198.51.100.176')
 
     // 1. The admin creates the account and reads the one-shot temporary password.
     await signInAndLand(page, E2E_USERS.admin.username, E2E_USERS.admin.password)
@@ -233,7 +235,7 @@ test.describe('the first password must be changed', () => {
 
     const theirs = await browser.newContext()
     const their = await theirs.newPage()
-    await fromClientIp(their, mobile ? '198.51.100.173' : '198.51.100.174')
+    await fromClientIp(their, mobile ? '198.51.100.177' : '198.51.100.178')
 
     // 2. Their first sign-in lands on /account, not on the board.
     await signIn(their, username, temporary)

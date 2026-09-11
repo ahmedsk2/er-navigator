@@ -396,7 +396,7 @@ test('a download and a print each leave an audit row an admin can find', async (
 
   const theirs = await browser.newContext()
   const supervisor = await theirs.newPage()
-  await fromClientIp(supervisor, mobile ? '198.51.100.161' : '198.51.100.162')
+  await fromClientIp(supervisor, mobile ? '198.51.100.165' : '198.51.100.166')
   await signIn(supervisor, E2E_USERS.supervisor)
 
   await supervisor.goto(`/report?from=${window.from}&to=${to}&status=all&payer=INSURED`)
@@ -409,7 +409,7 @@ test('a download and a print each leave an audit row an admin can find', async (
   await theirs.close()
 
   const admin = await browser.newPage()
-  await fromClientIp(admin, mobile ? '198.51.100.163' : '198.51.100.164')
+  await fromClientIp(admin, mobile ? '198.51.100.167' : '198.51.100.168')
   await signIn(admin, E2E_USERS.admin)
 
   for (const [action, entity] of [

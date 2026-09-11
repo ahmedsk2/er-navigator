@@ -13,7 +13,7 @@ import { defineConfig, devices } from '@playwright/test'
  */
 export default defineConfig({
   testDir: '.',
-  testMatch: /instance\.spec\.ts$/,
+  testMatch: /instance(-screenshots)?\.spec\.ts$/,
   timeout: 30_000,
   retries: 0,
   reporter: 'list',
