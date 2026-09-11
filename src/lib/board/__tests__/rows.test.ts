@@ -225,6 +225,21 @@ describe('staleness', () => {
     expect(stalenessText(idleHours(over, NOW))).toBe('No update for 2h 01m')
   })
 
+  it('says "Updated just now" under a minute rather than "Updated 0h 00m ago" (Phase 11)', () => {
+    expect(stalenessText(0)).toBe('Updated just now')
+    expect(stalenessText(30 / 3600)).toBe('Updated just now')
+    expect(stalenessText(59.9 / 3600)).toBe('Updated just now')
+    // From the first whole minute the clock takes over, exactly as before.
+    expect(stalenessText(idleHours(row({ id: 'a', mrn: '1', createdAt: hoursBefore(1 / 60) }), NOW))).toBe(
+      'Updated 0h 01m ago',
+    )
+    expect(stalenessText(idleHours(row({ id: 'b', mrn: '2', createdAt: hoursBefore(5 / 60) }), NOW))).toBe(
+      'Updated 0h 05m ago',
+    )
+    // And the amber warning is untouched.
+    expect(stalenessText(2)).toBe('No update for 2h 00m')
+  })
+
   it('says nothing about staleness on a resolved case', () => {
     const r = row({ id: 'a', mrn: '1', status: 'RESOLVED', createdAt: hoursBefore(30), departedAt: hoursBefore(20) })
     expect(idleHours(r, NOW)).toBeNull()

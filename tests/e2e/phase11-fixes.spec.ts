@@ -229,9 +229,10 @@ test('on a worked case every recorded time shows its whole value, and the strip 
  * Finding 3. "Open case" was at the foot of a form that grows with every chip — about 1,500 px
  * below the reason a nurse had just tapped, on a phone — under sections that mean nothing before
  * the case exists. The bar now sticks to the foot of the screen, so the case opens the moment the
- * MRN, the stage and the reason are in, with no scroll; the sections stay where they were.
+ * MRN, the stage and the reason are in, with no scroll; the sections stay where they were. Then
+ * finding 8, on the board and the handover sheet the new case lands on.
  */
-test('a new case opens from the bar at the foot of the screen', async ({ page }, testInfo) => {
+test('a new case opens from the bar at the foot of the screen, and the board says just now', async ({ page }, testInfo) => {
   const mobile = testInfo.project.name === 'mobile'
   await fromClientIp(page, mobile ? '198.51.100.233' : '198.51.100.234')
   await signIn(page, E2E_USERS.navigator)
@@ -268,6 +269,22 @@ test('a new case opens from the bar at the foot of the screen', async ({ page },
   await open.click()
   await expect(page).toHaveURL(CASE_URL)
   await expect(page.getByRole('heading', { name: `Case ${mrn}` })).toBeVisible()
+
+  // Finding 8. Back on the board seconds later, the card of a case opened seconds ago says so in
+  // words, not "Updated 0h 00m ago".
+  await page.getByRole('link', { name: '‹ Back' }).click()
+  await page.getByLabel('Search MRN').fill(mrn)
+  const card = page.locator(`a[data-mrn="${mrn}"]`)
+  await expect(card).toContainText('Updated just now')
+  await expect(card).not.toContainText('0h 00m ago')
+
+  // And the handover sheet prints when, as a clock time, because a relative one is wrong by the
+  // time the paper is read.
+  await page.emulateMedia({ media: 'print' })
+  const sheetRow = page.locator('section.print-only').getByRole('row').filter({ hasText: mrn })
+  await expect(sheetRow).toHaveCount(1)
+  await expect(sheetRow.getByRole('cell').nth(5)).toHaveText(/^\d\d\/\d\d \d\d:\d\d$/)
+  await page.emulateMedia({ media: 'screen' })
 })
 
 /**
