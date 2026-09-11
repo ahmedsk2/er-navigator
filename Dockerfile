@@ -9,7 +9,7 @@
 # stage after it fails. CI never builds this file (ci.yml runs on .nvmrc = 24), so that PR's green
 # check means nothing. Moving to 26 is a deliberate change to engines, .nvmrc and this line at
 # once, not a bump to merge in a hurry.
-FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS base
+FROM node:26-alpine@sha256:ef24c5053d50fdc3e4e56eb4e7ddb7861874ab0fdc797046ba897581deb8e868 AS base
 RUN corepack enable
 WORKDIR /repo
 
@@ -40,7 +40,7 @@ ENV NODE_ENV=production
 CMD ["sh", "scripts/migrate-and-seed.sh"]
 
 # ---- runner: standalone server, non-root, no package manager, env allowlist ----
-FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS runner
+FROM node:26-alpine@sha256:ef24c5053d50fdc3e4e56eb4e7ddb7861874ab0fdc797046ba897581deb8e868 AS runner
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
 # hadolint ignore=DL3017
 RUN apk upgrade --no-cache \
