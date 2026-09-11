@@ -1376,7 +1376,9 @@ export function CaseEditor(props: CaseEditorProps) {
            the case exists. The sections stay where they were: the bar is still last in the page
            and settles into its place at the end. What a refused create says is in the bar too,
            over the button, because a message at the foot of the form is off screen from the top. */
-        <div className="sticky bottom-0 z-10 border-t border-line bg-panel px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))]">
+        <div className="sticky bottom-0 z-10 border-t border-line bg-panel px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] lg:mx-4 lg:rounded-t-card lg:border-x">
+          {/* Edge to edge on a phone, like the tab bar; on a laptop, where the column sits in open
+              ground, a tray lined up with the cards above it. */}
           {feedback}
           <Button tone="main" className="w-full" disabled={!canSave || busy} onClick={() => void onSave()}>
             Open case

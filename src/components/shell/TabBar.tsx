@@ -106,11 +106,12 @@ export function TabBar({
         is also the way to the account page, and says so as the menu's row does: the name, the role
         and "Account and password". The link is that last line, stretched over the whole block by
         its ::after, so the block is what a pointer clicks and the link's name is what it does —
-        "Admin" stays the name of one link in this navigation, the tab's. Log out is still behind
-        the header's Menu button, which is the same on both shapes.
+        "Admin" stays the name of one link in this navigation, the tab's. On /account it is lit
+        like the current tab. Log out is still behind the header's Menu button, which is the same
+        on both shapes.
       */}
       {displayName ? (
-        <div className="relative hidden items-center gap-2.5 rounded-button px-1.5 py-2 hover:bg-white/5 lg:flex">
+        <div className="relative hidden items-center gap-2.5 rounded-button px-1.5 py-2 hover:bg-white/5 has-[[aria-current=page]]:bg-white/10 lg:flex">
           <span
             aria-hidden="true"
             className="grid size-9 shrink-0 place-items-center rounded-chip bg-white/15 text-label font-semibold text-white"
