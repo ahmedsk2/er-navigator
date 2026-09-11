@@ -2,17 +2,20 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import PATHS from '../../src/components/brand/mark-paths.json'
-import { markStroke } from '../../src/components/brand/Mark'
+import { markGrow } from '../../src/components/brand/Mark'
 
 /**
- * Phase 11: the mark is drawn from one file of paths, read by the header's `Mark` and by the
- * icon script, so the home-screen icon and the header cannot drift apart.
+ * Phase 11: the mark is the medical cross Ahmed chose, drawn from one file of outlines that the
+ * header's `Mark` and the icon script both read, so the home-screen icon and the header cannot
+ * drift apart.
  */
 describe('the mark', () => {
-  it('keeps every point of its three strokes on the 48-unit badge', () => {
-    for (const d of [PATHS.ecg, PATHS.arrow, PATHS.cross]) {
+  it('is three closed outlines, every point on the 48-unit grid', () => {
+    expect(PATHS.cross).toHaveLength(3)
+    for (const d of PATHS.cross) {
+      expect(d.startsWith('M')).toBe(true)
+      expect(d.endsWith('Z')).toBe(true)
       const numbers = d.match(/-?\d+(\.\d+)?/g)!.map(Number)
-      expect(numbers.length).toBeGreaterThan(0)
       for (const n of numbers) {
         expect(n).toBeGreaterThanOrEqual(0)
         expect(n).toBeLessThanOrEqual(PATHS.viewBox)
@@ -26,10 +29,9 @@ describe('the mark', () => {
     expect(script).not.toMatch(/const (HEART|TRACE) =/)
   })
 
-  it('thickens its stroke as it gets small, where a hairline would vanish', () => {
-    expect(markStroke(44)).toBe(2.2)
-    expect(markStroke(36)).toBe(2.4)
-    expect(markStroke(28)).toBe(2.8)
-    expect(markStroke(32)).toBeLessThanOrEqual(markStroke(28))
+  it('grows its bars as it gets small, where a hairline would vanish', () => {
+    expect(markGrow(44)).toBe(0.4)
+    expect(markGrow(36)).toBe(0.7)
+    expect(markGrow(28)).toBe(1)
   })
 })

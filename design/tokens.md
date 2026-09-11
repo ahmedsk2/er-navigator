@@ -95,14 +95,16 @@ The elapsed-time pill uses `src/components/bands.ts` `BAND_PILL`: white on `band
 `band-h24` 13.9:1; "no data" is muted text on `line-soft`. `src/components/__tests__/bands.test.ts`
 recomputes these from the token block.
 
-Mark (Phase 11, replacing Phase 9's placeholder heart): Ahmed's logo, made with Envato's AI
-generator — a heartbeat trace that rises into a medical cross and runs on into an arrow, white on a
-`--color-accent-deep` badge. The file as delivered is `design/brand/er-navigator-logo.envato.svg`
-(an auto-trace); the clean redraw is three strokes on a 48-unit badge, `design/brand/er-navigator-mark.svg`
-and the lockup `design/brand/er-navigator-logo.svg`, with the paths held once in
-`src/components/brand/mark-paths.json` for `Mark.tsx` and `scripts/generate-icons.mjs`. Three tones
-(white badge on teal, teal badge on white, bare strokes); the stroke thickens below 42 and 32 px.
-The wordmark sets "ER" bold and "Navigator" medium, as the logo does. Icons: `src/components/icons.tsx`, twenty-four Lucide 1.43.0 line icons copied in under
+Mark (Phase 11, replacing Phase 9's placeholder heart): the logo Ahmed chose from Envato Elements,
+"Medical Cross Logo — Healthcare & Hospital Health" by 3ab2ou — a medical cross drawn as parallel
+paths — recoloured from the template's red to `--color-accent-deep` (a red cross is a protected
+emblem, and the app is teal). Three filled outlines on a 48-unit grid, taken point for point from
+the template's vector file, held once in `src/components/brand/mark-paths.json` for `Mark.tsx` and
+`scripts/generate-icons.mjs`; `design/brand/er-navigator-mark.svg` (badge) and
+`design/brand/er-navigator-logo.svg` (lockup) are exports of it. The template's own files stay out
+of the repository (the licence covers the mark in this app, not passing the template on). Three
+tones (white badge on teal, teal badge on white, the bare cross); below 42 px the bars are grown
+by a stroke of their own colour. Icons: `src/components/icons.tsx`, twenty-four Lucide 1.43.0 line icons copied in under
 the ISC licence (no dependency), 20 px in chrome, 18 px in chips, always `aria-hidden` beside
 text.
 
@@ -111,7 +113,6 @@ so they read on teal — `#e0a23a` (4 h), `#e0645a` (6 h), `#b56aa6` (12 h) — 
 `#4fa87c` (under 4 h; `band-ok` itself sits within a step of the accent's luminance and read by
 hue alone). They are decorative, `aria-hidden`, held in one `BAND_BARS` constant in
 `app/login/page.tsx`, and `tests/unit/colour-literals.test.ts` keeps them the only colour
-literals in the app. The PWA icons are the mark painted edge to edge in the badge's teal with the
-drawing inside the maskable safe circle and its baseline carried out to the left edge; the Apple
-touch icon is painted flat for iOS's own mask; the favicon is the rounded badge with a thicker
-stroke. All are drawn by `scripts/generate-icons.mjs` with `sharp`.
+literals in the app. The PWA icons are the white cross on the badge's teal painted edge to edge,
+the cross inside the maskable safe circle; the Apple touch icon is painted flat for iOS's own mask;
+the favicon is the rounded badge with the bars grown. All are drawn by `scripts/generate-icons.mjs` with `sharp`.

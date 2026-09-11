@@ -1,22 +1,24 @@
 /**
  * The mark and the wordmark.
  *
- * Phase 11 (11 September): the mark is Ahmed's own, made with Envato's AI generator from a brief
- * written for this project; `design/brand/er-navigator-logo.envato.svg` is the file as delivered.
- * It says what the app is in one line: a heartbeat trace that rises into a medical cross and runs
- * on into an arrow — the patient's pulse, the department's care, and the navigator moving a long
- * stay forward — on a badge of `--color-accent-deep`, the teal the delivered file already used.
+ * Phase 11 (11 September): the mark is the logo Ahmed chose from Envato Elements, "Medical Cross
+ * Logo — Healthcare & Hospital Health" by 3ab2ou: a medical cross drawn as parallel paths that
+ * turn back on themselves, which is as close as a cross gets to "finding the way through the
+ * department". The template is pink-red; here it is `--color-accent-deep`, the app's own teal — a
+ * red cross is also a protected emblem, and the app has always been teal. Only the cross is used;
+ * the template's placeholder name and slogan are not, the wordmark sets "ER Navigator" as text.
  *
- * The delivered file is an auto-trace: wobbly outlines on a 2048-unit canvas. What is drawn here is
- * the same drawing redrawn as three strokes on a 48-unit badge (`mark-paths.json`, which
- * `scripts/generate-icons.mjs` reads too, so the header and the home-screen icon cannot drift
- * apart). The stroke thickens as the mark gets small, because at 28 px a 2.2-unit line is a
- * pixel and a half and the half-cross beside the spike is the first thing to go.
+ * The cross is three filled outlines on a 48-unit grid (`mark-paths.json`, read by
+ * `scripts/generate-icons.mjs` too, so the header and the home-screen icon cannot drift apart),
+ * taken point for point from the template's vector file. Its bars are as thin as the gaps between
+ * them, a twelfth of the cross, so below about 42 px the bars are grown by a stroke of their own
+ * colour: a hairline is the first thing antialiasing takes. The template's files are not in the
+ * repository — its licence covers the mark in this app, not handing the template on.
  *
- * Three tones cover every surface it sits on: `onTeal` (a white badge with a teal trace, for the
- * teal hero and header), `onWhite` (the logo as delivered: a deep teal badge with a white trace,
- * for the login sheet and the cards), and `teal` (the bare trace in the accent, for small inline
- * uses). The mark is always decorative; the wordmark carries the name as text.
+ * Three tones cover every surface it sits on: `onTeal` (a white badge with a teal cross, for the
+ * teal hero and header and the navy rail), `onWhite` (a teal badge with a white cross, for the
+ * login sheet and the cards), and `teal` (the bare cross in the accent, for small inline uses).
+ * The mark is always decorative; the wordmark carries the name as text.
  *
  * `Wordmark as="h1"` is reserved for the two places that own the page's "ER Navigator" heading:
  * the signed-in shell's header and the login hero. Tests select that heading by name and expect
@@ -32,21 +34,28 @@ const BADGE: Record<MarkTone, string | null> = {
   teal: null,
 }
 
-const TRACE: Record<MarkTone, string> = {
-  onTeal: 'stroke-accent-deep',
-  onWhite: 'stroke-white',
-  teal: 'stroke-accent',
+const CROSS: Record<MarkTone, string> = {
+  onTeal: 'fill-accent-deep stroke-accent-deep',
+  onWhite: 'fill-white stroke-white',
+  teal: 'fill-accent stroke-accent',
 }
 
-/** Stroke width on the 48-unit grid for a mark drawn `size` px wide. */
-export function markStroke(size: number): number {
-  if (size < 32) return 2.8
-  if (size < 42) return 2.4
-  return 2.2
+/**
+ * How much the cross's bars are grown, in units of its 48-unit grid, for a mark `size` px wide.
+ * Nothing at 42 px and up; enough below that to keep a bar about a pixel and a half wide.
+ */
+export function markGrow(size: number): number {
+  if (size < 32) return 1
+  if (size < 42) return 0.7
+  return 0.4
 }
 
 export function Mark({ size = 36, tone = 'onTeal', className = '' }: { size?: number; tone?: MarkTone; className?: string }) {
   const badge = BADGE[tone]
+  const unit = PATHS.viewBox
+  // On a badge the cross sits inside a margin; bare, it fills the box.
+  const glyph = badge ? PATHS.tile.glyph : 1
+  const inset = (unit * (1 - glyph)) / 2
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -54,21 +63,20 @@ export function Mark({ size = 36, tone = 'onTeal', className = '' }: { size?: nu
       focusable="false"
       width={size}
       height={size}
-      viewBox={`0 0 ${PATHS.viewBox} ${PATHS.viewBox}`}
+      viewBox={`0 0 ${unit} ${unit}`}
       className={`inline-block shrink-0 ${className}`}
       data-mark={tone}
     >
-      {badge ? <rect width={PATHS.viewBox} height={PATHS.viewBox} rx={PATHS.radius} className={badge} /> : null}
+      {badge ? <rect width={unit} height={unit} rx={unit * PATHS.tile.radius} className={badge} /> : null}
       <g
-        fill="none"
-        strokeWidth={markStroke(size)}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className={TRACE[tone]}
+        transform={`translate(${inset} ${inset}) scale(${glyph})`}
+        strokeWidth={markGrow(size) / glyph}
+        strokeLinejoin="miter"
+        className={CROSS[tone]}
       >
-        <path d={PATHS.ecg} />
-        <path d={PATHS.arrow} />
-        <path d={PATHS.cross} />
+        {PATHS.cross.map((d) => (
+          <path key={d} d={d} />
+        ))}
       </g>
     </svg>
   )
@@ -80,11 +88,6 @@ const SIZES = {
   lg: { mark: 44, text: 'text-[24px]' },
 } as const
 
-/**
- * The mark and the name side by side, set as the delivered logo sets them: "ER" bold and
- * "Navigator" a step lighter. Two spans and a literal space, so the heading's accessible name is
- * still exactly "ER Navigator".
- */
 export function Wordmark({
   tone = 'onTeal',
   size = 'md',
@@ -98,11 +101,7 @@ export function Wordmark({
 }) {
   const s = SIZES[size]
   const colour = tone === 'onTeal' ? 'text-white' : 'text-ink'
-  const text = (
-    <span className={`${s.text} tracking-tight ${colour}`}>
-      <span className="font-bold">ER</span> <span className="font-medium">Navigator</span>
-    </span>
-  )
+  const text = <span className={`${s.text} font-bold tracking-tight ${colour}`}>ER Navigator</span>
   const Tag = as
   return (
     <Tag className={`m-0 inline-flex items-center gap-2.5 ${className}`}>
