@@ -138,8 +138,16 @@ Returns `null` when `instanceLabel()` is `null`. Otherwise renders exactly one e
   measures by geometry. In flow costs one banner height at the top of every page and nothing else.
 - **Prints.** No `no-print` class: a demo handover sheet or report that comes off the printer
   says DEMO on it. This is half of what D6 asked for.
-- **Colours are tokens only.** Use the existing amber pair `bg-band-h4` with `text-white`
-  (`--color-band-h4` is `#b8790f`; `tests/unit/tokens.test.ts` already carries its contrast).
+- **Colours are tokens only.** Use the existing amber pair `bg-band-h4-ink` with `text-white` —
+  the same pair `BAND_PILL.h4` uses (`src/components/bands.ts:38`), for the same reason.
+  `--color-band-h4-ink` is `#8a5e0e`, 5.69:1 against white; `--color-band-h4` is `#b8790f`, only
+  3.63:1, below the 4.5:1 AA minimum for normal text, and
+  `src/components/__tests__/bands.test.ts:65` already asserts that it fails. `bands.ts:10` says it
+  in words: "`band-h4` is fine as a surface; it is too light for text." (Corrected in the Phase 12
+  review round: the first draft said `bg-band-h4` and claimed `tests/unit/tokens.test.ts` carried
+  its contrast. It does not — that file asserts the band tokens at the 3:1 non-text threshold
+  against `color-bg` and `color-panel` only, and its 4.5:1-against-white loop covers the three
+  accent tokens. `tests/unit/phase12-spec.test.ts` now reads this bullet and computes the number.)
   No new hex anywhere — `tests/unit/colour-literals.test.ts` would fail.
 
 **Placement.** `app/layout.tsx`: `<body>` becomes
