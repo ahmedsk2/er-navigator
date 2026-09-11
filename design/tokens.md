@@ -95,9 +95,14 @@ The elapsed-time pill uses `src/components/bands.ts` `BAND_PILL`: white on `band
 `band-h24` 13.9:1; "no data" is muted text on `line-soft`. `src/components/__tests__/bands.test.ts`
 recomputes these from the token block.
 
-Mark: `src/components/brand/Mark.tsx`, a heart with an ECG trace, three tones (white tile on
-teal, teal tile on white, bare teal strokes). Placeholder until the hospital or the ED sends a
-logo. Icons: `src/components/icons.tsx`, twenty-four Lucide 1.43.0 line icons copied in under
+Mark (Phase 11, replacing Phase 9's placeholder heart): Ahmed's logo, made with Envato's AI
+generator — a heartbeat trace that rises into a medical cross and runs on into an arrow, white on a
+`--color-accent-deep` badge. The file as delivered is `design/brand/er-navigator-logo.envato.svg`
+(an auto-trace); the clean redraw is three strokes on a 48-unit badge, `design/brand/er-navigator-mark.svg`
+and the lockup `design/brand/er-navigator-logo.svg`, with the paths held once in
+`src/components/brand/mark-paths.json` for `Mark.tsx` and `scripts/generate-icons.mjs`. Three tones
+(white badge on teal, teal badge on white, bare strokes); the stroke thickens below 42 and 32 px.
+The wordmark sets "ER" bold and "Navigator" medium, as the logo does. Icons: `src/components/icons.tsx`, twenty-four Lucide 1.43.0 line icons copied in under
 the ISC licence (no dependency), 20 px in chrome, 18 px in chips, always `aria-hidden` beside
 text.
 
@@ -106,7 +111,7 @@ so they read on teal — `#e0a23a` (4 h), `#e0645a` (6 h), `#b56aa6` (12 h) — 
 `#4fa87c` (under 4 h; `band-ok` itself sits within a step of the accent's luminance and read by
 hue alone). They are decorative, `aria-hidden`, held in one `BAND_BARS` constant in
 `app/login/page.tsx`, and `tests/unit/colour-literals.test.ts` keeps them the only colour
-literals in the app. The PWA icon is the solid counterpart of the mark (a filled white heart with
-the trace knocked out), because the outline closes into a blob below about 64 px; the Apple touch
-icon is painted flat to the edge for iOS's own mask. Both are drawn by `scripts/generate-icons.mjs`
-with `sharp`.
+literals in the app. The PWA icons are the mark painted edge to edge in the badge's teal with the
+drawing inside the maskable safe circle and its baseline carried out to the left edge; the Apple
+touch icon is painted flat for iOS's own mask; the favicon is the rounded badge with a thicker
+stroke. All are drawn by `scripts/generate-icons.mjs` with `sharp`.
