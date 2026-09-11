@@ -14,7 +14,7 @@
  */
 import type { Role } from '@prisma/client'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import {
   createUser as createUserAction,
   resetUserPassword as resetUserPasswordAction,
@@ -37,6 +37,7 @@ export function UsersPanel({ users, currentUserId }: { users: UserRow[]; current
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<Role>('NAVIGATOR')
+  const roleId = useId()
   /**
    * One draft per row, keyed by user id, so typing in one Email box never touches another. A row
    * with no draft yet shows whatever the server sent; `router.refresh()` after a save replaces
@@ -166,11 +167,11 @@ export function UsersPanel({ users, currentUserId }: { users: UserRow[]; current
               onChange={(e) => setEmail(e.target.value)}
             />
           </Field>
-          <Field label="Role">
-            {/* aria-label: the wrapping <label> would otherwise take its accessible name from
-                its whole text content, options included (the same fix ExportPanel needed). */}
+          {/* A `<label for>`: a label wrapped round a select holds every option in its text
+              (Phase 11, finding 4; the aria-label that stood in for it is gone). */}
+          <Field label="Role" htmlFor={roleId}>
             <Select
-              aria-label="Role"
+              id={roleId}
               value={role}
               disabled={busy}
               onChange={(e) => setRole(e.target.value as Role)}

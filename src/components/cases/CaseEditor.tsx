@@ -238,6 +238,13 @@ export function CaseEditor(props: CaseEditorProps) {
   /** The two labelled boxes that share their row with the microphone (`Field` with `htmlFor`). */
   const diagnosisId = useId()
   const noteId = useId()
+  /**
+   * The three selects, named by a `<label for>` too (Phase 11, finding 4): a label wrapped round a
+   * select holds every option in its text, so the select could not be found by its label alone.
+   */
+  const shiftId = useId()
+  const primaryReasonId = useId()
+  const dispositionId = useId()
 
   // The clock ticks only while the case is open; a resolved case is frozen at its departure time,
   // or at its resolution once that has been cleared. `now` starts at the server's instant so the
@@ -685,10 +692,12 @@ export function CaseEditor(props: CaseEditorProps) {
       {/* Phase 11: the jump strip, under the header, which keeps its place. It sticks to the top
           of the screen below `lg`; on a laptop the page is one column in a wide screen, so the
           strip stays where it is and scrolls away with the header. A new case has no Updates or
-          Resolve to jump to and gets none. */}
+          Resolve to jump to and gets none. "Jump to", not "… sections": the suites find the
+          shell's tab bar as the navigation named "Sections", and a name holding that word would
+          be found with it. */}
       {isNew ? null : (
         <nav
-          aria-label="Case sections"
+          aria-label="Jump to"
           className="no-print sticky top-0 z-10 mb-2.5 border-b border-line bg-bg px-4 py-1.5 lg:static lg:border-b-0 lg:py-0"
         >
           {/* Six equal chips across a 390 px screen, so each label gets its whole width: no
@@ -787,8 +796,9 @@ export function CaseEditor(props: CaseEditorProps) {
             </Field>
           </div>
           <div className="flex-1">
-            <Field label="Shift">
+            <Field label="Shift" htmlFor={shiftId}>
               <Select
+                id={shiftId}
                 disabled={disabled}
                 value={draft.shift ?? ''}
                 onChange={(e) => set({ shift: (e.target.value || null) as CaseDraft['shift'] })}
@@ -923,8 +933,9 @@ export function CaseEditor(props: CaseEditorProps) {
         })}
         {draft.reasons.length > 1 ? (
           <div className="mt-3.5">
-            <Field label="Primary reason (the biggest contributor)">
+            <Field label="Primary reason (the biggest contributor)" htmlFor={primaryReasonId}>
               <Select
+                id={primaryReasonId}
                 disabled={disabled}
                 value={draft.primaryReasonId ?? ''}
                 onChange={(e) => set({ primaryReasonId: e.target.value || null })}
@@ -1221,8 +1232,9 @@ export function CaseEditor(props: CaseEditorProps) {
           title={status === 'RESOLVED' ? 'Resolved' : 'Resolve case'}
           icon={<Check size={18} />}
         >
-          <Field label="Final disposition">
+          <Field label="Final disposition" htmlFor={dispositionId}>
             <Select
+              id={dispositionId}
               disabled={disabled}
               value={draft.disposition ?? ''}
               onChange={(e) =>

@@ -72,6 +72,10 @@ export function Section({
  * the button too made it part of the input's name — "Working diagnosis (optional) Dictate". With
  * `htmlFor` the label names the control by its id and the row sits beside the label, not inside
  * it; the look is the same.
+ *
+ * Every `<select>` takes `htmlFor` too (Phase 11, finding 4): a wrapping label's text is its
+ * caption followed by every option, so the select could not be found by its label alone, and the
+ * aria-labels that stood in for the label on some of them are gone with it.
  */
 export function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: ReactNode }) {
   if (htmlFor) {

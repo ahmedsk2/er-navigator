@@ -75,6 +75,30 @@ async function clippedTimes(page: Page): Promise<{ checked: number; clipped: str
   }
 }
 
+/**
+ * Finding 4. A `<select>` inside the wrapping `<label>` of `Field` could not be found by its label:
+ * the label element's text is its caption and every option after it ("Shift Select Morning Evening
+ * Night"), so `getByLabel('Shift', { exact: true })` found nothing. Shift, Primary reason and
+ * Final disposition had nothing else; Format, Status, Stage and Role carried an aria-label standing
+ * in for the label. Each is now named by a `<label for>` beside it, which holds the caption alone.
+ */
+async function expectNamedByItsLabel(page: Page, label: string): Promise<void> {
+  const select = page.getByRole('combobox', { name: label, exact: true })
+  await expect(select).toBeVisible()
+  await expect(page.getByLabel(label, { exact: true })).toHaveCount(1)
+  const how = await select.evaluate((element) => {
+    const own = element as HTMLSelectElement
+    const labels = [...(own.labels ?? [])]
+    return {
+      labels: labels.length,
+      byFor: labels[0]?.htmlFor === own.id && own.id !== '',
+      wrapped: labels.some((l) => l.contains(own)),
+      ariaLabel: own.getAttribute('aria-label'),
+    }
+  })
+  expect(how, label).toEqual({ labels: 1, byFor: true, wrapped: false, ariaLabel: null })
+}
+
 /** The section a strip chip jumps to, found by what a nurse reads at its top. */
 function sectionOf(page: Page, chip: string) {
   const top: Record<string, ReturnType<Page['getByRole']>> = {
@@ -105,7 +129,7 @@ test('on a worked case every recorded time shows its whole value, and the strip 
 
   // A chip per section, in page order; Teams because an admission shows the teams, and no Tests
   // until an investigation stage is chosen.
-  const strip = page.getByRole('navigation', { name: 'Case sections' })
+  const strip = page.getByRole('navigation', { name: 'Jump to', exact: true })
   await expect(strip.getByRole('link')).toHaveText(['Delay', 'Teams', 'Times', 'Updates', 'Resolve'])
 
   // The sections that only appear for the reasons behind them: a transfer reason (Referral out),
@@ -191,6 +215,14 @@ test('on a worked case every recorded time shows its whole value, and the strip 
     // Not sticky: after the jump to Resolve it has gone off the top with the header.
     expect((await strip.boundingBox())!.y).toBeLessThan(0)
   }
+
+  // The case page's three selects, each named by its label alone (three reasons, so the primary
+  // one is asked for).
+  for (const label of ['Shift', 'Primary reason (the biggest contributor)', 'Final disposition']) {
+    await expectNamedByItsLabel(page, label)
+  }
+  await page.getByLabel('Shift', { exact: true }).selectOption('EVENING')
+  await expect(page.getByRole('combobox', { name: 'Shift', exact: true })).toHaveValue('EVENING')
 })
 
 /**
@@ -236,4 +268,32 @@ test('a new case opens from the bar at the foot of the screen', async ({ page },
   await open.click()
   await expect(page).toHaveURL(CASE_URL)
   await expect(page.getByRole('heading', { name: `Case ${mrn}` })).toBeVisible()
+})
+
+/**
+ * The administrator's screens: the export's Format and Status, the Lists "Stage", the new user's
+ * Role and the audit log's three filters are named by their labels like the case page's selects
+ * (finding 4).
+ */
+test('the export and admin screens name every select by its label', async ({ page }, testInfo) => {
+  const mobile = testInfo.project.name === 'mobile'
+  await fromClientIp(page, mobile ? '198.51.100.235' : '198.51.100.236')
+  await signIn(page, E2E_USERS.admin)
+
+  await page.goto('/export')
+  await expect(page.getByRole('heading', { name: 'Export and print' })).toBeVisible()
+  await expectNamedByItsLabel(page, 'Format')
+  await expectNamedByItsLabel(page, 'Status')
+
+  await page.goto('/admin/lists')
+  await expect(page.getByRole('heading', { name: 'Reasons', exact: true })).toBeVisible()
+  await expectNamedByItsLabel(page, 'Stage')
+
+  await page.goto('/admin/users')
+  await expect(page.getByRole('heading', { name: 'Add a user' })).toBeVisible()
+  await expectNamedByItsLabel(page, 'Role')
+
+  await page.goto('/admin/audit')
+  await expect(page.locator('[data-audit-total]')).toBeVisible()
+  for (const label of ['Action', 'Entity', 'Actor']) await expectNamedByItsLabel(page, label)
 })

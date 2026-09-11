@@ -45,9 +45,14 @@ export default async function AdminAuditPage({
   return (
     <div>
       <form method="get" className="mb-2.5 grid gap-x-3 rounded-card border border-line bg-panel p-4 sm:grid-cols-5">
-        <label className="mb-3.5 block">
-          <span className="mb-1 block text-label font-medium text-muted">Action</span>
-          <select name="action" defaultValue={filters.action ?? ''} className={FIELD}>
+        {/* The three selects are named by a `<label for>`, not a label wrapped round them: a
+            wrapping label's text is its caption followed by every option (Phase 11, finding 4).
+            One audit form per page, so plain ids. */}
+        <div className="mb-3.5 block">
+          <label htmlFor="audit-action" className="mb-1 block text-label font-medium text-muted">
+            Action
+          </label>
+          <select id="audit-action" name="action" defaultValue={filters.action ?? ''} className={FIELD}>
             <option value="">Any action</option>
             {page.actions.map((a) => (
               <option key={a} value={a}>
@@ -55,10 +60,12 @@ export default async function AdminAuditPage({
               </option>
             ))}
           </select>
-        </label>
-        <label className="mb-3.5 block">
-          <span className="mb-1 block text-label font-medium text-muted">Entity</span>
-          <select name="entity" defaultValue={filters.entity ?? ''} className={FIELD}>
+        </div>
+        <div className="mb-3.5 block">
+          <label htmlFor="audit-entity" className="mb-1 block text-label font-medium text-muted">
+            Entity
+          </label>
+          <select id="audit-entity" name="entity" defaultValue={filters.entity ?? ''} className={FIELD}>
             <option value="">Any entity</option>
             {page.entities.map((e) => (
               <option key={e} value={e}>
@@ -66,10 +73,12 @@ export default async function AdminAuditPage({
               </option>
             ))}
           </select>
-        </label>
-        <label className="mb-3.5 block">
-          <span className="mb-1 block text-label font-medium text-muted">Actor</span>
-          <select name="actor" defaultValue={filters.actorId ?? ''} className={FIELD}>
+        </div>
+        <div className="mb-3.5 block">
+          <label htmlFor="audit-actor" className="mb-1 block text-label font-medium text-muted">
+            Actor
+          </label>
+          <select id="audit-actor" name="actor" defaultValue={filters.actorId ?? ''} className={FIELD}>
             <option value="">Anyone</option>
             {page.actors.map((a) => (
               <option key={a.id} value={a.id}>
@@ -77,7 +86,7 @@ export default async function AdminAuditPage({
               </option>
             ))}
           </select>
-        </label>
+        </div>
         <label className="mb-3.5 block">
           <span className="mb-1 block text-label font-medium text-muted">From</span>
           <input type="date" name="from" defaultValue={filters.from ?? ''} className={FIELD} />
