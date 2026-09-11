@@ -5,8 +5,12 @@
  * `@media print` hides the search box, the filter chips, the tab bar, the FAB and the coloured
  * screen rows, and shows this instead. Same rows, same order, same clock — a plain table with
  * hairlines, 11 px, no colour to run out of a ward printer's toner.
+ *
+ * Phase 12 put the mark on the title line: a sheet pinned to a noticeboard now says which app it
+ * came from. It is the one piece of colour on the page, and it is 20 px of it.
  */
 import { Fragment } from 'react'
+import { Mark } from '@/src/components/brand/Mark'
 import {
   elapsedOf,
   identityChips,
@@ -103,7 +107,18 @@ export function HandoverSheet({
 }) {
   return (
     <section className="print-only">
-      <h2 className="text-[13px] font-bold">
+      {/* Phase 12: the mark on the title line, `onWhite` — a teal tile with a white cross, the
+          tone that reads on a ward printer's white paper, drawn as an SVG `rect` fill rather than
+          a CSS background so it survives a browser that drops background graphics.
+
+          Inside the `<h2>` rather than in a wrapper around it: the sheet's narrowing line is read
+          as `h2 + p + [data-sheet-narrowed]` (tests/e2e/board.spec.ts), so the heading has to stay
+          the stamp's own previous sibling. The mark is `aria-hidden`, so the heading's text and
+          its accessible name are the line the sheet has always printed. */}
+      <h2 className="flex items-center gap-1.5 text-[13px] font-bold">
+        <span data-handover-mark className="inline-flex shrink-0">
+          <Mark size={20} tone="onWhite" />
+        </span>
         Qatif Central Hospital, Emergency Department. ER Navigator handover
       </h2>
       {/* The stamp's bottom margin moves under the narrowing line when there is one, so a sheet of
