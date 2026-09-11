@@ -277,9 +277,9 @@ test('a new case opens from the bar at the foot of the screen', async ({ page },
  *
  * The administrator's screens: the export's Format and Status, the Lists "Stage", the new user's
  * Role and the audit log's three filters are named by their labels like the case page's selects
- * (finding 4).
+ * (finding 4); and on a phone nothing floats over them and the Users list fits (finding 6).
  */
-test('the way to the account says so, and the export and admin screens name every select by its label', async ({ page }, testInfo) => {
+test('the way to the account says so, the admin screens fit a phone, and every select is named by its label', async ({ page }, testInfo) => {
   const mobile = testInfo.project.name === 'mobile'
   await fromClientIp(page, mobile ? '198.51.100.235' : '198.51.100.236')
   await signIn(page, E2E_USERS.admin)
@@ -324,4 +324,38 @@ test('the way to the account says so, and the export and admin screens name ever
   await expect(page.locator('[data-audit-total]')).toBeVisible()
   for (const label of ['Action', 'Entity', 'Actor']) await expectNamedByItsLabel(page, label)
 
+  // Finding 6. The floating "+ New case" sat over the account form and the admin screens on a
+  // phone; it is not drawn there now. The laptop's rail keeps its own, which floats over nothing.
+  const newCase = page.getByRole('link', { name: '+ New case' })
+  for (const path of ['/account', '/admin', '/admin/users', '/admin/lists', '/admin/other', '/admin/alerts', '/admin/audit']) {
+    await page.goto(path)
+    await expect(page.getByRole('heading', { level: 2 }).first()).toBeVisible()
+    await expect(newCase, path).toHaveCount(mobile ? 0 : 1)
+  }
+  await page.goto('/')
+  await expect(newCase).toBeVisible()
+
+  // And the Users table ran off a phone's right edge, the role, active and reset controls out of
+  // reach. Below md each account is a card with every one of them on screen, under the same names.
+  await page.goto('/admin/users')
+  const username = E2E_USERS.navigator.username
+  const account = page.locator(`[data-user="${username}"]`)
+  await expect(account).toContainText(E2E_USERS.navigator.displayName)
+  await expect(account.locator('[data-active="yes"]')).toBeVisible()
+  const width = page.viewportSize()!.width
+  for (const control of [
+    account.getByRole('textbox', { name: `Email for ${username}`, exact: true }),
+    account.getByRole('button', { name: `Save the email for ${username}`, exact: true }),
+    account.getByRole('combobox', { name: `Role for ${username}`, exact: true }),
+    account.getByRole('button', { name: 'Deactivate', exact: true }),
+    account.getByRole('button', { name: 'Reset password', exact: true }),
+  ]) {
+    await expect(control).toBeVisible()
+    const box = (await control.boundingBox())!
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width).toBeLessThanOrEqual(width)
+  }
+  const emailHeader = page.getByRole('columnheader', { name: 'Email', exact: true })
+  if (mobile) await expect(emailHeader).toBeHidden()
+  else await expect(emailHeader).toBeVisible()
 })
