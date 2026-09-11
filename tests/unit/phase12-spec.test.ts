@@ -58,4 +58,18 @@ describe('item 1: the instance banner', () => {
     // the pair the rest of the app uses (BAND_PILL.h4).
     expect(contrast('#ffffff', tokens[token]!)).toBeGreaterThanOrEqual(4.5)
   })
+
+  it('carries print-color-adjust on the element it says prints', () => {
+    const banner = item(1)
+    // The banner is coloured text on a coloured ground and the spec requires it to print. The CSS
+    // default is `print-color-adjust: economy`, so the background is dropped and the light text
+    // is kept: white on white paper. app/globals.css has no global rule (its @media print block
+    // sets `html, body { background: #fff }`), and every surface in this app that must keep a
+    // colour on paper opts in per element — AdaaBullets, ArrivalTable, BarList, StaySplit.
+    expect(banner).toMatch(/print-color-adjust:exact/)
+    // And the sample markup, not only the prose, so the builder copies it.
+    const markup = banner.match(/<div data-instance-banner[^\n]*/)
+    expect(markup, 'the banner markup sample is gone').not.toBeNull()
+    expect(markup![0]).toContain('print-color-adjust:exact')
+  })
 })

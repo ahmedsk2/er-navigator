@@ -125,7 +125,7 @@ export function instanceBannerText(label: string): string   // `${label}: invent
 Returns `null` when `instanceLabel()` is `null`. Otherwise renders exactly one element:
 
 ```html
-<div data-instance-banner="DEMO" class="…">DEMO: invented patients only</div>
+<div data-instance-banner="DEMO" class="… bg-band-h4-ink text-white [print-color-adjust:exact]">DEMO: invented patients only</div>
 ```
 
 - **Not a heading and not a landmark.** `tests/e2e/auth.spec.ts:148` asserts
@@ -137,7 +137,17 @@ Returns `null` when `instanceLabel()` is `null`. Otherwise renders exactly one e
   Phase 11 sticky case-page strip, the tab bar and the FAB, all of which the existing suite
   measures by geometry. In flow costs one banner height at the top of every page and nothing else.
 - **Prints.** No `no-print` class: a demo handover sheet or report that comes off the printer
-  says DEMO on it. This is half of what D6 asked for.
+  says DEMO on it. This is half of what D6 asked for. Printing coloured text on a coloured ground
+  takes one more class: **`[print-color-adjust:exact]` on the banner element**. The CSS default is
+  `print-color-adjust: economy`, so a browser drops the background and keeps the light text —
+  white on white paper, a printed demo sheet indistinguishable from a real one, which is the exact
+  accident the banner exists to prevent. `app/globals.css` has no global rule (its `@media print`
+  block sets `html, body { background: #fff }` and the comment above it says the coloured screen
+  rows are deliberately dropped), so the opt-in is per element, as it already is on
+  `AdaaBullets.tsx:31`, `ArrivalTable.tsx:47`, `BarList.tsx:46` and `StaySplit.tsx:33`. Phase 12
+  item 1's own predecessor made the same call for the same reason: `e525bc0` used an SVG `rect`
+  fill for the mark "so the tile prints in a browser that drops background graphics". (Added in
+  the Phase 12 review round.)
 - **Colours are tokens only.** Use the existing amber pair `bg-band-h4-ink` with `text-white` —
   the same pair `BAND_PILL.h4` uses (`src/components/bands.ts:38`), for the same reason.
   `--color-band-h4-ink` is `#8a5e0e`, 5.69:1 against white; `--color-band-h4` is `#b8790f`, only
@@ -214,6 +224,10 @@ fails before the component exists:
 4. There is no control that removes it: `banner.locator('button')` has count 0, and after
    `page.reload()` it is still there.
 5. `<meta name="robots" content="noindex, nofollow">` is present on `/login` and on `/`.
+6. It survives the printer: after `page.emulateMedia({ media: 'print' })` on `/` the banner is
+   still visible and `await expect(banner).toHaveCSS('print-color-adjust', 'exact')` — the
+   assertion that a browser dropping background graphics still gets the amber ground rather than
+   white text on white paper. Added in the Phase 12 review round.
 
 Run it by hand and in the Phase 12 gate, not in CI (it costs a second server); the runbook's
 demo section says how.
