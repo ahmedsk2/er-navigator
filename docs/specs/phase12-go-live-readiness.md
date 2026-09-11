@@ -522,10 +522,14 @@ carries it. `src/lib/auth/__tests__/route-gate.test.ts` gains an assertion that 
 session module agree on the header name, in the same spirit as the cookie-name assertion it
 already makes.
 
-The rule, in `requireUser`, after a session is resolved and only when `opts.as !== 'api'`:
+The rule, in `requireUser`, after a session is resolved. A page is redirected; an API caller is
+refused, because a `fetch` cannot use a 307 to HTML — but it is refused, not waved through:
 
 ```
-if (user.mustChangePassword && pathname !== '/account') redirect('/account')
+if (user.mustChangePassword) {
+  if (opts.as === 'api') throw new UnauthorizedError()
+  if (pathname !== '/account') redirect('/account')
+}
 ```
 
 - **Exactly one exempt path, `/account`.** Nothing else. `/login` never calls `requireUser`.
@@ -536,9 +540,22 @@ if (user.mustChangePassword && pathname !== '/account') redirect('/account')
   the URL of the page it was invoked from, so `x-pathname` is that page: an admin who must change
   their password cannot create a user, and a navigator cannot save a case. The two actions that
   call `requireUser()` are `app/(app)/admin/actions.ts:41` and `app/cases/actions.ts:32`.
-- **API routes are not redirected** (`{ as: 'api' }` skips the check). They are reads behind a
-  page that has already redirected, and answering a `fetch` with a 307 to HTML is the thing
-  `requireUser` was built to avoid.
+- **API routes are not redirected, they are refused.** `{ as: 'api' }` throws `UnauthorizedError`,
+  which all four route handlers already map to a 401 with `cache-control: no-store`
+  (`app/api/board/route.ts:21`, `app/api/cases/[id]/summary/route.ts:28`,
+  `app/api/export/count/route.ts:20`, `app/api/export.xlsx/route.ts:18`), so no handler changes.
+  Answering a `fetch` with a 307 to HTML is the thing `requireUser` was built to avoid — but
+  skipping the check is not the alternative. (Corrected in the Phase 12 review round. The first
+  draft exempted every `{ as: 'api' }` caller on the ground that they are "reads behind a page
+  that has already redirected". Three of the four are: `Board.tsx`, `RowSummaryButton.tsx` and
+  `ExportPanel.tsx`'s count poll all use `fetch`. **`/api/export.xlsx` is not** — `ExportPanel.tsx:177`
+  links it as a bare `<a href … data-download>`, a real top-level navigation that is bookmarkable
+  and in browser history, and `parseExportRange` defaults every missing parameter, so even a bare
+  `/api/export.xlsx` returns a seven-day workbook of MRNs. `proxy.ts` lets through anything
+  carrying the session cookie, so nothing upstream catches it. A SUPERVISOR, ADMIN or VIEWER still
+  on the temporary password an Admin read out across the ward desk could not open `/export` but
+  could keep pulling the workbook by URL for ever — the exact indefinitely-shared credential this
+  item exists to end.)
 - **Missing header** (nothing but a direct unit call can produce that) is treated as "not
   `/account`", so the rule fails closed.
 
@@ -584,6 +601,12 @@ life:
    `[data-must-change]` is gone, and `/` now renders the board with its `ER board` heading.
 7. `e2e_admin` presses Reset password on that user; the user's next sign-in lands on `/account`
    again.
+8. **The API is refused too, not only the pages.** While the flag is still set, that user's
+   context requests `/api/export.xlsx?from=…&to=…&status=all&format=qch` and a bare
+   `/api/export.xlsx`, and both answer 401 with no workbook body; `/api/board` answers 401.
+   Failing assertion to start from: `expect(response.status()).toBe(401)` — today, and under the
+   first draft of this item, it is 200 with the whole MRN workbook. Added in the Phase 12 review
+   round; use a SUPERVISOR-role account, since `export.xlsx` is a SUPERVISOR/ADMIN/VIEWER action.
 
 **Regression:** the existing suite must stay green unchanged, because every fixture account has
 the column defaulted to `false`.

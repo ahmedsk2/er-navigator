@@ -73,3 +73,17 @@ describe('item 1: the instance banner', () => {
     expect(markup![0]).toContain('print-color-adjust:exact')
   })
 })
+
+describe('item 5: must change the first password', () => {
+  it('fails an API caller closed instead of exempting it', () => {
+    const rule = item(5)
+    // The first draft skipped the check for every `{ as: 'api' }` caller, on the stated ground
+    // that they are "reads behind a page that has already redirected". Three of the four are
+    // fetches; /api/export.xlsx is a plain <a href> (ExportPanel.tsx:177) — a bookmarkable
+    // top-level navigation that returns the whole MRN workbook, and parseExportRange defaults
+    // every missing parameter, so even a bare URL yields one. proxy.ts passes anything carrying
+    // the session cookie, so nothing upstream catches it either.
+    expect(rule).toContain('/api/export.xlsx')
+    expect(rule, 'an api caller must be refused, not skipped').toContain('UnauthorizedError')
+  })
+})
