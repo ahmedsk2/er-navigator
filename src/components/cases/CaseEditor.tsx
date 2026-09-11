@@ -128,6 +128,30 @@ const BLANK_INVESTIGATION = {
   resultedAt: null,
 } as const
 
+/** The sections the case page's strip jumps to (Phase 11). One editor per page, so plain ids. */
+const JUMP = {
+  delay: 'case-delay',
+  teams: 'case-teams',
+  tests: 'case-tests',
+  times: 'case-times',
+  updates: 'case-updates',
+  resolve: 'case-resolve',
+} as const
+
+/**
+ * A jump, not a navigation. The chip is a link to `#id`, so it reads as one and still works
+ * before hydration; a click scrolls and focuses here instead, because a hash link pushes a
+ * history entry for every jump and the phone's Back would then walk back through the sections
+ * instead of returning to the board.
+ */
+function jumpTo(event: React.MouseEvent<HTMLAnchorElement>, id: string): void {
+  const target = document.getElementById(id)
+  if (!target) return
+  event.preventDefault()
+  target.scrollIntoView({ block: 'start' })
+  target.focus({ preventScroll: true })
+}
+
 export type CaseEditorProps = {
   reference: ReferenceData
   initial: CaseDraft
@@ -558,6 +582,21 @@ export function CaseEditor(props: CaseEditorProps) {
 
   const disabled = readOnly || busy
 
+  /**
+   * The strip's chips (Phase 11, finding 2): a worked case is seven phone screens long, and the
+   * Updates box — what a navigator does most — and Resolve are at the bottom of it. One chip per
+   * section a nurse goes looking for, in page order; Teams and Tests only while their sections
+   * are on the page. "Times" is the journey times, the one section of times every case has.
+   */
+  const jumps: ReadonlyArray<{ id: string; label: string }> = [
+    { id: JUMP.delay, label: 'Delay' },
+    ...(showDepartments ? [{ id: JUMP.teams, label: 'Teams' }] : []),
+    ...(showInvestigations ? [{ id: JUMP.tests, label: 'Tests' }] : []),
+    { id: JUMP.times, label: 'Times' },
+    { id: JUMP.updates, label: 'Updates' },
+    { id: JUMP.resolve, label: 'Resolve' },
+  ]
+
   return (
     // A <main> landmark: /cases/* sits outside the (app) shell, which has its own, and a page
     // with none is what Lighthouse flagged on the case editor (Phase 7).
@@ -585,6 +624,33 @@ export function CaseEditor(props: CaseEditorProps) {
           <span aria-hidden="true">{fmtHours(elapsed)}</span>
         </div>
       </div>
+
+      {/* Phase 11: the jump strip, under the header, which keeps its place. It sticks to the top
+          of the screen below `lg`; on a laptop the page is one column in a wide screen, so the
+          strip stays where it is and scrolls away with the header. A new case has no Updates or
+          Resolve to jump to and gets none. */}
+      {isNew ? null : (
+        <nav
+          aria-label="Case sections"
+          className="no-print sticky top-0 z-10 mb-2.5 border-b border-line bg-bg px-4 py-1.5 lg:static lg:border-b-0 lg:py-0"
+        >
+          {/* Six equal chips across a 390 px screen, so each label gets its whole width: no
+              side padding to speak of, and a 4 px gap. */}
+          <ul className="flex gap-1 lg:gap-1.5">
+            {jumps.map((jump) => (
+              <li key={jump.id} className="min-w-0 flex-1 lg:flex-none">
+                <a
+                  href={`#${jump.id}`}
+                  onClick={(event) => jumpTo(event, jump.id)}
+                  className="flex min-h-11 items-center justify-center rounded-chip border border-line bg-panel px-0.5 text-label font-semibold text-ink-2 hover:bg-accent-soft lg:px-3.5"
+                >
+                  {jump.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
 
       {alert ? (
         <div
@@ -740,7 +806,7 @@ export function CaseEditor(props: CaseEditorProps) {
       </Section>
 
       {/* 3. Where is the delay */}
-      <Section title="Where is the delay?" icon={<TriangleAlert size={18} />}>
+      <Section id={JUMP.delay} title="Where is the delay?" icon={<TriangleAlert size={18} />}>
         <p className="mb-2.5 text-caption text-muted">
           Tap every stage that applies, then the reasons under each. If you pick more than one reason, choose the
           primary one below.
@@ -819,7 +885,7 @@ export function CaseEditor(props: CaseEditorProps) {
 
       {/* 4. Department / consulted team */}
       {showDepartments ? (
-        <Section title="Department / consulted team involved" icon={<Users size={18} />}>
+        <Section id={JUMP.teams} title="Department / consulted team involved" icon={<Users size={18} />}>
           <Chips
             groupLabel="Departments"
             options={reference.departments.map((d) => d.id)}
@@ -845,7 +911,7 @@ export function CaseEditor(props: CaseEditorProps) {
 
       {/* 5. Investigation times */}
       {showInvestigations ? (
-        <Section title="Investigation times" icon={<Activity size={18} />}>
+        <Section id={JUMP.tests} title="Investigation times" icon={<Activity size={18} />}>
           <Chips
             groupLabel="Investigation types"
             options={INVESTIGATION_TYPES}
@@ -985,7 +1051,7 @@ export function CaseEditor(props: CaseEditorProps) {
       ) : null}
 
       {/* 8. Journey times */}
-      <Section>
+      <Section id={JUMP.times}>
         <Button className="w-full text-left" onClick={() => setShowJourney(!showJourney)}>
           {showJourney ? 'Hide' : 'Add'} journey times (optional)
         </Button>
@@ -1017,7 +1083,7 @@ export function CaseEditor(props: CaseEditorProps) {
 
       {/* 9. Updates */}
       {!isNew ? (
-        <Section title="Updates" icon={<History size={18} />}>
+        <Section id={JUMP.updates} title="Updates" icon={<History size={18} />}>
           {updates.length === 0 ? (
             <p className="mb-2 text-caption text-muted">No updates yet. Add one when something changes.</p>
           ) : null}
@@ -1093,7 +1159,11 @@ export function CaseEditor(props: CaseEditorProps) {
 
       {/* 10. Resolve */}
       {!isNew ? (
-        <Section title={status === 'RESOLVED' ? 'Resolved' : 'Resolve case'} icon={<Check size={18} />}>
+        <Section
+          id={JUMP.resolve}
+          title={status === 'RESOLVED' ? 'Resolved' : 'Resolve case'}
+          icon={<Check size={18} />}
+        >
           <Field label="Final disposition">
             <Select
               disabled={disabled}

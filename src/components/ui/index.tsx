@@ -26,6 +26,11 @@ export const UNREACHABLE_MESSAGE =
  * sections became cards: an editor that is fourteen strips between hairlines reads as one form,
  * and the nurse's question is which block she is in. `icon` goes inside the heading and is
  * `aria-hidden`, so every section title is still selected by its exact name.
+ *
+ * An `id` makes the section a place the case page's strip jumps to (Phase 11): focusable from a
+ * script, so the keyboard lands where the eye does, but never a Tab stop; and a top scroll margin
+ * the height of the strip and a little more, so a jump stops below the strip rather than under it.
+ * From `lg` the strip does not stick, and the margin is only breathing room.
  */
 export function Section({
   title,
@@ -43,9 +48,10 @@ export function Section({
   return (
     <section
       id={id}
+      tabIndex={id ? -1 : undefined}
       className={`mx-4 mb-2.5 rounded-card border bg-panel p-4 shadow-card ${
         tone === 'warn' ? 'border-band-h4 border-l-4 border-l-band-h4' : 'border-line'
-      }`}
+      } ${id ? 'scroll-mt-18 focus:outline-none lg:scroll-mt-4' : ''}`}
     >
       {title ? (
         <h2 className={`mb-2.5 flex items-center gap-2 text-section ${tone === 'warn' ? 'text-band-h4-ink' : ''}`}>

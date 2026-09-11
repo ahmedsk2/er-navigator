@@ -75,18 +75,38 @@ async function clippedTimes(page: Page): Promise<{ checked: number; clipped: str
   }
 }
 
+/** The section a strip chip jumps to, found by what a nurse reads at its top. */
+function sectionOf(page: Page, chip: string) {
+  const top: Record<string, ReturnType<Page['getByRole']>> = {
+    Delay: page.getByRole('heading', { name: 'Where is the delay?', exact: true }),
+    Teams: page.getByRole('heading', { name: 'Department / consulted team involved', exact: true }),
+    Tests: page.getByRole('heading', { name: 'Investigation times', exact: true }),
+    Times: page.getByRole('button', { name: /journey times \(optional\)$/ }),
+    Updates: page.getByRole('heading', { name: 'Updates', exact: true }),
+    Resolve: page.getByRole('heading', { name: 'Resolve case', exact: true }),
+  }
+  return page.locator('section').filter({ has: top[chip]! })
+}
+
 /**
- * Finding 1. Every time on the case page is a `TimeRow`, and at 390 px its 178 px box cut the day
- * off the value ("0/2026 10:44 PM"). The case below carries every kind the page has — journey,
- * consult, investigation, admission, transfer, pain and case management — each filled, saved and
- * read back from a fresh load, which is the page a nurse opens.
+ * Findings 1 and 2. Every time on the case page is a `TimeRow`, and at 390 px its 178 px box cut
+ * the day off the value ("0/2026 10:44 PM"). The case below carries every kind the page has —
+ * journey, consult, investigation, admission, transfer, pain and case management — each filled,
+ * saved and read back from a fresh load, which is the page a nurse opens. The same case is seven
+ * phone screens long, so the strip under the header jumps to its sections, and a jump stops below
+ * the strip rather than under it.
  */
-test('on a worked case every recorded time shows its whole value', async ({ page }, testInfo) => {
+test('on a worked case every recorded time shows its whole value, and the strip jumps below itself', async ({ page }, testInfo) => {
   const mobile = testInfo.project.name === 'mobile'
   await fromClientIp(page, mobile ? '198.51.100.231' : '198.51.100.232')
   const taps = await signIn(page, E2E_USERS.navigator)
   const mrn = uniqueMrn()
   const url = await openCase(page, mrn, 'Admission process', 'No bed available on accepting ward', taps)
+
+  // A chip per section, in page order; Teams because an admission shows the teams, and no Tests
+  // until an investigation stage is chosen.
+  const strip = page.getByRole('navigation', { name: 'Case sections' })
+  await expect(strip.getByRole('link')).toHaveText(['Delay', 'Teams', 'Times', 'Updates', 'Resolve'])
 
   // The sections that only appear for the reasons behind them: a transfer reason (Referral out),
   // an imaging delay (Investigation times), a consulted team, a painkiller, a case manager.
@@ -138,4 +158,37 @@ test('on a worked case every recorded time shows its whole value', async ({ page
   // Every filled row above, the registration, "Left ED" and "Left ED at": nothing was skipped.
   expect(checked).toBeGreaterThanOrEqual(times.length + 3)
   expect(clipped).toEqual([])
+
+  // The strip, now with Tests. The header above it has not moved.
+  const chips = ['Delay', 'Teams', 'Tests', 'Times', 'Updates', 'Resolve']
+  await expect(strip.getByRole('link')).toHaveText(chips)
+  const back = await page.getByRole('link', { name: '‹ Back' }).boundingBox()
+  const stripAtRest = await strip.boundingBox()
+  expect(back!.y).toBeLessThan(stripAtRest!.y)
+
+  const viewport = page.viewportSize()!
+  for (const chip of chips) {
+    await strip.getByRole('link', { name: chip, exact: true }).click()
+    const section = sectionOf(page, chip)
+    // The keyboard lands where the eye does, and a jump is not a history entry: Back still means
+    // the board, not the section before.
+    await expect(section).toBeFocused()
+    await expect(page).toHaveURL(url)
+    const box = (await section.boundingBox())!
+    const bar = (await strip.boundingBox())!
+    if (mobile) {
+      // On a phone the strip is stuck to the top of the screen, and the section starts below it.
+      expect(Math.abs(bar.y)).toBeLessThan(1)
+      expect(box.y).toBeGreaterThanOrEqual(bar.y + bar.height)
+    } else {
+      // On a laptop the strip stays where it is and scrolls away with the header; the section is
+      // brought to the top of the screen.
+      expect(box.y).toBeGreaterThanOrEqual(0)
+    }
+    expect(box.y).toBeLessThan(viewport.height / 2)
+  }
+  if (!mobile) {
+    // Not sticky: after the jump to Resolve it has gone off the top with the header.
+    expect((await strip.boundingBox())!.y).toBeLessThan(0)
+  }
 })
