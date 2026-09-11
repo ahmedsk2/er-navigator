@@ -93,6 +93,9 @@ services:
       DATABASE_URL: postgresql://${APP_DB_USER:-ernav_app}:${APP_DB_PASSWORD}@db:5432/${POSTGRES_DB:-ernav}?schema=public
       APP_URL: ${APP_URL:-https://nav.towardpcc.com}
       REPORT_HEADER: ${REPORT_HEADER:-Qatif Central Hospital, Emergency Department. ER Navigator}
+      # Phase 12 (D6): set on the demo instance only. Unset here, so nothing renders and
+      # production is byte-identical to before. Not on the worker: it renders nothing.
+      INSTANCE_LABEL: ${INSTANCE_LABEL:-}
       TZ: UTC
       # Outgoing mail for threshold alerts (Phase 6). Empty host = alerts logged, not sent.
       SMTP_HOST: ${SMTP_HOST:-}
