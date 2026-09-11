@@ -19,7 +19,7 @@ FROM deps AS build
 SHELL ["/bin/ash", "-o", "pipefail", "-c"]
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1 NEXT_OUTPUT_STANDALONE=1
-RUN pnpm exec prisma generate && pnpm exec next build && pnpm run build:worker
+RUN pnpm exec prisma generate && pnpm exec next build && pnpm run build:worker && pnpm run build:demo-seed
 
 # ---- migrate: one-shot container applying migrations, role sync and seed as the OWNER ----
 # A separate target so the owner connection string is never part of the app image's command.
@@ -48,6 +48,10 @@ COPY --from=build --chown=app:app /repo/.next/static ./.next/static
 COPY --from=build --chown=app:app /repo/public ./public
 # The `worker` service in docker-compose.production.yml runs this same image as `node worker.js`.
 COPY --from=build --chown=app:app /repo/dist/worker.js ./worker.js
+# The demo seed (Phase 12 item 3): never run by a service, only by `docker exec ... node
+# demo-seed.js` on a demo instance. It refuses unless INSTANCE_LABEL is set, so carrying it in the
+# production image costs one file and can do nothing there.
+COPY --from=build --chown=app:app /repo/dist/demo-seed.js ./demo-seed.js
 USER 100
 EXPOSE 3000
 ENV PORT=3000 HOSTNAME=0.0.0.0

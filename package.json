@@ -12,6 +12,7 @@
     "prebuild": "prisma generate",
     "build": "next build",
     "build:worker": "esbuild worker/alerts.ts --bundle --platform=node --target=node24 --format=cjs --outfile=dist/worker.js --log-level=warning",
+    "build:demo-seed": "esbuild scripts/demo-seed.ts --bundle --platform=node --target=node24 --format=cjs --outfile=dist/demo-seed.js --log-level=warning",
     "start": "next start",
     "worker": "tsx worker/alerts.ts",
     "pretypecheck": "prisma generate",

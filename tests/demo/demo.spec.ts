@@ -36,6 +36,12 @@ const TEAM: Staff[] = [
 ]
 const staff = (username: string): Staff => TEAM.find((s) => s.username === username)!
 
+/**
+ * Phase 12 item 3 (D4): the kit's five MRNs moved onto the demo prefix — six 9s and an ordinal —
+ * so nothing this script types could be mistaken for a hospital record number. They were five
+ * consecutive plausible 7-digit numbers, which is exactly the shape the real sheets use.
+ */
+
 // ---------------------------------------------------------------------------------------------
 // The log: every step with the actions it took and how long it took, for the UX review.
 
@@ -191,7 +197,7 @@ type Patient = {
 
 const PATIENTS: Patient[] = [
   {
-    mrn: '5100231',
+    mrn: '99999941',
     by: 'nadia',
     story: 'CTAS 2 chest pain, NSTEMI; waits for a CCU bed',
     regH: 10,
@@ -229,7 +235,7 @@ const PATIENTS: Patient[] = [
     resolve: { dispo: 'ADMITTED', label: 'Admitted', ward: /^CCU$/, family: 'Yes', leftH: 0.5, note: 'To CCU bed 4' },
   },
   {
-    mrn: '5100232',
+    mrn: '99999942',
     by: 'nadia',
     story: 'CTAS 3 right iliac fossa pain; ultrasound report and surgical review',
     regH: 8,
@@ -271,7 +277,7 @@ const PATIENTS: Patient[] = [
     resolve: { dispo: 'DISCHARGED_HOME', label: 'Discharged home', instructions: 'Yes', family: 'Yes', leftH: 1, note: 'Not appendicitis; GP follow-up in 48 h' },
   },
   {
-    mrn: '5100233',
+    mrn: '99999943',
     by: 'nadia',
     story: 'CTAS 4 wrist fracture needing a hand surgeon; transferred out via RCC',
     regH: 14,
@@ -313,7 +319,7 @@ const PATIENTS: Patient[] = [
     resolve: { dispo: 'TRANSFERRED', label: 'Transferred to another facility', family: 'Yes', leftH: 2.5, note: 'Left by RCC ambulance' },
   },
   {
-    mrn: '5100234',
+    mrn: '99999944',
     by: 'omar',
     story: 'CTAS 3 fever and confusion, 81 years; over 24 h waiting for a medical bed',
     regH: 27,
@@ -366,7 +372,7 @@ const PATIENTS: Patient[] = [
     resolve: { dispo: 'ADMITTED', label: 'Admitted', ward: /^MMW$|Male Medical/, family: 'Yes', leftH: 0.3, note: 'To male medical bed 12' },
   },
   {
-    mrn: '5100235',
+    mrn: '99999945',
     by: 'omar',
     story: 'CTAS 5 hand laceration; slow registration and triage; referred to urgent care',
     regH: 5,
