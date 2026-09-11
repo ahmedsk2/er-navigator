@@ -388,6 +388,16 @@ test('the report prints the hospital header, the range and the threshold table',
  * a download or a print, so "who opened a page of MRNs, over what range" lived only in a
  * container log line. Both viewports: the supervisor prints from the phone as readily as from the
  * laptop, and the row must be there either way.
+ *
+ * IT LOOKS FOR ITS OWN ROW, not the newest one (Phase 12 review round, finding 7). The first
+ * version read `[data-audit-row="report.print"]`.first() on `/admin/audit?action=report.print`,
+ * which is the globally newest row of that action from anything running in parallel — and
+ * `tests/e2e/instance-banner.spec.ts` opens `/report` as the same supervisor, so whichever of the
+ * two files got there last decided whether this one passed. It failed about one run in three.
+ * The audit view already filters by actor and by date (`audit-view.ts`), so the query is narrowed
+ * to this supervisor and today, and the row is then picked out by the thing that makes it this
+ * test's own: the fixture window's start date, which is four weeks back and belongs to no other
+ * spec's range.
  */
 test('a download and a print each leave an audit row an admin can find', async ({ browser }, testInfo) => {
   const mobile = testInfo.project.name === 'mobile'
@@ -408,6 +418,15 @@ test('a download and a print each leave an audit row an admin can find', async (
   expect(download.status()).toBe(200)
   await theirs.close()
 
+  // Who wrote the two rows, and the day they were written on. `dateRangeWhere` reads whole UTC
+  // calendar days, and the upper edge is tomorrow so a run that crosses midnight still finds them.
+  const actor = await prisma.user.findUniqueOrThrow({
+    where: { username: E2E_USERS.supervisor.username },
+    select: { id: true },
+  })
+  const utcDay = (at: number): string => new Date(at).toISOString().slice(0, 10)
+  const scope = `actor=${actor.id}&from=${utcDay(Date.now())}&to=${utcDay(Date.now() + 24 * 60 * 60 * 1000)}`
+
   const admin = await browser.newPage()
   await fromClientIp(admin, mobile ? '198.51.100.167' : '198.51.100.168')
   await signIn(admin, E2E_USERS.admin)
@@ -416,18 +435,21 @@ test('a download and a print each leave an audit row an admin can find', async (
     ['report.print', 'Report'],
     ['export.xlsx', 'Export'],
   ] as const) {
-    await admin.goto(`/admin/audit?action=${action}`)
-    const rows = admin.locator(`[data-audit-row="${action}"]`)
-    expect(await rows.count()).toBeGreaterThan(0)
+    await admin.goto(`/admin/audit?action=${action}&${scope}`)
+    // The range is on the record, and no MRN is: the whole row is digits-and-dashes dates. It is
+    // also what identifies the row, so it is the filter rather than an assertion after one.
+    const rows = admin.locator(`[data-audit-row="${action}"]`).filter({ hasText: window.from })
+    expect(await rows.count(), `no ${action} row for ${window.from}`).toBeGreaterThan(0)
     await expect(rows.first()).toContainText(entity)
     await expect(rows.first()).toContainText(E2E_USERS.supervisor.displayName)
-    // The range is on the record, and no MRN is: the whole row is digits-and-dashes dates.
-    await expect(rows.first()).toContainText(window.from)
   }
 
   // The print row names the filter in words, which is what makes "over what population" readable
-  // a year later without the code.
-  await admin.goto('/admin/audit?action=report.print')
-  await expect(admin.locator('[data-audit-row="report.print"]').first()).toContainText('Insured')
+  // a year later without the code — and the payer is the other half of what makes it this test's
+  // row, so it is matched on rather than asserted about whatever came back first.
+  await admin.goto(`/admin/audit?action=report.print&${scope}`)
+  await expect(
+    admin.locator('[data-audit-row="report.print"]').filter({ hasText: window.from }).filter({ hasText: 'Insured' }),
+  ).not.toHaveCount(0)
   await admin.close()
 })

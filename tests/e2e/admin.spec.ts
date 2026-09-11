@@ -237,6 +237,26 @@ test('a supervisor acknowledges from the case editor, and a navigator is never o
   expect(stored.acknowledgedAt).not.toBeNull()
 })
 
+/**
+ * Phase 12 item 6 (C1) asks for this at both viewports, and the acknowledge journey above is
+ * desktop-only because administration is done on a laptop. The one assertion the item is actually
+ * about is cheap on a phone as well, so it gets its own test (Phase 12 review round, finding 7):
+ * a send that failed says how many times instead of the bare "–", which used to be
+ * indistinguishable from "this threshold is not due an email at all". Read-only, so it cannot
+ * race the acknowledgement the test above performs on the same row.
+ */
+test('a failed alert email says so on both shapes', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.113')
+  await signIn(page, E2E_USERS.admin)
+
+  await page.goto('/admin/alerts')
+  const alert = await prisma.alert.findFirstOrThrow({
+    where: { case: { mrn: ALERT_MRN }, thresholdHours: ALERT_THRESHOLD_HOURS },
+    select: { id: true },
+  })
+  await expect(page.locator(`[data-alert="${alert.id}"]`)).toContainText('Failed ×2')
+})
+
 test('the audit log lists what the admin did, filtered', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', DESKTOP_ONLY)
   await fromClientIp(page, '198.51.100.108')
