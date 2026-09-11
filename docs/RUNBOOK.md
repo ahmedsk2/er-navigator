@@ -4,6 +4,8 @@ Live: https://nav.towardpcc.com. Everything here was created or verified on 2026
 
 The host also runs other live clinical applications. Every command below is scoped to this app's containers and its own volume. Never touch another project's containers, databases or the shared proxy config.
 
+Since 11 September 2026 the host also runs a second copy of *this* application, the demo instance at https://demo-nav.towardpcc.com (Coolify project `demo`, application uuid `iks3t780ppakzvl1nbnvzvfe`). Unless a command below says otherwise it means **production**, uuid `jqcjqhmcmizxs1u51wnqlfwv`: check the uuid in every `docker ps | grep` before acting. The demo has its own section ("Demo instance").
+
 ## The pieces
 
 | Piece | Value |
@@ -386,10 +388,9 @@ be permanent). The same script produced the before-and-after screens of the Phas
 
 ## Demo instance (Phase 12)
 
-**Written 11 September 2026 from `docs/specs/phase12-go-live-readiness.md`, before the instance
-exists. Slice 12B corrects this section with the real uuids and record ids once it is provisioned;
-until then, read it as the specification of what is to be built, not as a description of what is
-running.**
+**Provisioned 11 September 2026 (Slice 12B). This section now describes what is running, not what
+is to be built.** Live at https://demo-nav.towardpcc.com. Ahmed authorised the subdomain on
+11 September 2026.
 
 A second, hosted copy of the same application, for putting the app in staff hands without any risk
 to production. Ahmed chose a hosted copy over a local one so fifteen people can use their own
@@ -397,28 +398,57 @@ phones.
 
 | Setting | Value |
 | --- | --- |
-| Coolify project | a new project `demo`, not `clinical` |
-| Application | `er-navigator-demo` |
-| Repository | the same one, `git@github.com:ahmedsk2/er-navigator.git`, branch `main`, with the same read-only private key `er-navigator-deploy` (`l48u5xcuzddx3vr1hb4zsqlb`) |
+| Coolify project | `demo` (`qs1gv7av4arpnftiayhmnrvh`), **not** `clinical`; environment `production` (`qe118emrzgtyxc3g9c0lepa8`) |
+| Application | `er-navigator-demo`, uuid **`iks3t780ppakzvl1nbnvzvfe`** |
+| Server / destination | the same as production: `gf89e6ajq551aw64ti3h5v8j` / `wtf1jvh8r3h60jl1qu6mhzwp` |
+| Repository | the same one, `git@github.com:ahmedsk2/er-navigator.git`, branch `main`, with the same read-only private key `er-navigator-deploy` (`l48u5xcuzddx3vr1hb4zsqlb`, Coolify `private_key_id` 7) |
 | Build | the same, `dockercompose`, `/docker-compose.production.yml`, base directory `/` |
-| Domain | `https://demo-nav.towardpcc.com`, bound as `docker_compose_domains` with the `app` service on port 3000 |
-| DNS | Cloudflare A record for `demo-nav.towardpcc.com` to the host, **proxied**, like every other subdomain here. Grey cloud takes it offline and breaks certificate renewal |
+| Domain | `docker_compose_domains = {"app":{"domain":"https://demo-nav.towardpcc.com:3000"}}` |
+| DNS | Cloudflare A `demo-nav.towardpcc.com` → `145.241.105.239`, **proxied**, TTL auto, record id **`541ec8b3797e4dc1fac94dc6873614d3`** in zone `91d9abd839af2cfff133f91de8f5cf61`. Grey cloud takes it offline and breaks certificate renewal |
+| TLS | Let's Encrypt via Traefik, issued on the first deploy without a wait |
+| Containers | `db-iks3t780ppakzvl1nbnvzvfe-*`, `migrate-…` (one-shot, exits 0), `app-…` (:3000), `worker-…`; volume **`iks3t780ppakzvl1nbnvzvfe_ernav-db`** |
 | Database | its own `db` container and its own volume inside its own compose project. Nothing is shared with production: not the volume, not the network, not one secret value |
+| First deploy | 11 September 2026, deployment `mxfh1eoyi8owjtpq6ir6s8c3`, about 3.5 minutes, build fingerprint `03e3b57d858972d2` — byte-identical to production, the same commit |
+
+**Two Coolify API notes, measured on 11 September 2026 while creating this application.** First:
+`PATCH /applications/{uuid}` with `docker_compose_domains` fails the first time on a brand-new
+application — `Cannot set docker_compose_domains without docker_compose_raw. Reload the compose
+file from the git repository first.` That first attempt is what makes Coolify read the compose file
+out of git; **repeat the identical PATCH and it succeeds**. Do not try to work round it by PATCHing
+`docker_compose_raw`: the API answers `This field is not allowed.` Second: creating the application
+leaves an `fqdn` of `http://<uuid>.145.241.105.239.sslip.io`, and the API refuses to clear it
+(`The domains field cannot be used for dockercompose applications`). It is inert: the only Traefik
+routers on the app container match the host `demo-nav.towardpcc.com`, checked on the container's
+labels after the deploy, and production's `fqdn` is `null` only because it predates that default.
 
 **Nothing is shared with production.** Every key is copied by *name* from the production
 environment table above, and every secret gets a **new random value** (`openssl rand -hex 24` on
 the host), set in both the production and the preview copy. No production password is reused.
+Checked on provisioning by comparing `sha256` of each secret across the two applications, never by
+printing one: `POSTGRES_PASSWORD`, `APP_DB_PASSWORD` and `ADMIN_PASSWORD` all differ.
 
-**What is set there**
+**The exact twenty keys set there** (each written twice, `is_preview` false and true, through
+`PATCH /applications/iks3t780ppakzvl1nbnvzvfe/envs/bulk`):
 
-| Key | Value |
-| --- | --- |
-| `APP_URL` | `https://demo-nav.towardpcc.com` |
-| `INSTANCE_LABEL` | `DEMO`. Every page then carries the undismissable banner `DEMO: invented patients only`, on screen and on paper, and the demo tooling and the demo seed will refuse to run without it |
-| `LOGIN_RATE_LIMIT_PER_MINUTE` | `60`. Fifteen staff behind one hospital NAT address would otherwise hit the production limit of 5 per minute per IP and the sixth person would be turned away |
-| `REPORT_HEADER` | `DEMO. Qatif Central Hospital, Emergency Department. ER Navigator` |
-| `ADMIN_USERNAME`, `ADMIN_DISPLAY_NAME`, `ADMIN_PASSWORD` | the seeded first admin, with a **random** password |
-| `DEMO_USER_PASSWORD` | random, the one shared password for the four demo staff accounts |
+| Key | Value | Where it comes from |
+| --- | --- | --- |
+| `POSTGRES_DB`, `POSTGRES_USER`, `APP_DB_USER` | `ernav`, `ernav_owner`, `ernav_app` | copied from production. The privileges migration names these roles, so they must not drift |
+| `ADMIN_USERNAME`, `ADMIN_DISPLAY_NAME` | the same as production | copied from production |
+| `ALERT_INTERVAL_MINUTES` | `5` | copied from production |
+| `POSTGRES_PASSWORD`, `APP_DB_PASSWORD`, `ADMIN_PASSWORD` | 48 alphanumeric characters each | **fresh** `openssl rand -hex 24` on the host |
+| `DEMO_USER_PASSWORD` | 24 alphanumeric characters | **fresh** `openssl rand -hex 12`; above the app's `NEW_PASSWORD_MIN` of 12. The one shared password for the four demo staff accounts |
+| `APP_URL` | `https://demo-nav.towardpcc.com` | demo-specific. Also the demo seed's real barrier (below) |
+| `INSTANCE_LABEL` | `DEMO` | demo-specific. Every page then carries the undismissable banner `DEMO: invented patients only`, on screen and on paper, and the demo tooling and the demo seed will refuse to run without it |
+| `LOGIN_RATE_LIMIT_PER_MINUTE` | `60` | demo-specific. Fifteen staff behind one hospital NAT address would otherwise hit the production limit of 5 per minute per IP and the sixth person would be turned away |
+| `REPORT_HEADER` | `DEMO. Qatif Central Hospital, Emergency Department. ER Navigator` | demo-specific |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `ALERT_PUSH_URL` | empty strings | deliberately blank (next paragraph) |
+
+**Five keys that production still carries were deliberately not copied**, because no code reads
+them and the environment table above already records them as removed on 2026-09-09: `AUTH_SECRET`,
+`AUTH_TRUST_HOST`, `APP_TIMEZONE`, `LOG_LEVEL`, and `ALERT_EMAIL_MAP` (which Phase 7 says to delete
+from production too). `ALERT_HEARTBEAT_FILE` is unset here exactly as it is unset in production.
+`SERVICE_FQDN_APP` and `SERVICE_URL_APP` are Coolify's own, generated from the domain binding on
+the first deploy; they are not set by hand.
 
 Ahmed reads the demo admin password and `DEMO_USER_PASSWORD` off the demo application's Coolify
 environment page himself. Neither is ever printed into a session, a log or this repository.
@@ -440,13 +470,21 @@ the demo application's Coolify environment page into shell variables and **never
 neither value has to live in the container's own environment.
 
 ```bash
-APPC=$(sudo docker ps --format '{{.Names}}' | grep '^app-<demo-app-uuid>')
+APPC=$(sudo docker ps --format '{{.Names}}' | grep '^app-iks3t780ppakzvl1nbnvzvfe')
 sudo docker exec \
   -e DATABASE_URL="$OWNER_URL" \
   -e INSTANCE_LABEL=DEMO \
   -e DEMO_USER_PASSWORD="$DEMO_PW" \
   "$APPC" node demo-seed.js
 ```
+
+`OWNER_URL` is `postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/$POSTGRES_DB?schema=public`,
+built from the three values read out of `GET /applications/iks3t780ppakzvl1nbnvzvfe/envs` (the
+`is_preview: false` copies) into shell variables. The host is literally `db`: `docker exec` runs
+inside the demo's own compose network.
+
+Run on provisioning day, 11 September 2026: `[demo-seed] users 4 (4 created), cases 10 (10 created)`,
+then a second run in the same minute: `[demo-seed] users 4 (0 created), cases 10 (0 created)`.
 
 **`APP_URL` is deliberately not on that exec line.** The container already carries it (it is on the
 entrypoint allowlist and set per application in Coolify), and the seed reads it from the
@@ -471,26 +509,96 @@ here — the label arrives on the exec line, and `DATABASE_URL`'s host is `db` o
 5. the database already holds a case opened by anyone who is not a demo user;
 6. the database already holds a case whose MRN is not a `999999…` demo MRN.
 
-**Reset it between sessions.** Re-running the seed adds nothing, so a reset means clearing first.
-Either redeploy the application with a fresh volume (delete the demo application's volume in
-Coolify, then Deploy: `migrate` recreates the schema and seeds the reference lists, then run the
-command above), or drop and recreate the demo database as its owner in the demo `db` container and
-redeploy. Never point a reset at production: the seed's own guards are the backstop, not the plan.
+**What it left behind, counted in the demo `db` container on 11 September 2026** (`psql` as the
+owner, credentials taken from the container's own environment, never typed):
 
-**Delete it** when the demos are over, in this order: the Coolify application `er-navigator-demo`
-with its volumes box **ticked** (which removes the demo database volume), then the Coolify project
-`demo` if nothing else is in it, then the Cloudflare A record for `demo-nav.towardpcc.com`. Nothing
-in production references any of it.
+- users 6: the four demo accounts (2 active NAVIGATOR, 1 SUPERVISOR, 1 VIEWER), the `ADMIN` from
+  `ADMIN_USERNAME`, and the inactive `system` NAVIGATOR the ordinary seed creates. The seed's own
+  line says "users 4" because it counts only its four;
+- cases 10: 6 `OPEN`, 4 `RESOLVED`; 14 `CaseUpdate` rows;
+- MRNs: 10 of 10 begin `999999`, none does not, every one 8 digits long;
+- cases opened by someone who is not a demo user: 0;
+- reference lists, from the ordinary seed: 10 stages, 48 reasons, 16 departments, 8 wards, 6 areas;
+  10 migrations applied; `has_table_privilege('ernav_app','"AuditLog"','DELETE')` is `f`, as on
+  production.
+
+**Reset it between sessions.** Re-running the seed adds nothing, so a reset means clearing first.
+Two ways, both scoped to this application by its own uuid:
+
+```bash
+# A. Drop and recreate the demo database in the demo db container, then reseed.
+DB=$(sudo docker ps --format '{{.Names}}' | grep '^db-iks3t780ppakzvl1nbnvzvfe')   # never production's
+sudo docker exec "$DB" sh -c 'psql -U "$POSTGRES_USER" -d postgres -c "DROP DATABASE \"$POSTGRES_DB\" WITH (FORCE)"'
+sudo docker exec "$DB" sh -c 'psql -U "$POSTGRES_USER" -d postgres -c "CREATE DATABASE \"$POSTGRES_DB\" OWNER \"$POSTGRES_USER\""'
+# then redeploy so `migrate` rebuilds the schema, re-applies the app role and seeds the lists:
+T=$(cat ~/.coolify-token); curl -s -X POST -H "Authorization: Bearer $T" \
+  "http://localhost:8000/api/v1/deploy?uuid=iks3t780ppakzvl1nbnvzvfe&force=false"
+# then run the demo seed command above again.
+
+# B. Delete the volume instead: Coolify → demo → er-navigator-demo → Storages →
+#    iks3t780ppakzvl1nbnvzvfe_ernav-db → delete, then Deploy, then reseed.
+```
+
+Method A leaves the app role's password as it is; method B recreates the cluster from the init
+script. Never point a reset at production: the seed's own guards are the backstop, not the plan,
+and the container names above are what actually keep the two apart.
+
+**Delete it** when the demos are over, in this order:
+
+1. Coolify → `demo` → `er-navigator-demo` → Delete, with the **volumes box ticked** (removes
+   `iks3t780ppakzvl1nbnvzvfe_ernav-db`), or
+   `DELETE /api/v1/applications/iks3t780ppakzvl1nbnvzvfe?delete_volumes=true` with the token;
+2. the Coolify project `demo` (`qs1gv7av4arpnftiayhmnrvh`) if nothing else is in it;
+3. the Cloudflare A record: `DELETE /zones/91d9abd839af2cfff133f91de8f5cf61/dns_records/541ec8b3797e4dc1fac94dc6873614d3`
+   with the DNS-edit token from `secrets.env`.
+
+Nothing in production references any of it. Do not touch application
+`jqcjqhmcmizxs1u51wnqlfwv` or volume `jqcjqhmcmizxs1u51wnqlfwv_ernav-db` at any step.
 
 **`scripts/backup.sh` does not back the demo up, and that is intended.** It selects the database
 container by production's application uuid (`APP_UUID` defaults to `jqcjqhmcmizxs1u51wnqlfwv`), so
 it never sees the demo's. Everything in the demo database is invented and is meant to be
 disposable.
 
-**On the day of a demo** (readiness audit C11): turn **auto-deploy off** on the demo application,
-and push nothing to `main` from the start of the session until it ends. A push redeploys both
-applications, and a compose deploy is stop-then-start: about a minute of 404 in the middle of a
-room full of people trying the app, or longer if a migration fails.
+**The demo does not auto-deploy, corrected 11 September 2026 after provisioning it.** This
+paragraph used to say a push redeploys both applications and that auto-deploy should be switched
+off before a demo. It does not. The repository has exactly one GitHub webhook (id `676338800`, to
+`https://deploy.towardpcc.com/webhooks/source/github/events/manual`), signed with **production's**
+`manual_webhook_secret_github`; Coolify's handler loops over the applications on that repository
+and skips every one whose own secret does not `hash_equals` the signature
+(`app/Http/Controllers/Webhook/Github.php:98,111`). The demo's secret is a different one and no
+second webhook points at it, so a push to `main` deploys production only. **The demo is deployed by
+hand**, which is also what keeps it on a known build during a session:
+
+```bash
+T=$(cat ~/.coolify-token); curl -s -X POST -H "Authorization: Bearer $T" \
+  "http://localhost:8000/api/v1/deploy?uuid=iks3t780ppakzvl1nbnvzvfe&force=false"
+```
+
+So on the day of a demo (readiness audit C11) there is nothing to switch off on the demo side;
+just do not deploy it by hand mid-session. A compose deploy is stop-then-start: about a minute of
+404 in the middle of a room full of people trying the app, or longer if a migration fails. Pushing
+to `main` during a session still costs **production** that minute, which is the ordinary rule.
+
+**What was verified on provisioning day, 11 September 2026**
+
+- `https://demo-nav.towardpcc.com/api/ready` → 200 `{"status":"ready"}`;
+- `/api/health` carries `x-build-fingerprint: 03e3b57d858972d2`, the same commit as production;
+- `/login` carries `data-instance-banner="DEMO"`, the text `DEMO: invented patients only` and
+  `<meta name="robots" content="noindex, nofollow">`;
+- the six security headers are byte-identical to production's once the CSP nonce is normalised;
+- the `worker` start line reads `email: 'log only (SMTP_HOST empty)'` and
+  `pushMonitor: 'none (ALERT_PUSH_URL empty)'`;
+- the running `app` process carries none of `POSTGRES_PASSWORD`, `ADMIN_PASSWORD`,
+  `DEMO_USER_PASSWORD` (`/proc/1/environ`, count 0), and its `APP_URL` is the demo's;
+- production's fingerprint, its four container names and the sha256 of its sorted environment key
+  list (`eb4caf8a90cd200e7e480815ee08e19bc5f566a9536fdc730ee906852684d6c9`, 26 keys) were recorded
+  before and after and are identical.
+
+**Not done, deliberately**: no Uptime Kuma monitor (a demo that is switched off must not page
+anyone) and no backup (see the paragraph above). **Left to Ahmed**: the first sign-in. Login is a
+Next.js Server Action, so it is not scriptable with `curl` the way a form POST would be, and a
+browser sign-in was out of scope for the provisioning session.
 
 ## Security headers
 
