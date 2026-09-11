@@ -29,9 +29,10 @@ test('phase 4 gate screenshots', async ({ page }, testInfo) => {
 
   await page.goto('/dashboard')
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
-  // The charts are client components: wait for both to have drawn before the shutter.
+  // The trend chart is a client component: wait for it to have drawn before the shutter. The bar
+  // sections have been server-rendered HTML since Phase 11, so they are there with the page.
   await expect(page.locator('[data-chart-panel="cases"] svg[role="application"]')).toBeVisible()
-  await expect(page.locator('[data-chart="hbar"] svg[role="application"]').first()).toBeVisible()
+  await expect(page.locator('[data-chart="hbar"] [data-bar]').first()).toBeVisible()
   // Phase 8 added two: the stay bands at the top and the outcome mix that replaced "Final
   // disposition". Six horizontal-bar charts, in the order the page lists them.
   await expect(page.locator('[data-chart="hbar"]')).toHaveCount(6)

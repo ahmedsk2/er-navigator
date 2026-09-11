@@ -306,6 +306,79 @@ describe('Phase 10 drill-downs', () => {
 })
 
 /**
+ * Phase 11: a day of the "By day" chart and a cell of the arrivals table. The ids are the lists
+ * `aggregates.test.ts` hand-computes from the fixture's Riyadh registration times: Mon 7 Sep is
+ * C4, C5 and C12 (09:00, 14:00 and 19:00), and C4 is the only Monday arrival between 12:00 and
+ * 15:00.
+ */
+describe('Phase 11 drill-downs', () => {
+  it('resolves a day by its Riyadh date, named the way its bar is', () => {
+    expect(resolveDrill(data, { section: 'day', name: '2026-09-07' })).toEqual({
+      key: { section: 'day', name: '2026-09-07' },
+      label: 'Registered on Mon 07/09',
+      ids: ['C4', 'C5', 'C12'],
+    })
+    expect(resolveDrill(data, { section: 'day', name: '2026-08-29' })?.ids).toEqual(['C8'])
+  })
+
+  it('falls back from a day with no case, a day outside the range and a date that is not one', () => {
+    // Wed 2 Sep is a bar of height zero: nothing links to it, so nothing resolves to it.
+    expect(data.days.find((d) => d.date === '2026-09-02')?.cases).toBe(0)
+    expect(resolveDrill(data, { section: 'day', name: '2026-09-02' })).toBeNull()
+    // C9's day is forty days back, before this thirty-day window opens.
+    expect(resolveDrill(data, { section: 'day', name: '2026-07-30' })).toBeNull()
+    expect(resolveDrill(dashboard(FIXTURE, 'all', NOW), { section: 'day', name: '2026-07-30' })?.ids).toEqual(['C9'])
+    for (const name of ['yesterday', '07/09', '2026-9-7']) expect(resolveDrill(data, { section: 'day', name }), name).toBeNull()
+  })
+
+  it('resolves an arrival cell by weekday and block, split on the pipe like the other grids', () => {
+    expect(resolveDrill(data, { section: 'arrival', name: gridKey('Mon', '12–15') })).toEqual({
+      key: { section: 'arrival', name: 'Mon|12–15' },
+      label: 'Arrivals on Mondays, 12:00 to 15:00',
+      ids: ['C4'],
+    })
+    expect(resolveDrill(data, { section: 'arrival', name: gridKey('Sat', '15–18') })?.ids).toEqual(['C8'])
+    expect(resolveDrill(data, { section: 'arrival', name: gridKey('Tue', '00–03') })?.label).toBe(
+      'Arrivals on Tuesdays, 00:00 to 03:00',
+    )
+  })
+
+  it('falls back from an empty cell and from a key that names no cell', () => {
+    expect(resolveDrill(data, { section: 'arrival', name: gridKey('Wed', '12–15') })).toBeNull()
+    for (const name of ['Mon', 'Mon|', 'Mon|12-15', 'Mon|25–28', 'Monday|12–15', '|12–15']) {
+      expect(resolveDrill(data, { section: 'arrival', name }), name).toBeNull()
+    }
+  })
+
+  it('round-trips both keys and carries the filter to them like every other section', () => {
+    expect(DRILL_SECTIONS).toContain('day')
+    expect(DRILL_SECTIONS).toContain('arrival')
+    expect(parseDrill(drillKey('day', '2026-09-07'))).toEqual({ section: 'day', name: '2026-09-07' })
+    expect(parseDrill(drillKey('arrival', gridKey('Mon', '12–15')))).toEqual({ section: 'arrival', name: 'Mon|12–15' })
+    const filter = { ...EMPTY_FILTER, payer: ['INSURED' as const] }
+    expect(dashboardHref('7', drillKey('day', '2026-09-07'), filter)).toBe(
+      '/dashboard?r=7&drill=day%3A2026-09-07&payer=INSURED',
+    )
+    const href = dashboardHref('30', drillKey('arrival', gridKey('Mon', '12–15')), filter)
+    const params = new URL(href, 'http://dashboard.invalid').searchParams
+    expect(params.get('drill')).toBe('arrival:Mon|12–15')
+    expect(params.getAll('payer')).toEqual(['INSURED'])
+    expect(parseDrill(params.get('drill'))).toEqual({ section: 'arrival', name: 'Mon|12–15' })
+  })
+
+  it('resolves inside the filtered population, because the page filters before it aggregates', () => {
+    // The same Monday under a filter that keeps only the resolved cases: C4 is still open.
+    const resolvedOnly = dashboard(
+      FIXTURE.filter((c) => c.status === 'RESOLVED'),
+      '30',
+      NOW,
+    )
+    expect(resolveDrill(resolvedOnly, { section: 'day', name: '2026-09-07' })?.ids).toEqual(['C5', 'C12'])
+    expect(resolveDrill(resolvedOnly, { section: 'arrival', name: gridKey('Mon', '12–15') })).toBeNull()
+  })
+})
+
+/**
  * The phase rows' ids. The dashboard fixture records no physician or decision time and no stage
  * code, so every phase resolution above hands back an empty list and would still pass with its
  * id lists swapped. These five cases are the kpi.test.ts phase fixture (a–e) on this file's

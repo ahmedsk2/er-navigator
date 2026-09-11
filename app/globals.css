@@ -134,4 +134,10 @@ body { background: var(--color-bg); color: var(--color-ink); font-family: var(--
   .dash section { break-inside: avoid; border-width: 1px 0; border-radius: 0; margin-inline: 0; }
   .dash .shadow-panel { box-shadow: none; }
   .dash .shadow-card { box-shadow: none; }
+  /*
+    Phase 11: on a laptop the dashboard pairs its short sections two to a row and splits its wide
+    ones into columns. A sheet is one column whatever the window was, for the reason `.shell-grid`
+    gives above: these are `lg:` grids, so the rule that undoes them is a named class out here.
+  */
+  .dash-pairs, .dash-split { display: block; }
 }

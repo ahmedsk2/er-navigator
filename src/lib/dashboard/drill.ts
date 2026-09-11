@@ -37,10 +37,15 @@ export const RANGE_LABELS: Record<Range, string> = {
  * `band`, the three pethidine doses under `dose`) and `communication` (decision D's two discharge
  * answers). The three new documentation rows need no section of their own: they are `completeness`
  * rows, and `quality` already resolves the whole list by name.
+ *
+ * Phase 11 added `day` (a bar of "By day", keyed by its Riyadh date: `day:2026-09-08`) and
+ * `arrival` (a cell of the arrivals table, a grid like the three above: `arrival:Mon|12–15`).
  */
 export const DRILL_SECTIONS = [
   'threshold',
   'week',
+  'day',
+  'arrival',
   'primary',
   'stage',
   'dept',
@@ -123,6 +128,8 @@ type NamedRows = ReadonlyArray<{ name: string; ids: string[] }>
 type DashboardData = {
   thresholds: ReadonlyArray<{ threshold: number; allIds: string[] }>
   weeks: ReadonlyArray<{ weekStart: string; ids: string[] }>
+  days: ReadonlyArray<{ date: string; name: string; weekday: string; ids: string[] }>
+  arrivals: { rows: ReadonlyArray<{ weekday: string; cells: ReadonlyArray<{ block: string; ids: string[] }> }> }
   byPrimary: NamedRows
   byStage: NamedRows
   byDept: NamedRows
@@ -156,6 +163,22 @@ type DashboardData = {
 /** "ICU-type" and "Ward" as the admission-to-unit section titles them. */
 export const UNIT_LABELS: Record<string, string> = { ICU: 'ICU-type unit', Ward: 'Ward' }
 
+/** The arrivals table's row names in full, for its links and its drill-down headings. */
+export const WEEKDAY_NAMES: Record<string, string> = {
+  Sun: 'Sunday',
+  Mon: 'Monday',
+  Tue: 'Tuesday',
+  Wed: 'Wednesday',
+  Thu: 'Thursday',
+  Fri: 'Friday',
+  Sat: 'Saturday',
+}
+
+/** "12–15" as the hours it means, "12:00 to 15:00". */
+export function blockHours(block: string): string {
+  return `${block.slice(0, 2)}:00 to ${block.slice(3, 5)}:00`
+}
+
 /**
  * Resolve a key against this render's aggregates. A key whose section is known but whose row is
  * not in range any more (a team with no consults in the last 7 days) resolves to null and falls
@@ -178,6 +201,20 @@ export function resolveDrill(data: DashboardData, key: DrillKey): Drill | null {
     case 'week': {
       const row = data.weeks.find((r) => r.weekStart === key.name)
       return row ? { key, label: `Week of ${row.weekStart}`, ids: row.ids } : null
+    }
+    // The day list and the arrivals grid keep their empty rows (a quiet day is a gap on the chart),
+    // so "the row exists" says nothing here: only a row with a case behind it resolves, which is
+    // every row the page links to.
+    case 'day': {
+      const row = data.days.find((r) => r.date === key.name)
+      return row && row.ids.length > 0 ? { key, label: `Registered on ${row.weekday} ${row.name}`, ids: row.ids } : null
+    }
+    case 'arrival': {
+      const [weekday, block] = splitGrid(key.name)
+      const cell = data.arrivals.rows.find((r) => r.weekday === weekday)?.cells.find((c) => c.block === block)
+      return cell && cell.ids.length > 0
+        ? { key, label: `Arrivals on ${WEEKDAY_NAMES[weekday]}s, ${blockHours(block)}`, ids: cell.ids }
+        : null
     }
     case 'primary':
       return named(data.byPrimary)

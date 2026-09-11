@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   BELOW_MIN_N,
   BENCHMARK_TEXT,
+  adaaBullets,
   adaaRows,
+  heatLegend,
+  heatStep,
   fmtMinutes,
   fmtShare,
   fmtSignedHours,
@@ -205,5 +208,181 @@ describe('adaaRows', () => {
 
   it('shows n<3 with no benchmark colour where nothing could be measured', () => {
     expect(adaaRows(blank).every((r) => r.value === 'n<3' && r.band === null)).toBe(true)
+    expect(adaaRows(blank).every((r) => r.raw === null)).toBe(true)
+  })
+
+  it('carries the unformatted value beside the formatted one', () => {
+    const rows = adaaRows({ ...blank, kpi1N: 8, kpi1Med: 29.6, treatedN: 8, withinFourShare: 0.8 })
+    expect(rows.find((r) => r.kpi === 'kpi1')).toMatchObject({ value: '30 min', raw: 29.6 })
+    expect(rows.find((r) => r.kpi === 'kpi5')).toMatchObject({ value: '80%', raw: 0.8 })
+  })
+})
+
+/**
+ * Phase 11: the Adaa panel's bullet charts. What is tested is the geometry — the four tiers to
+ * scale, left to right best first, and where the marker lands — because that is the part a
+ * component cannot be trusted to get right by eye. Positions are fractions of the track.
+ */
+describe('adaaBullets', () => {
+  const blankRow: AdaaSummaryRow = {
+    ctas: 'overall',
+    total: 0,
+    ids: [],
+    kpi1TotalMin: null,
+    kpi1N: 0,
+    kpi1Med: null,
+    kpi2TotalMin: null,
+    kpi2N: 0,
+    kpi2Med: null,
+    kpi3TotalMin: null,
+    kpi3N: 0,
+    kpi3Med: null,
+    treated: [0, 0, 0, 0, 0, 0, 0],
+    treatedN: 0,
+    withinFourShare: null,
+    damaShare: null,
+    resolvedN: 0,
+    nonUrgentShare: null,
+    withCtasN: 0,
+    deceasedShare: null,
+    deceasedN: 0,
+    uccN: 0,
+    kpi8TotalMin: null,
+    kpi8N: 0,
+    kpi8Med: null,
+    painkiller: [0, 0, 0, 0],
+    pethidine: [0, 0, 0],
+    painkillerYesN: 0,
+    pethidineYesN: 0,
+    sickleCellYesN: 0,
+  }
+  const tiers = (b: { tiers: ReadonlyArray<{ tier: string; from: number; to: number }> }) =>
+    b.tiers.map((t) => [t.tier, +t.from.toFixed(4), +t.to.toFixed(4)])
+
+  it('is one bullet per KPI with a benchmark, in the table order: 1, 2, 3, 5, 8, 4', () => {
+    expect(adaaBullets(blankRow).map((b) => b.kpi)).toEqual(['kpi1', 'kpi2', 'kpi3', 'kpi5', 'kpi8', 'kpi4'])
+  })
+
+  it('draws the track and no marker below three cases, with n<3 for the value', () => {
+    for (const b of adaaBullets(blankRow)) {
+      expect(b.marker, b.kpi).toBeNull()
+      expect(b.value, b.kpi).toBe('n<3')
+      expect(b.band, b.kpi).toBeNull()
+      expect(b.tiers.map((t) => t.tier), b.kpi).toEqual(['world', 'acceptable', 'improve', 'unacceptable'])
+    }
+  })
+
+  it('draws a minutes KPI to scale, running half as far again past the last boundary', () => {
+    // KPI 1: under 10 min, to 20, to 40, then more; nothing measured, so the track ends at 60.
+    const kpi1 = adaaBullets(blankRow).find((b) => b.kpi === 'kpi1')!
+    expect(tiers(kpi1)).toEqual([
+      ['world', 0, 0.1667],
+      ['acceptable', 0.1667, 0.3333],
+      ['improve', 0.3333, 0.6667],
+      ['unacceptable', 0.6667, 1],
+    ])
+    // A median of 30 min sits halfway along, inside "needs improvement".
+    const at30 = adaaBullets({ ...blankRow, kpi1N: 5, kpi1Med: 30 }).find((b) => b.kpi === 'kpi1')!
+    expect(at30.marker).toBe(0.5)
+    expect(at30.band).toBe('improve')
+  })
+
+  it('stretches the track to reach a value past its end, so the marker is where the value is', () => {
+    // KPI 3 in the demo: 390 min against boundaries of 30, 90 and 130. The track ends 10 % past
+    // the value, at 429 min, and the tiers shrink to keep their scale.
+    const kpi3 = adaaBullets({ ...blankRow, kpi3N: 5, kpi3Med: 390 }).find((b) => b.kpi === 'kpi3')!
+    expect(tiers(kpi3)).toEqual([
+      ['world', 0, +(30 / 429).toFixed(4)],
+      ['acceptable', +(30 / 429).toFixed(4), +(90 / 429).toFixed(4)],
+      ['improve', +(90 / 429).toFixed(4), +(130 / 429).toFixed(4)],
+      ['unacceptable', +(130 / 429).toFixed(4), 1],
+    ])
+    expect(kpi3.marker).toBeCloseTo(390 / 429, 12)
+    expect(kpi3.band).toBe('unacceptable')
+  })
+
+  it('reads KPI 5 the same way round: 100 % on the left, the best tier first', () => {
+    // Higher is better: over 95 % world class, to 75 % acceptable, to 60 % needs improvement.
+    const kpi5 = adaaBullets({ ...blankRow, treatedN: 5, withinFourShare: 0.8 }).find((b) => b.kpi === 'kpi5')!
+    expect(tiers(kpi5)).toEqual([
+      ['world', 0, 0.05],
+      ['acceptable', 0.05, 0.25],
+      ['improve', 0.25, 0.4],
+      ['unacceptable', 0.4, 1],
+    ])
+    expect(kpi5.marker).toBeCloseTo(0.2, 12)
+    expect(kpi5.band).toBe('acceptable')
+    // None seen within four hours is the far right, the worst end, as on every other track.
+    expect(adaaBullets({ ...blankRow, treatedN: 5, withinFourShare: 0 }).find((b) => b.kpi === 'kpi5')!.marker).toBe(1)
+  })
+
+  it('draws a share KPI that is better low from 0 to 100 %', () => {
+    const kpi4 = adaaBullets({ ...blankRow, withCtasN: 5, nonUrgentShare: 0.4 }).find((b) => b.kpi === 'kpi4')!
+    expect(tiers(kpi4)).toEqual([
+      ['world', 0, 0.33],
+      ['acceptable', 0.33, 0.5],
+      ['improve', 0.5, 0.75],
+      ['unacceptable', 0.75, 1],
+    ])
+    expect(kpi4.marker).toBe(0.4)
+    expect(kpi4.value).toBe('40%')
+  })
+
+  it('keeps every tier inside the track and in order, whatever the value', () => {
+    for (const med of [0, 5, 59, 60, 181, 450, 3000]) {
+      const kpi8 = adaaBullets({ ...blankRow, kpi8N: 4, kpi8Med: med }).find((b) => b.kpi === 'kpi8')!
+      expect(kpi8.tiers[0]!.from).toBe(0)
+      expect(kpi8.tiers[3]!.to).toBe(1)
+      kpi8.tiers.forEach((t, i) => {
+        expect(t.to).toBeGreaterThan(t.from)
+        if (i > 0) expect(t.from).toBe(kpi8.tiers[i - 1]!.to)
+      })
+      expect(kpi8.marker!).toBeGreaterThanOrEqual(0)
+      expect(kpi8.marker!).toBeLessThan(1)
+    }
+  })
+})
+
+/** Phase 11: the arrivals table's fills, four steps against the fullest cell, and their key. */
+describe('heat steps', () => {
+  it('leaves an empty cell plain and steps the rest by quarters of the fullest', () => {
+    expect(heatStep(0, 5)).toBe(0)
+    expect(heatStep(0, 0)).toBe(0)
+    expect([1, 2, 3, 4, 5].map((v) => heatStep(v, 5))).toEqual([1, 2, 3, 4, 4])
+    expect([1, 3, 4, 6, 7, 9, 10, 12].map((v) => heatStep(v, 12))).toEqual([1, 1, 2, 2, 3, 3, 4, 4])
+    // A single case in the fullest cell is the fullest cell.
+    expect(heatStep(1, 1)).toBe(4)
+    expect([1, 2].map((v) => heatStep(v, 2))).toEqual([2, 4])
+  })
+
+  it('keys each step to the counts that reach it, and leaves out the steps no count reaches', () => {
+    expect(heatLegend(12)).toEqual([
+      { step: 1, label: '1–3' },
+      { step: 2, label: '4–6' },
+      { step: 3, label: '7–9' },
+      { step: 4, label: '10–12' },
+    ])
+    expect(heatLegend(5)).toEqual([
+      { step: 1, label: '1' },
+      { step: 2, label: '2' },
+      { step: 3, label: '3' },
+      { step: 4, label: '4–5' },
+    ])
+    expect(heatLegend(2)).toEqual([
+      { step: 2, label: '1' },
+      { step: 4, label: '2' },
+    ])
+    expect(heatLegend(1)).toEqual([{ step: 4, label: '1' }])
+    expect(heatLegend(0)).toEqual([])
+    // The key and the cells agree on every count up to the fullest.
+    for (const max of [1, 2, 3, 5, 7, 12, 31]) {
+      for (let v = 1; v <= max; v += 1) {
+        const step = heatStep(v, max)
+        const entry = heatLegend(max).find((e) => e.step === step)!
+        const [from, to] = entry.label.split('–').map(Number) as [number, number | undefined]
+        expect(v, `${v} of ${max}`).toBeGreaterThanOrEqual(from)
+        expect(v, `${v} of ${max}`).toBeLessThanOrEqual(to ?? from)
+      }
+    }
   })
 })

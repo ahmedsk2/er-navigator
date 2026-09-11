@@ -1096,6 +1096,59 @@ function longestPhase(h: Record<PhaseKey, number>): PhaseKey {
   return best
 }
 
+// --- the stay split by outcome (Phase 11) ------------------------------------------------------
+
+/**
+ * The outcome groups the stay split is drawn for (docs/specs/phase11-demo-ux-dashboard.md, item
+ * 2). Every recorded disposition falls in exactly one: the first three by name, and everything
+ * else — deceased, referred to UCC, left without being seen, other, and any disposition added
+ * later — under "Other outcomes". A resolved case with no disposition is in none of them: it is
+ * in the overall bar, and Documentation already lists it.
+ */
+export const OUTCOME_GROUPS = [
+  { key: 'admitted', name: 'Admitted', dispositions: ['ADMITTED'] },
+  { key: 'discharged', name: 'Discharged (home and DAMA)', dispositions: ['DISCHARGED_HOME', 'DISCHARGED_DAMA'] },
+  { key: 'transferred', name: 'Transferred', dispositions: ['TRANSFERRED'] },
+  { key: 'other', name: 'Other outcomes', dispositions: [] },
+] as const
+export type OutcomeGroupKey = (typeof OUTCOME_GROUPS)[number]['key']
+
+export function outcomeGroupOf(disposition: string | null): OutcomeGroupKey | null {
+  if (!disposition) return null
+  const named = OUTCOME_GROUPS.find((g) => (g.dispositions as ReadonlyArray<string>).includes(disposition))
+  return named ? named.key : 'other'
+}
+
+export type StaySplitRow = { key: 'all' | OutcomeGroupKey; name: string; split: PhaseSplit }
+
+function isComplete(c: KpiCase): boolean {
+  const h = phaseHours(c)
+  return h.front != null && h.decision != null && h.after != null
+}
+
+/**
+ * The stay split: `phaseSplit` over the cases with all three phases measured, for all of them and
+ * then for each outcome group, in a fixed order with the overall row first.
+ *
+ * Only the complete cases go in, so that the share and the median on a bar describe the same
+ * patients. The shares are the ones `phaseSplit` gives over every case anyway; the medians are
+ * not — "Where the time goes" medians each phase over its own measured cases, the open ones
+ * included — which is why the bar says whose they are. Every group is returned, guarded as
+ * `phaseSplit` guards (null below MIN_N complete cases); drawing only the groups with enough is
+ * the section's decision.
+ */
+export function phaseSplitByOutcome(cases: ReadonlyArray<KpiCase>): StaySplitRow[] {
+  const complete = live(cases).filter(isComplete)
+  return [
+    { key: 'all', name: 'All outcomes', split: phaseSplit(complete) },
+    ...OUTCOME_GROUPS.map((g) => ({
+      key: g.key,
+      name: g.name,
+      split: phaseSplit(complete.filter((c) => outcomeGroupOf(c.disposition) === g.key)),
+    })),
+  ]
+}
+
 /** Government · Insured · Self-pay always, in that order, then 'Not recorded' when any case lacks one. */
 export function byPayer(cases: ReadonlyArray<KpiCase>, now: Date): StatRow[] {
   const m = statBy(cases, now, (c) => (c.payer ? PAYER_LABELS[c.payer] : NOT_RECORDED))

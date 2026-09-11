@@ -38,7 +38,7 @@ test('phase 8 gate screenshots', async ({ page }, testInfo) => {
   await expect(page.getByRole('heading', { name: 'Adaa KPIs, tracked cases only' })).toBeVisible()
   // Wait for all three client charts to have drawn before the shutter.
   await expect(page.locator('[data-chart-panel="cases"] svg[role="application"]')).toBeVisible()
-  await expect(page.locator('[data-chart="hbar"] svg[role="application"]').first()).toBeVisible()
+  await expect(page.locator('[data-chart="hbar"] [data-bar]').first()).toBeVisible()
   await expect(page.locator('[data-chart="stacked"] svg[role="application"]')).toBeVisible()
   await shoot(page, 'dashboard', suffix)
 
@@ -64,7 +64,7 @@ test('phase 8 gate screenshots', async ({ page }, testInfo) => {
   const monthAgo = riyadhDateKey(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))
   await page.goto(`/report?from=${monthAgo}&to=${today}&status=all`)
   await expect(page.locator('[data-report-header]')).toBeVisible()
-  await expect(page.locator('[data-chart="hbar"] svg[role="application"]').first()).toBeVisible()
+  await expect(page.locator('[data-chart="hbar"] [data-bar]').first()).toBeVisible()
 
   // The report's own order: the four opening sections come before the threshold table.
   const sections = await page
@@ -100,7 +100,7 @@ test('phase 8b gate screenshots', async ({ page }, testInfo) => {
   await expect(page.locator('[data-pain-block]')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Discharge communication', exact: true })).toBeVisible()
   await expect(page.locator('[data-chart-panel="cases"] svg[role="application"]')).toBeVisible()
-  await expect(page.locator('[data-chart="hbar"] svg[role="application"]').first()).toBeVisible()
+  await expect(page.locator('[data-chart="hbar"] [data-bar]').first()).toBeVisible()
   await expect(page.locator('[data-chart="stacked"] svg[role="application"]')).toBeVisible()
   await shoot(page, 'dashboard', suffix, 'phase8b')
 
@@ -111,7 +111,7 @@ test('phase 8b gate screenshots', async ({ page }, testInfo) => {
   await expect(page.locator('[data-report-header]')).toBeVisible()
   await expect(page.locator('[data-pain-block]')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Discharge communication', exact: true })).toBeVisible()
-  await expect(page.locator('[data-chart="hbar"] svg[role="application"]').first()).toBeVisible()
+  await expect(page.locator('[data-chart="hbar"] [data-bar]').first()).toBeVisible()
   // The seeded Phase 8b case is inside the printed range, which is why those panels have rows.
   await expect(page.locator('[data-report-range]')).toContainText(`${monthAgo} to ${today}`)
 

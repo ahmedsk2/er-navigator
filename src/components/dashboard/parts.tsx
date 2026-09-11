@@ -3,7 +3,7 @@
  * the link list that sits beside every chart.
  *
  * Server components with no state at all — the page must render, and every drill-down must work,
- * with JavaScript off; only the two chart components are clients. That is also why a "tap a row
+ * with JavaScript off; only the two Recharts charts are clients. That is also why a "tap a row
  * to drill" table row is a real `<a>` stretched over the row rather than an onClick handler.
  */
 import Link from 'next/link'
@@ -26,14 +26,17 @@ import { BAND_TEXT } from '@/src/components/bands'
 export function DashSection({
   title,
   icon,
+  className = '',
   children,
 }: {
   title: string
   icon?: ReactNode
+  /** Layout for a wide section's own contents on a laptop (Phase 11); never its look. */
+  className?: string
   children: ReactNode
 }) {
   return (
-    <section className="mx-4 mb-2.5 rounded-card border border-line bg-panel p-4 shadow-card lg:mx-0">
+    <section className={`mx-4 mb-2.5 rounded-card border border-line bg-panel p-4 shadow-card lg:mx-0 ${className}`}>
       <h3 className="mb-2.5 flex items-center gap-2 text-section">
         {icon ? <span className="text-accent">{icon}</span> : null}
         {title}
@@ -53,6 +56,11 @@ export function Footnote({ children }: { children: ReactNode }) {
   return <p className="mt-2 mb-0 text-caption text-muted">{children}</p>
 }
 
+/** The small caption that labels a block inside a section, as the weekly chart's panels do. */
+export function PanelLabel({ children }: { children: ReactNode }) {
+  return <p className="mt-3 mb-1 text-caption text-muted">{children}</p>
+}
+
 /**
  * One headline figure.
  *
@@ -68,6 +76,7 @@ export function Tile({
   note,
   href,
   icon,
+  wide = false,
 }: {
   label: string
   value: string
@@ -75,6 +84,8 @@ export function Tile({
   note?: string | null
   href?: string
   icon?: ReactNode
+  /** Two columns of the tile grid (Phase 11): the Range tile, whose value is two durations. */
+  wide?: boolean
 }) {
   const number = (
     <span
@@ -85,7 +96,10 @@ export function Tile({
     </span>
   )
   return (
-    <div className="min-w-0 flex-1 rounded-card border border-line bg-panel px-3 py-2.5 shadow-card">
+    <div
+      data-tile-card={label}
+      className={`min-w-0 flex-1 rounded-card border border-line bg-panel px-3 py-2.5 shadow-card ${wide ? 'col-span-2' : ''}`}
+    >
       {/* Phase 9: a tinted square before the figure. It names the tile a second time, in a
           channel the eye reaches before it reads — and it is `aria-hidden`, so the tile still
           announces exactly its number and its label. */}
@@ -192,9 +206,18 @@ export type TableRow = {
  * name and stretches over the whole `<tr>` with an `::after` overlay, so the tap target is the row
  * (44 px on a phone) while the accessibility tree still sees one link per row.
  */
-export function DataTable({ head, rows }: { head: string[]; rows: TableRow[] }) {
+export function DataTable({
+  head,
+  rows,
+  className = '',
+}: {
+  head: string[]
+  rows: TableRow[]
+  /** Phase 11: a width cap in a wide section, so its numbers stay near their labels on a laptop. */
+  className?: string
+}) {
   return (
-    <table className="num w-full border-collapse text-label">
+    <table className={`num w-full border-collapse text-label ${className}`}>
       <thead>
         <tr className="text-caption text-muted">
           {head.map((h, i) => (

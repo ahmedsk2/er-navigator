@@ -3,6 +3,7 @@ import type { BoardPayload } from '../../src/lib/board/types'
 import { inRange, type CaseForStats, type Range } from '../../src/lib/domain/aggregates'
 import { headline } from '../../src/lib/domain/kpi'
 import { MIN_N, fmtHours } from '../../src/lib/domain/time'
+import { riyadhDateKey } from '../../src/lib/export/range'
 import { fromClientIp, signIn } from './fixtures/case-flow'
 import {
   DASHBOARD_CASES,
@@ -273,7 +274,9 @@ test('every section the seeded data earns is on the page, charts included', asyn
     // payer table, which the seed earns by recording a payer on two cases.
     'Where the time goes',
     'By payer',
-    'By week: cases and median stay',
+    // Phase 11: the thirty-day page draws its last days by day; the weekly chart is 90 days and
+    // all time now (the test of the daily chart below checks both).
+    'By day: cases and median stay',
     'Primary delay reason',
     // Phase 8 renamed "Journey stage where delays occur" to the weekly deck's own word.
     'Pathways',
@@ -289,9 +292,9 @@ test('every section the seeded data earns is on the page, charts included', asyn
     await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible()
   }
 
-  // The two client charts actually mounted.
+  // The trend chart actually mounted, and the bar sections drew (plain HTML since Phase 11).
   await expect(page.locator('[data-chart-panel="cases"] svg[role="application"]')).toBeVisible()
-  await expect(page.locator('[data-chart="hbar"] svg[role="application"]').first()).toBeVisible()
+  await expect(page.locator('[data-chart="hbar"] [data-bar]').first()).toBeVisible()
 
   // MROD was consulted on four seeded cases, so its median is a number and not "n<3". Scoped to
   // this table: Phase 8's "Exam to consult, median" names the same teams a few sections down.
@@ -881,6 +884,543 @@ test('a filter that matches nothing says so, rather than "No cases yet."', async
   await expect(page.getByText('No cases yet.')).toHaveCount(0)
   // The footnote still names the filter that emptied the page, so the reader knows what to drop.
   await expect(page.locator('[data-filter-note]')).toHaveText('Filtered: Stage: zzz-no-such-stage')
+})
+
+/**
+ * Phase 11. Every payer at once is the fixture and nothing else — no other spec file records a
+ * payer — so the figures below can be named. Its twelve cases with a payer are 3200001–3200010,
+ * 3200012 and 3200013 (the repeat MRN records none).
+ */
+const FIXTURE_ONLY = 'r=all&payer=GOVERNMENT&payer=INSURED&payer=SELF_PAY'
+
+/** Where the centre of `mark` sits across `track`, from 0 at its left edge to 1 at its right. */
+async function across(mark: Locator, track: Locator): Promise<number> {
+  const [m, t] = await Promise.all([mark.boundingBox(), track.boundingBox()])
+  if (!m || !t) throw new Error('no geometry for the marker or its track')
+  return (m.x + m.width / 2 - t.x) / t.width
+}
+
+/**
+ * Item 1. Door to doctor over the ten fixture cases with a physician time is 18, 24, 24, 30, 30,
+ * 30, 30, 36, 60 and 60 minutes: a median of 30, "needs improvement", halfway along a track that
+ * ends at 60. Two of the eight resolved cases left within four hours, so KPI 5 is 25 %,
+ * unacceptable, and — the scale running from 100 % on the left — three quarters of the way along.
+ * One case records a painkiller, so KPI 8 is a track with no marker.
+ */
+test('the Adaa KPIs sit against their four tiers, with the table still under them', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.241')
+  await signIn(page, E2E_USERS.navigator)
+  await page.goto(`/dashboard?${FIXTURE_ONLY}`)
+
+  const heading = page.getByRole('heading', { name: 'Adaa KPIs, tracked cases only', exact: true })
+  const adaa = heading.locator('xpath=..')
+  const bullets = adaa.locator('[data-bullet]')
+  expect(await bullets.evaluateAll((els) => els.map((e) => e.getAttribute('data-bullet')))).toEqual([
+    'kpi1',
+    'kpi2',
+    'kpi3',
+    'kpi5',
+    'kpi8',
+    'kpi4',
+  ])
+
+  const kpi1 = adaa.locator('[data-bullet="kpi1"]')
+  await expect(kpi1).toContainText('KPI 1 · Door to doctor, median')
+  await expect(kpi1).toContainText('30 min')
+  await expect(kpi1).toContainText('needs improvement')
+  await expect(kpi1.locator('[data-tier]')).toHaveCount(4)
+  expect(await kpi1.locator('[data-tier]').evaluateAll((els) => els.map((e) => e.getAttribute('data-tier')))).toEqual([
+    'world',
+    'acceptable',
+    'improve',
+    'unacceptable',
+  ])
+  // Only the value's tier is shaded, and the marker sits at 30 of 60 minutes.
+  await expect(kpi1.locator('[data-current]')).toHaveAttribute('data-tier', 'improve')
+  expect(await across(kpi1.locator('[data-marker]'), kpi1.locator('[data-track]'))).toBeCloseTo(0.5, 1)
+
+  const kpi5 = adaa.locator('[data-bullet="kpi5"]')
+  await expect(kpi5).toContainText('25%')
+  await expect(kpi5).toContainText('unacceptable')
+  await expect(kpi5.locator('[data-current]')).toHaveAttribute('data-tier', 'unacceptable')
+  expect(await across(kpi5.locator('[data-marker]'), kpi5.locator('[data-track]'))).toBeCloseTo(0.75, 1)
+
+  // Below three cases: the track, "n<3" and no marker.
+  const kpi8 = adaa.locator('[data-bullet="kpi8"]')
+  await expect(kpi8).toContainText('n<3')
+  await expect(kpi8.locator('[data-tier]')).toHaveCount(4)
+  await expect(kpi8.locator('[data-marker]')).toHaveCount(0)
+  await expect(kpi8.locator('[data-current]')).toHaveCount(0)
+
+  // The table is still there, still the section's first table, and says the same.
+  const table = heading.locator('xpath=../table[1]')
+  await expect(table.getByRole('row', { name: /^KPI 1 · Door to doctor, median/ })).toContainText('30 min')
+})
+
+/**
+ * Items 2 and 7. Seven fixture cases with a payer were resolved with all three phases measured —
+ * front end, decision, after the decision, in hours:
+ *
+ *   admitted    3200001 (0.5, 1.5, 24)  3200003 (1, 5, 3)  3200007 (0.6, 7.4, 22)   2.1, 13.9, 49 of 65
+ *   discharged  3200002 (0.4, 11.6, 2)  3200004 (0.3, 3.7, 3)  3200005 (0.5, 1.5, 3)  1.2, 16.8, 8 of 26
+ *   other       3200013, deceased (0.4, 0.6, 1)
+ *
+ * so all seven split 3.7, 31.3 and 58 of 93 hours (4 %, 34 %, 62 %), the admitted 3 %, 21 % and
+ * 75 %, the discharged 5 %, 65 % and 31 %; "other" has one case and is not drawn.
+ */
+test('the stay splits overall and by outcome, and a stage with no case is left out', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.242')
+  await signIn(page, E2E_USERS.navigator)
+  await page.goto(`/dashboard?${FIXTURE_ONLY}`)
+
+  const section = page.getByRole('heading', { name: 'Where the time goes', exact: true }).locator('xpath=..')
+  const split = section.locator('[data-chart="stay-split"]')
+  await expect(split).toContainText('over the 7 cases with all three measured')
+  expect(await split.locator('[data-split]').evaluateAll((els) => els.map((e) => e.getAttribute('data-split')))).toEqual([
+    'all',
+    'admitted',
+    'discharged',
+  ])
+
+  const bar = (key: string) => split.locator(`[data-split="${key}"]`)
+  await expect(bar('all')).toContainText('All outcomes')
+  for (const text of ['4%', '0h 30m', '34%', '3h 42m', '62%', '3h 00m']) await expect(bar('all')).toContainText(text)
+  await expect(bar('admitted')).toContainText('Admitted')
+  await expect(bar('admitted')).toContainText('3 cases')
+  for (const text of ['3%', '21%', '75%', '22h 00m']) await expect(bar('admitted')).toContainText(text)
+  for (const text of ['5%', '65%', '31%']) await expect(bar('discharged')).toContainText(text)
+
+  // Three segments in time order, to scale: after the decision is three quarters of the admitted bar.
+  const segments = bar('admitted').locator('[data-segment]')
+  expect(await segments.evaluateAll((els) => els.map((e) => e.getAttribute('data-segment')))).toEqual([
+    'front',
+    'decision',
+    'after',
+  ])
+  const [after, whole] = await Promise.all([
+    bar('admitted').locator('[data-segment="after"]').boundingBox(),
+    bar('admitted').locator('[data-bar]').boundingBox(),
+  ])
+  expect(after!.width / whole!.width).toBeCloseTo(0.75, 1)
+
+  // Item 7: only the stages with a case. The fixture's front-end reasons are one registration and
+  // one triage delay, so resus and exam room are gone; no case waits on the disposition decision or
+  // on administration.
+  const stages = (phase: string) => section.locator(`[data-phase-stages="${phase}"]`)
+  await expect(stages('front').getByRole('link', { name: 'Registration', exact: true })).toBeVisible()
+  await expect(stages('front').getByRole('link', { name: 'Triage', exact: true })).toBeVisible()
+  await expect(stages('front').getByRole('link')).toHaveCount(2)
+  await expect(stages('decision').getByRole('link', { name: 'Disposition decision', exact: true })).toHaveCount(0)
+  await expect(stages('after').getByRole('link', { name: 'Administrative / coordination', exact: true })).toHaveCount(0)
+
+  // A phase with none says so: the admission-process cases carry no reason before the decision.
+  await page.goto(`/dashboard?${FIXTURE_ONLY}&stage=adm`)
+  await expect(stages('front')).toContainText('No case in this range carries one.')
+  await expect(stages('front').getByRole('table')).toHaveCount(0)
+  await expect(stages('after').getByRole('link', { name: 'Admission process', exact: true })).toBeVisible()
+})
+
+/** The Asia/Riyadh calendar day of an instant, `YYYY-MM-DD` (en-CA writes dates that way round). */
+const riyadhDate = (iso: string): string =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(
+    new Date(iso),
+  )
+
+/** A seeded case's registration instant, read off the board API rather than guessed from the clock. */
+async function registeredAt(page: Page, mrn: string): Promise<string> {
+  const response = await page.request.get('/api/board?f=all')
+  const payload = (await response.json()) as BoardPayload
+  const row = payload.rows.find((r) => r.mrn === mrn)
+  if (!row) throw new Error(`${mrn} is not on the board`)
+  return row.registrationAt
+}
+
+/**
+ * Item 3. On the seven- and thirty-day ranges the weekly chart gives way to one bar per Riyadh
+ * day — eight bars and thirty-one, because the window is the last N x 24 hours and opens part way
+ * through a day — with a 6 h line on the median panel. Each day with a case is a drill-down.
+ */
+test('the last days are drawn by day, with a 6 h line, and each day drills to its cases', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.243')
+  await signIn(page, E2E_USERS.navigator)
+
+  const byDay = page.getByRole('heading', { name: 'By day: cases and median stay', exact: true })
+  const byWeek = page.getByRole('heading', { name: 'By week: cases and median stay', exact: true })
+  for (const [query, days] of [
+    ['', 31],
+    ['?r=7', 8],
+  ] as const) {
+    await page.goto(`/dashboard${query}`)
+    await expect(byDay, query).toBeVisible()
+    await expect(byWeek, query).toHaveCount(0)
+    const chart = page.locator('[data-chart="daily"]')
+    await expect(chart).toHaveAttribute('data-points', String(days))
+    await expect(chart.locator('[data-chart-panel="cases"] svg[role="application"]')).toBeVisible()
+    await expect(chart.locator('[data-chart-panel="median"] .recharts-reference-line')).toHaveCount(1)
+    await expect(chart.locator('[data-chart-panel="median"]')).toContainText('6 h')
+    // The two panels share their days: every date label stays inside the chart, and a median dot
+    // sits over its own day's bar (a line alone would get a point scale and drift off the bars).
+    const geometry = await chart.evaluate((el) => {
+      const median = el.querySelector('[data-chart-panel="median"] svg')!
+      const box = median.getBoundingClientRect()
+      const labels = [...median.querySelectorAll('text')].filter((t) => /\d\d\/\d\d/.test(t.textContent ?? ''))
+      const bars = [...el.querySelectorAll('[data-chart-panel="cases"] .recharts-bar-rectangle')]
+        .map((b) => b.getBoundingClientRect())
+        .filter((r) => r.height > 0)
+        .map((r) => r.left + r.width / 2)
+      return {
+        overflow: Math.max(...labels.map((t) => t.getBoundingClientRect().right - box.right)),
+        dots: [...median.querySelectorAll('circle')].map((c) => {
+          const r = c.getBoundingClientRect()
+          return Math.min(...bars.map((x) => Math.abs(x - (r.left + r.width / 2))))
+        }),
+      }
+    })
+    expect(geometry.overflow, `${query}: a date label runs past the chart`).toBeLessThanOrEqual(0)
+    for (const offset of geometry.dots) expect(offset, `${query}: a median dot is off its bar`).toBeLessThan(2)
+  }
+  // Ninety days and all time keep the weekly chart.
+  for (const query of ['?r=90', '?r=all']) {
+    await page.goto(`/dashboard${query}`)
+    await expect(byWeek, query).toBeVisible()
+    await expect(byDay, query).toHaveCount(0)
+  }
+
+  // A day's drill-down, reached from the link list, inside the filter the page is drawn with.
+  // 3200008 is a Government case registered twenty-six hours ago; 3200009, self-pay, is not listed.
+  const day = riyadhDate(await registeredAt(page, '3200008'))
+  await page.goto('/dashboard?payer=GOVERNMENT')
+  const link = page.locator(`[data-chart="daily"] ~ ul a[href*="drill=day%3A${day}"]`)
+  await expect(link).toHaveCount(1)
+  const href = (await link.getAttribute('href')) ?? ''
+  expect(new URL(href, 'http://dashboard.invalid').searchParams.getAll('payer')).toEqual(['GOVERNMENT'])
+  await page.goto(href)
+  await expect(page.locator('[data-drill-label]')).toHaveText(
+    new RegExp(`^Registered on (Sun|Mon|Tue|Wed|Thu|Fri|Sat) ${day.slice(8, 10)}/${day.slice(5, 7)}$`),
+  )
+  await expect(rowFor(page, '3200008')).toHaveCount(1)
+  await expect(rowFor(page, '3200009')).toHaveCount(0)
+
+  // And a bar is a way in too: the tallest bar of the week opens its own day.
+  await page.goto('/dashboard?r=7')
+  const bars = page.locator('[data-chart="daily"] [data-chart-panel="cases"] .recharts-bar-rectangle')
+  await expect(bars.first()).toBeVisible()
+  const heights = await bars.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height))
+  await bars.nth(heights.indexOf(Math.max(...heights))).click()
+  await expect(page).toHaveURL(/[?&]drill=day%3A\d{4}-\d{2}-\d{2}/)
+  await expect(page.locator('[data-drill-label]')).toHaveText(/^Registered on /)
+})
+
+const WEEKDAYS: Record<string, string> = {
+  Sun: 'Sunday',
+  Mon: 'Monday',
+  Tue: 'Tuesday',
+  Wed: 'Wednesday',
+  Thu: 'Thursday',
+  Fri: 'Friday',
+  Sat: 'Saturday',
+}
+
+/** The Riyadh weekday ("Mon") and three-hour block ("12–15") an instant falls in. */
+function arrivalOf(iso: string): { weekday: string; block: string } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Riyadh',
+    weekday: 'short',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(iso))
+  const hour = Number(parts.find((p) => p.type === 'hour')?.value)
+  const start = Math.floor(hour / 3) * 3
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return { weekday: parts.find((p) => p.type === 'weekday')!.value, block: `${pad(start)}–${pad(start + 3)}` }
+}
+
+/**
+ * Item 4. A real table: Sunday to Saturday down, eight three-hour blocks across, a count in every
+ * cell and a link in every cell with a case. The cell is found from the case's own registration
+ * instant, so the test holds whatever time of day the suite runs.
+ */
+test('arrivals are a weekday-by-block table whose cells open their cases', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.244')
+  await signIn(page, E2E_USERS.navigator)
+  const { weekday, block } = arrivalOf(await registeredAt(page, '3200008'))
+  await page.goto('/dashboard?payer=GOVERNMENT')
+
+  const table = page.getByRole('heading', { name: 'Arrivals by day and time', exact: true }).locator('xpath=../table')
+  await expect(table).toHaveCount(1)
+  expect(await table.locator('thead th').evaluateAll((els) => els.map((e) => (e.textContent ?? '').trim()))).toEqual([
+    'Day',
+    '00–03',
+    '03–06',
+    '06–09',
+    '09–12',
+    '12–15',
+    '15–18',
+    '18–21',
+    '21–24',
+  ])
+  expect(await table.locator('tbody th').evaluateAll((els) => els.map((e) => (e.textContent ?? '').trim()))).toEqual([
+    'Sun',
+    'Mon',
+    'Tue',
+    'Wed',
+    'Thu',
+    'Fri',
+    'Sat',
+  ])
+  // Fifty-six cells, a count in each; the empty ones plain and not links, the rest filled and links.
+  await expect(table.locator('tbody td')).toHaveCount(56)
+  await expect(table.locator('td[data-count="0"] a')).toHaveCount(0)
+  await expect(table.locator('td[data-count="0"][data-step]')).toHaveCount(0)
+  const filled = await table.locator('td:not([data-count="0"])').count()
+  expect(filled).toBeGreaterThan(0)
+  await expect(table.locator('td:not([data-count="0"]) a')).toHaveCount(filled)
+  await expect(page.locator('[data-heat-legend]')).toBeVisible()
+
+  // 3200008's own cell, named in full, carrying the page's filter.
+  const hours = `${block.slice(0, 2)}:00 to ${block.slice(3, 5)}:00`
+  const cell = table.getByRole('link', { name: new RegExp(`^${WEEKDAYS[weekday]} ${hours}: \\d+ cases?$`) })
+  await expect(cell).toHaveCount(1)
+  const href = (await cell.getAttribute('href')) ?? ''
+  const params = new URL(href, 'http://dashboard.invalid').searchParams
+  expect(params.get('drill')).toBe(`arrival:${weekday}|${block}`)
+  expect(params.getAll('payer')).toEqual(['GOVERNMENT'])
+  await cell.click()
+  await expect(page.locator('[data-drill-label]')).toHaveText(`Arrivals on ${WEEKDAYS[weekday]}s, ${hours}`)
+  await expect(rowFor(page, '3200008')).toHaveCount(1)
+  await expect(rowFor(page, '3200009')).toHaveCount(0)
+})
+
+/**
+ * Item 6. The horizontal bar sections are rows of links with the whole label — above the bar on a
+ * phone, beside it on a laptop — where the chart used to cut a reason at 22 characters
+ * ("Awaiting consulted te…"). 3200003 is the one fixture case waiting on a consulted team.
+ */
+test('the bar sections show whole labels and stay links to their cases', async ({ page }, testInfo) => {
+  const mobile = testInfo.project.name === 'mobile'
+  await fromClientIp(page, '198.51.100.245')
+  await signIn(page, E2E_USERS.navigator)
+  await page.goto(`/dashboard?${FIXTURE_ONLY}`)
+
+  const primary = page.getByRole('heading', { name: 'Primary delay reason', exact: true }).locator('xpath=..')
+  const row = primary.getByRole('link', { name: /^Awaiting consulted team response\/callback: 1 case$/ })
+  await expect(row).toBeVisible()
+  await expect(row.locator('[data-bar-label]')).toHaveText('Awaiting consulted team response/callback')
+  // Nothing is cut, and nothing is clipped by its own box.
+  await expect(primary.getByText('…')).toHaveCount(0)
+  for (const title of ['Primary delay reason', 'Pathways', 'Departments involved', 'Outcomes', 'By day of week']) {
+    const labels = page.getByRole('heading', { name: title, exact: true }).locator('xpath=..').locator('[data-bar-label]')
+    expect(await labels.count(), title).toBeGreaterThan(0)
+    const clipped = await labels.evaluateAll((els) => els.filter((e) => e.scrollWidth > e.clientWidth + 1).length)
+    expect(clipped, `${title}: a label is clipped`).toBe(0)
+  }
+
+  // Above the bar on a phone; beside it, on the same line, on a laptop.
+  const [label, bar] = await Promise.all([
+    row.locator('[data-bar-label]').boundingBox(),
+    row.locator('[data-bar-fill]').boundingBox(),
+  ])
+  if (!label || !bar) throw new Error('no geometry for the label or its bar')
+  if (mobile) {
+    expect(label.y + label.height).toBeLessThanOrEqual(bar.y + 1)
+  } else {
+    expect(label.x + label.width).toBeLessThanOrEqual(bar.x + 1)
+    expect(bar.y).toBeLessThan(label.y + label.height)
+    expect(bar.y + bar.height).toBeGreaterThan(label.y)
+  }
+
+  // Every bar section is drawn this way now, and no longer as an SVG chart.
+  await expect(page.locator('[data-chart="hbar"]')).toHaveCount(6)
+  await expect(page.locator('[data-chart="hbar"] svg')).toHaveCount(0)
+
+  // The row is the drill-down, inside the filter the page is drawn with.
+  const href = (await row.getAttribute('href')) ?? ''
+  const params = new URL(href, 'http://dashboard.invalid').searchParams
+  expect(params.get('drill')).toBe('primary:Awaiting consulted team response/callback')
+  expect(params.getAll('payer')).toEqual(['GOVERNMENT', 'INSURED', 'SELF_PAY'])
+  await row.click()
+  await expect(page.locator('[data-drill-label]')).toHaveText('Awaiting consulted team response/callback')
+  await expect(rowFor(page, '3200003')).toHaveCount(1)
+})
+
+/**
+ * Items 5 and 7, the layout. The screen groups its sections — overview, time, reasons, KPIs,
+ * teams, outcomes, quality — so that a phone's jump chips can land on the first section of each;
+ * the report keeps its own order, the arrivals table placed after "By day of week". Every section
+ * below is one the fixture earns, so both lists are the whole page. The "Other" queue's heading
+ * carries a count, which is read as "(n)".
+ */
+const SCREEN_ORDER = [
+  'Cases past each threshold',
+  'Stay bands',
+  'Where the time goes',
+  'By day: cases and median stay',
+  'Arrivals by day and time',
+  'By shift',
+  'By day of week',
+  'Primary delay reason',
+  'Pathways',
+  'Departments involved',
+  'Adaa KPIs, tracked cases only',
+  'Working targets',
+  'Admission to unit',
+  'Turnaround: order to result',
+  'Exam to consult, median',
+  'Consulted team response, median',
+  'Investigation turnaround, median from order',
+  'Admission chain, median',
+  'Longest stays',
+  'Actions documented',
+  'Outcomes',
+  'Discharge communication',
+  'By CTAS',
+  'By ED area',
+  'By payer',
+  'Repeat visits',
+  'Documentation',
+  'Other reasons awaiting review (n)',
+]
+const REPORT_ORDER = [
+  'Stay bands',
+  'Adaa KPIs, tracked cases only',
+  'Working targets',
+  'Where the time goes',
+  'Cases past each threshold',
+  'By week: cases and median stay',
+  'Primary delay reason',
+  'Pathways',
+  'Departments involved',
+  'Admission to unit',
+  'Turnaround: order to result',
+  'Exam to consult, median',
+  'Consulted team response, median',
+  'Investigation turnaround, median from order',
+  'Admission chain, median',
+  'Longest stays',
+  'Actions documented',
+  'By shift',
+  'By day of week',
+  'Arrivals by day and time',
+  'Outcomes',
+  'Discharge communication',
+  'By CTAS',
+  'By ED area',
+  'By payer',
+  'Repeat visits',
+  'Documentation',
+  'Other reasons awaiting review (n)',
+]
+const headingsOf = (page: Page): Promise<string[]> =>
+  page
+    .locator('.dash h3')
+    .evaluateAll((els) => els.map((e) => (e.textContent ?? '').trim().replace(/\(\d+\)$/, '(n)')))
+
+test('the dashboard is two columns on a laptop and jumps by group on a phone; the report keeps its order', async ({
+  page,
+}, testInfo) => {
+  const mobile = testInfo.project.name === 'mobile'
+  await fromClientIp(page, '198.51.100.246')
+  // A viewer: the dashboard, and the printable report, and nothing to change on either.
+  await signIn(page, E2E_USERS.viewer)
+  await page.goto('/dashboard')
+  expect(await headingsOf(page)).toEqual(SCREEN_ORDER)
+
+  // Each group's anchor opens on its first section.
+  for (const [id, first] of [
+    ['dash-overview', 'Cases past each threshold'],
+    ['dash-time', 'Where the time goes'],
+    ['dash-reasons', 'Primary delay reason'],
+    ['dash-kpis', 'Adaa KPIs, tracked cases only'],
+    ['dash-teams', 'Turnaround: order to result'],
+    ['dash-outcomes', 'Longest stays'],
+    ['dash-quality', 'Documentation'],
+  ] as const) {
+    await expect(page.locator(`#${id} h3`).first(), id).toHaveText(first)
+  }
+
+  // The chips: a phone's, not a laptop's, and never on paper.
+  const jump = page.getByRole('navigation', { name: 'Jump to a section' })
+  if (mobile) {
+    await expect(jump).toBeVisible()
+    expect(
+      await jump.getByRole('link').evaluateAll((els) => els.map((e) => [(e.textContent ?? '').trim(), e.getAttribute('href')])),
+    ).toEqual([
+      ['Overview', '#dash-overview'],
+      ['Time', '#dash-time'],
+      ['Reasons', '#dash-reasons'],
+      ['KPIs', '#dash-kpis'],
+      ['Teams', '#dash-teams'],
+      ['Outcomes', '#dash-outcomes'],
+      ['Quality', '#dash-quality'],
+    ])
+    await jump.getByRole('link', { name: 'KPIs', exact: true }).click()
+    await expect(page).toHaveURL(/#dash-kpis$/)
+    const adaa = page.getByRole('heading', { name: 'Adaa KPIs, tracked cases only', exact: true })
+    await expect.poll(() => adaa.evaluate((e) => Math.round(e.getBoundingClientRect().top))).toBeLessThan(120)
+    expect(await adaa.evaluate((e) => e.getBoundingClientRect().top)).toBeGreaterThanOrEqual(0)
+  } else {
+    await expect(jump).toBeHidden()
+  }
+
+  // Short sections pair up side by side from lg; the wide ones run across both columns.
+  const box = async (title: string) => {
+    const b = await page.getByRole('heading', { name: title, exact: true }).locator('xpath=..').boundingBox()
+    if (!b) throw new Error(`no box for "${title}"`)
+    return b
+  }
+  const primary = await box('Primary delay reason')
+  const pathways = await box('Pathways')
+  const adaa = await box('Adaa KPIs, tracked cases only')
+  const longest = await box('Longest stays')
+  if (mobile) {
+    expect(pathways.x).toBeCloseTo(primary.x, 0)
+    expect(pathways.y).toBeGreaterThanOrEqual(primary.y + primary.height)
+    expect(adaa.width).toBeCloseTo(primary.width, 0)
+  } else {
+    expect(pathways.y).toBeCloseTo(primary.y, 0)
+    expect(pathways.x).toBeGreaterThan(primary.x + primary.width)
+    expect(adaa.width).toBeGreaterThan(primary.width * 1.9)
+    expect(longest.width).toBeCloseTo(adaa.width, 0)
+  }
+
+  // Item 1 at both widths: the Adaa table stays under its charts, which on a laptop run two to a row.
+  const bullets = await page.locator('[data-chart="bullets"]').boundingBox()
+  const kpiTable = await page
+    .getByRole('heading', { name: 'Adaa KPIs, tracked cases only', exact: true })
+    .locator('xpath=../table[1]')
+    .boundingBox()
+  expect(kpiTable!.y).toBeGreaterThanOrEqual(bullets!.y + bullets!.height - 1)
+  const kpi1 = await page.locator('[data-bullet="kpi1"]').boundingBox()
+  const kpi2 = await page.locator('[data-bullet="kpi2"]').boundingBox()
+  if (mobile) expect(kpi2!.y).toBeGreaterThan(kpi1!.y)
+  else expect(kpi2!.y).toBeCloseTo(kpi1!.y, 0)
+
+  // The Range tile is two tiles wide, so its value has room and no row has a hole in it.
+  const range = await page.locator('[data-tile-card="Range"]').boundingBox()
+  const cases = await page.locator('[data-tile-card="Cases"]').boundingBox()
+  expect(range!.width).toBeGreaterThan(cases!.width * 1.9)
+  expect(await page.locator('[data-tile="Range"]').evaluate((e) => e.getClientRects().length)).toBe(1)
+
+  await page.emulateMedia({ media: 'print' })
+  await expect(jump).toBeHidden()
+  await page.emulateMedia({ media: 'screen' })
+
+  // The report: one column, and its own order, as before this phase.
+  const today = riyadhDateKey(new Date())
+  const monthAgo = riyadhDateKey(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))
+  await page.goto(`/report?from=${monthAgo}&to=${today}&status=all`)
+  await expect(page.locator('[data-report-header]')).toBeVisible()
+  expect(await headingsOf(page)).toEqual(REPORT_ORDER)
+  const columns = await page
+    .locator('.dash h3')
+    .evaluateAll((els) =>
+      els.map((e) => {
+        const r = e.parentElement!.getBoundingClientRect()
+        return `${Math.round(r.x)}:${Math.round(r.width)}`
+      }),
+    )
+  expect(new Set(columns).size, 'every report section is the one column').toBe(1)
+  await expect(page.getByRole('navigation', { name: 'Jump to a section' })).toHaveCount(0)
 })
 
 test('an unknown drill key renders the dashboard rather than an error', async ({ page }, testInfo) => {

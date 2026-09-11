@@ -138,6 +138,8 @@ export type AdaaRow = {
   /** The unit of analysis behind the figure: cases with the KPI measurable, resolved cases, … */
   n: number
   value: string
+  /** The same figure unformatted — minutes, or a share from 0 to 1 — for the bullet chart; null below MIN_N. */
+  raw: number | null
   /** null where the KPI has no benchmark (KPI 6) or nothing was measured. */
   band: Benchmark | null
 }
@@ -177,6 +179,7 @@ export function adaaRows(overall: AdaaSummaryRow): AdaaRow[] {
     name: ADAA_NAMES[kpi],
     n,
     value: med == null ? BELOW_MIN_N : fmtMinutes(med),
+    raw: med,
     band: bandOf(kpi, med),
   })
   const share = (kpi: AdaaKpi, value: number | null, n: number): AdaaRow => ({
@@ -184,6 +187,7 @@ export function adaaRows(overall: AdaaSummaryRow): AdaaRow[] {
     name: ADAA_NAMES[kpi],
     n,
     value: fmtShare(value),
+    raw: value,
     band: bandOf(kpi, value),
   })
   return [
@@ -196,4 +200,74 @@ export function adaaRows(overall: AdaaSummaryRow): AdaaRow[] {
     minutes('kpi8', overall.kpi8Med, overall.kpi8N),
     share('kpi4', overall.nonUrgentShare, overall.withCtasN),
   ]
+}
+
+// --- Phase 11: the Adaa bullet charts ---------------------------------------------------------
+
+/** The four tiers in the order every track reads, left to right: the best first. */
+export const BENCHMARK_ORDER: ReadonlyArray<Benchmark> = ['world', 'acceptable', 'improve', 'unacceptable']
+
+/** One tier's stretch of the track, as fractions of its width from the left. */
+export type BulletTier = { tier: Benchmark; from: number; to: number }
+
+export type AdaaBullet = AdaaRow & {
+  /** The four tiers, best first, each as long as the stretch of the scale it covers. */
+  tiers: BulletTier[]
+  /** Where the value sits, 0 at the left end to 1 at the right; null below MIN_N (no marker). */
+  marker: number | null
+}
+
+/**
+ * One bullet chart per Adaa KPI with a benchmark — 1, 2, 3, 5, 8 and 4, in the table's order,
+ * because the table stays under the charts and the two must read down together.
+ *
+ * The track is to scale. A share runs from 0 to 100 %. Minutes have no top, so the track runs
+ * half as far again past the needs-improvement boundary (KPI 1: to 60 min), and further when the
+ * value is past that, to 10 % beyond it — a marker is always where its value is, and the tiers
+ * shrink to keep their proportions rather than the marker being pinned to an end.
+ *
+ * Every track reads the same way round, best on the left. KPI 5 is the one where higher is
+ * better, so its scale runs from 100 % on the left to 0 % on the right.
+ */
+export function adaaBullets(overall: AdaaSummaryRow): AdaaBullet[] {
+  return adaaRows(overall).flatMap((row) => {
+    const b = ADAA_BENCHMARKS[row.kpi]
+    if (!b) return []
+    const end = b.unit === 'share' ? 1 : Math.max(b.improve * 1.5, (row.raw ?? 0) * 1.1)
+    const at = (v: number): number => Math.min(1, Math.max(0, (b.higherIsBetter ? end - v : v) / end))
+    const edges = b.higherIsBetter ? [end, b.world, b.acceptable, b.improve, 0] : [0, b.world, b.acceptable, b.improve, end]
+    return [
+      {
+        ...row,
+        tiers: BENCHMARK_ORDER.map((tier, i) => ({ tier, from: at(edges[i]!), to: at(edges[i + 1]!) })),
+        marker: row.raw == null ? null : at(row.raw),
+      },
+    ]
+  })
+}
+
+// --- Phase 11: the arrivals table's fills ------------------------------------------------------
+
+export type HeatStep = 0 | 1 | 2 | 3 | 4
+
+/**
+ * A cell's fill, stepped by its count against the fullest cell: 0 (plain) for an empty cell, then
+ * quarters — a count over three quarters of the fullest is the darkest step. Relative rather than
+ * fixed, so a week of cases and a year of them both use the whole ramp; `heatLegend` says what
+ * each step means in counts, so the reader is never left with a colour alone.
+ */
+export function heatStep(value: number, max: number): HeatStep {
+  if (value <= 0 || max <= 0) return 0
+  return Math.min(4, Math.ceil((4 * value) / max)) as HeatStep
+}
+
+/** The counts each step stands for at this `max` ("1–3", "4"…), leaving out steps no count reaches. */
+export function heatLegend(max: number): Array<{ step: Exclude<HeatStep, 0>; label: string }> {
+  const out: Array<{ step: Exclude<HeatStep, 0>; label: string }> = []
+  for (const step of [1, 2, 3, 4] as const) {
+    const from = Math.floor((max * (step - 1)) / 4) + 1
+    const to = Math.floor((max * step) / 4)
+    if (from <= to) out.push({ step, label: from === to ? String(from) : `${from}–${to}` })
+  }
+  return out
 }
