@@ -991,20 +991,17 @@ export function CaseEditor(props: CaseEditorProps) {
         </Button>
         {showJourney ? (
           <div className="mt-3">
+            {/* The milestone number is the row's own `step` since Phase 11: on a phone it sits on
+                the label's line, so the time box below it keeps the whole width. */}
             {MILESTONES.map(([key, label], index) => (
-              <div key={key} className="flex items-center gap-2">
-                <span className="num w-4 text-caption text-muted" aria-hidden>
-                  {index + 1}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <TimeRow
-                    label={label}
-                    value={draft[key]}
-                    onChange={(next) => set({ [key]: next } as Partial<CaseDraft>)}
-                    disabled={disabled}
-                  />
-                </div>
-              </div>
+              <TimeRow
+                key={key}
+                step={index + 1}
+                label={label}
+                value={draft[key]}
+                onChange={(next) => set({ [key]: next } as Partial<CaseDraft>)}
+                disabled={disabled}
+              />
             ))}
             <div className="mt-2">
               <TimeRow

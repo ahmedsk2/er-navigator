@@ -307,37 +307,63 @@ export function LocalTimeInput({
   )
 }
 
-/** One labelled timestamp with a Now button — the prototype's `TimeRow`. */
+/**
+ * One labelled timestamp with a Now button — the prototype's `TimeRow`.
+ *
+ * Phase 11, finding 1: the prototype's row put a 178 px box beside its label, and Chromium draws a
+ * datetime-local value in about 176 px of its own plus the picker, so it had 132 and cut the day
+ * off the front — "0/2026 10:44 PM", on every time of the case page. Below `sm` the label now takes
+ * its own line, in the look every other label above a control has (`Field`), and the box fills the
+ * line under it beside Now; from `sm` the three share one row again with a box that holds the
+ * whole value. `step` is the journey's milestone number: it rides on the label's line, so the box
+ * keeps the full width on a phone rather than giving 24 px of it to a number column.
+ */
 export function TimeRow({
   label,
   value,
   onChange,
   disabled,
+  step,
 }: {
   label: string
   value: string | null
   onChange: (next: string | null) => void
   disabled?: boolean
+  step?: number
 }) {
   const id = useId()
   return (
-    <div className="mb-2 flex items-center gap-2">
-      <label htmlFor={id} className="min-w-0 flex-1 text-body text-ink-2">
-        {label}
-      </label>
-      {/* A wrapper, not a width class on the input: the shared input style is `w-full`, and
-          overriding it from a className string would depend on Tailwind's utility order. */}
-      <div className="w-[178px] shrink-0">
-        <LocalTimeInput id={id} value={value} onChange={onChange} disabled={disabled} />
+    <div className="mb-3 sm:mb-2 sm:flex sm:items-center sm:gap-2">
+      <div className="mb-1 flex items-baseline gap-2 sm:mb-0 sm:min-w-0 sm:flex-1 sm:items-center">
+        {step === undefined ? null : (
+          <span className="num w-4 shrink-0 text-caption text-muted" aria-hidden>
+            {step}
+          </span>
+        )}
+        <label
+          htmlFor={id}
+          className="min-w-0 flex-1 text-label font-medium text-muted sm:text-body sm:font-normal sm:text-ink-2"
+        >
+          {label}
+        </label>
       </div>
-      <Button
-        aria-label={`Now — ${label}`}
-        disabled={disabled}
-        className="shrink-0 px-2.5 text-caption font-semibold"
-        onClick={() => onChange(new Date().toISOString())}
-      >
-        Now
-      </Button>
+      <div className="flex items-center gap-2">
+        {/* A wrapper, not a width class on the input: the shared input style is `w-full`, and
+            overriding it from a className string would depend on Tailwind's utility order. From
+            `sm` it is 240 px: the 176 px value, the 20 px picker and the input's own 26 px of
+            padding and border, with room to spare. */}
+        <div className="min-w-0 flex-1 sm:w-60 sm:flex-none">
+          <LocalTimeInput id={id} value={value} onChange={onChange} disabled={disabled} />
+        </div>
+        <Button
+          aria-label={`Now — ${label}`}
+          disabled={disabled}
+          className="shrink-0 px-2.5 text-caption font-semibold"
+          onClick={() => onChange(new Date().toISOString())}
+        >
+          Now
+        </Button>
+      </div>
     </div>
   )
 }
