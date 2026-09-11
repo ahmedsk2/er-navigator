@@ -59,10 +59,16 @@ export function TrendChart({
     if (point) router.push(point.href)
   }
   /**
-   * The whole column is the target, on both panels: thirty-one bars in a phone's 290 px are 7 px
-   * each, and a short bar is shorter still. Recharts reports the column under the pointer as
-   * `activeTooltipIndex`, a number or its string.
+   * A tap on a bar opens that bar's day or week, exactly (`Bar`'s own index). A tap elsewhere in
+   * the column — on a short bar's empty space, or on the median panel — falls back to the column
+   * Recharts reports under the pointer (`activeTooltipIndex`, a number or its string): thirty-one
+   * bars in a phone's 290 px are 7 px each. The bar's click stops there, so one tap never
+   * navigates twice.
    */
+  const onBar = (_entry: unknown, index: number, event: { stopPropagation: () => void }) => {
+    event.stopPropagation()
+    go(index)
+  }
   const onColumn = (state: { activeTooltipIndex?: unknown } | null | undefined) => {
     const index = Number(state?.activeTooltipIndex)
     if (Number.isInteger(index) && index >= 0) go(index)
@@ -104,7 +110,9 @@ export function TrendChart({
               stroke={CHART.accent}
               radius={[3, 3, 0, 0]}
               maxBarSize={24}
+              cursor="pointer"
               isAnimationActive={false}
+              onClick={onBar}
             />
           </ComposedChart>
         </ResponsiveContainer>
