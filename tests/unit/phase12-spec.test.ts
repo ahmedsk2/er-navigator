@@ -92,6 +92,31 @@ describe('item 3: the demo seed', () => {
   })
 })
 
+describe('item 6: the alert email retry pass', () => {
+  const compose = readFileSync(path.join(ROOT, 'docker-compose.production.yml'), 'utf8')
+  const worker = readFileSync(path.join(ROOT, 'worker/alerts.ts'), 'utf8')
+
+  it('is bounded well inside the worker tick and the heartbeat window', () => {
+    const retry = item(6)
+    // sendWithOneRetry always `await sleep(30_000)` between its two attempts. The retry pass
+    // replays a backlog through it at the top of every cycle, before the heartbeat is touched
+    // and while the worker's overlap guard drops every intervening tick — so at the specified cap
+    // of 50 pending alerts a single cycle could sleep for 1500 s against a 900 s healthcheck.
+    expect(retry, 'the retry pass must not pay the 30 s in-pass sleep').toMatch(/retryDelayMs: 0/)
+
+    const budget = retry.match(/RETRY_PASS_BUDGET_MS = ([\d_]+)/)
+    expect(budget, 'the retry pass needs a wall-clock budget, not only a count cap').not.toBeNull()
+    const budgetSeconds = Number(budget![1]!.replaceAll('_', '')) / 1000
+
+    const window = compose.match(/stat -c %Y \/tmp\/heartbeat\)[^"]*-lt (\d+)/)
+    expect(window, 'the worker healthcheck no longer reads the heartbeat age').not.toBeNull()
+    const tickMinutes = Number(worker.match(/DEFAULT_INTERVAL_MINUTES = (\d+)/)![1]!)
+
+    expect(budgetSeconds).toBeLessThan(Number(window![1]!))
+    expect(budgetSeconds).toBeLessThan(tickMinutes * 60)
+  })
+})
+
 describe('item 5: must change the first password', () => {
   it('fails an API caller closed instead of exempting it', () => {
     const rule = item(5)

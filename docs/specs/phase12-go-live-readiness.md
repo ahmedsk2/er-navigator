@@ -716,21 +716,52 @@ still `OPEN`** — a patient who has left is not escalated, which is the same ru
 `thresholdsDue()` states. Ordered by `firedAt` ascending, capped at 50 per cycle.
 
 **`EMAIL_MAX_ATTEMPTS = 10`** in `src/lib/alerts/rules.ts`, beside `EMAIL_THRESHOLD_H`. Ten
-attempts at a five-minute interval is about fifty minutes of a broken mail server before the
-worker stops trying and leaves the row visibly failed. Beyond it the alert is not retried and the
-cycle logs the count once, at warn.
+attempts, one per cycle, is roughly fifty minutes of a broken mail server for an alert at the head
+of the queue before the worker stops trying and leaves the row visibly failed — longer for one
+behind a large backlog, because the budget below can push it into a later cycle. Beyond ten the
+alert is not retried and the cycle logs the count once, at warn.
+
+**`RETRY_PASS_BUDGET_MS = 60_000`**, beside it. The retry pass stops when it has spent that much
+wall-clock time and leaves the rest of the queue for the next cycle. It is the second bound, and
+the load-bearing one: the count cap alone does not bound time. `CycleDeps` gains
+`clock?: () => number`, defaulting to `Date.now`, read only by this budget — the same shape as the
+injected `sleep` the file already carries, so the unit test can advance time without waiting.
 
 **The cycle** (`runAlertCycle`) gains a **retry pass that runs first**, before the firing loop, so
 a backlog is cleared before new work is made:
 
 ```
-if (mailer) for (const pending of await store.pendingEmails(now)) {
-  const to = await recipientAddresses(); if (to.length === 0) break
-  const sent = await sendWithOneRetry(...)
-  if (sent) { await store.markEmailSent(pending.alertId, now); summary.emailsRetried += 1 }
-  else      { await store.markEmailFailed(pending.alertId, now); summary.emailsFailed += 1 }
+if (mailer) {
+  const deadline = clock() + RETRY_PASS_BUDGET_MS      // clock: () => number, defaults to Date.now
+  for (const pending of await store.pendingEmails(now)) {
+    if (clock() >= deadline) { summary.emailsDeferred += 1; continue }       // next cycle takes it
+    const to = await recipientAddresses(); if (to.length === 0) break
+    // retryDelayMs: 0 — the next cycle IS the retry, five minutes from now. Paying the 30 s
+    // in-pass sleep here would multiply the backlog by half a minute a head.
+    const sent = await sendWithOneRetry(mailer, message, logger, sleep, 0)
+    if (sent) { await store.markEmailSent(pending.alertId, now); summary.emailsRetried += 1 }
+    else      { await store.markEmailFailed(pending.alertId, now); summary.emailsFailed += 1 }
+  }
 }
 ```
+
+**Why the two bounds, and not just the cap of 50.** (Added in the Phase 12 review round; the first
+draft had the pass call `sendWithOneRetry` with its ordinary delay and bounded it only by count.)
+`sendWithOneRetry` does `await sleep(EMAIL_RETRY_DELAY_MS)` — 30 s — between its two attempts,
+unconditionally, and `worker/alerts.ts` injects neither `sleep` nor `retryDelayMs`, so production
+pays the real 30 s. With the mail server down, a pass over a backlog costs at least 30 s a head
+plus the SMTP timeouts `smtp.ts:53-55` bounds (10 s connect, 10 s greeting), so about 50 s each.
+`heartbeat(config.heartbeatFile)` and the Kuma push run only after `runAlertCycle` resolves, and
+`if (running || stopping) return` drops every intervening five-minute tick, so a slow pass is
+silent as well as long. Eighteen pending alerts would then breach the 900 s the compose
+healthcheck allows (`docker-compose.production.yml:162`) and the cap of 50 would allow 1500–2500 s
+— the worker reported unhealthy and Kuma paging, for a locked mailbox, which is precisely the page
+this item is written to avoid. `smtp.ts`'s own final-review note names the hazard for the firing
+loop; what this item adds is a *persistent* backlog replayed at the top of every cycle, so one bad
+hour would re-stall the worker on every tick. With a single attempt per alert per cycle and a
+60 s wall-clock budget, the pass is a fifth of the five-minute tick and a fifteenth of the
+heartbeat window whatever the backlog, and `tests/unit/phase12-spec.test.ts` checks that
+arithmetic against the compose file and `worker/alerts.ts` rather than against this paragraph.
 
 and the **first-attempt failure path changes** from "increment a counter and continue" to
 `await store.markEmailFailed(outcome.alertId, now)` before incrementing `emailsFailed`.
@@ -740,18 +771,25 @@ is attempted, nothing is counted as failed, no audit row is written, and the exi
 "SMTP_HOST is empty; would have emailed …" info line is the whole behaviour. This is the one rule
 the demo instance depends on (see "Blank SMTP" below).
 
-**`CycleSummary`** gains `emailsRetried: number` and `emailsPending: number` (how many
-`pendingEmails` returned). Both appear in the worker's `[alerts] cycle done` line.
+**`CycleSummary`** gains `emailsRetried: number`, `emailsPending: number` (how many
+`pendingEmails` returned) and `emailsDeferred: number` (how many the budget left for the next
+cycle). All three appear in the worker's `[alerts] cycle done` line, so a backlog that is being
+worked through is visible in the log rather than inferred from a slow cycle.
 
 **Admin → Alerts** (`src/lib/alerts/service.ts` `AlertRow`, `src/components/admin/AlertsPanel.tsx`):
 `AlertRow` gains `emailAttempts: number` and `emailFailedAt: string | null`. The "Emailed" cell,
 today `{row.emailSentAt ? fmtStamp(row.emailSentAt) : '–'}`, becomes: the timestamp when sent;
 `Failed ×{n}` in `text-band-h6` when not sent and `emailAttempts > 0`; `–` otherwise. Tokens only.
 
-**The heartbeat and the Kuma push are not changed.** The audit offered that as the cheap
-alternative; this item builds the durable trace and the retry instead, and marking the worker
-"down" because a mailbox is locked would page for the wrong thing. Recorded so the reviewer does
-not read it as an omission.
+**The heartbeat and the Kuma push are not changed**, and the two bounds above are what keeps that
+honest. The audit offered "let the heartbeat go stale" as the cheap alternative; this item builds
+the durable trace and the retry instead, because marking the worker "down" for a locked mailbox
+pages for the wrong thing. That argument only holds while a cycle cannot outrun the healthcheck:
+`heartbeat()` and the Kuma push run after `runAlertCycle` resolves, so an unbounded retry pass
+would have produced exactly the page it claims to avoid, naming the wrong cause. With one attempt
+per alert per cycle and `RETRY_PASS_BUDGET_MS`, a cycle stays a fifth of the tick. Recorded so the
+reviewer does not read it as an omission. (The reasoning, not the decision, was corrected in the
+Phase 12 review round.)
 
 ### Tests
 
@@ -773,6 +811,15 @@ mailer and injected clock and sleep. Failing assertions to start from:
    for a newly fired 6 h alert is unchanged.
 6. The unique-index behaviour is unchanged: a `duplicate` outcome is still counted and skipped and
    never emailed.
+7. **The pass pays no 30 s sleep** (added in the Phase 12 review round): with three pending alerts
+   and a mailer that always throws, the injected `sleep` is never called with
+   `EMAIL_RETRY_DELAY_MS` — the fail-first assertion is
+   `expect(sleeps).not.toContain(EMAIL_RETRY_DELAY_MS)`, which fails today because the pass would
+   hand the helper its default delay.
+8. **The budget stops the pass** (same): with an injected clock that jumps past
+   `RETRY_PASS_BUDGET_MS` after the second send, twenty pending alerts produce two attempts, the
+   rest are counted in `emailsDeferred`, no further `markEmailFailed` is called, and the summary
+   still adds up. The next cycle picks the remainder up in `firedAt` order.
 
 **Database — `tests/db/` (a new `alerts.test.ts`, or the existing coverage extended).** Failing
 assertion to start from: `prismaAlertStore(...).pendingEmails(now)` does not exist. Then: a fired
