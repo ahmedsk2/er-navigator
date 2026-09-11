@@ -27,6 +27,7 @@ import {
   TriangleAlert,
   Users,
 } from '@/src/components/icons'
+import { AdaaBullets } from '@/src/components/dashboard/charts/AdaaBullets'
 import { HBar, type HBarColor, type HBarRow } from '@/src/components/dashboard/charts/HBar'
 import { StackedBar, type StackRow } from '@/src/components/dashboard/charts/StackedBar'
 import {
@@ -36,12 +37,20 @@ import {
   DataTable,
   Footnote,
   Median,
+  PanelLabel,
   ShareBar,
   Tile,
   type TableRow,
 } from '@/src/components/dashboard/parts'
 import { UNIT_LABELS, dashboardHref, drillKey, gridKey, investigationLabel, type DrillSection } from '@/src/lib/dashboard/drill'
-import { BENCHMARK_LABELS, BENCHMARK_TEXT, adaaRows, fmtShare, headlineTiles } from '@/src/lib/dashboard/panels'
+import {
+  BENCHMARK_LABELS,
+  BENCHMARK_TEXT,
+  adaaBullets,
+  adaaRows,
+  fmtShare,
+  headlineTiles,
+} from '@/src/lib/dashboard/panels'
 import type { DashboardKpi, Range } from '@/src/lib/domain/aggregates'
 import type { CaseFilter } from '@/src/lib/domain/case-filter'
 import { NOT_RECORDED, TURNAROUND_BANDS, type IdRow } from '@/src/lib/domain/kpi'
@@ -108,11 +117,6 @@ function countRows(
 }
 
 const anyValue = (rows: ReadonlyArray<{ value: number }>): boolean => rows.some((r) => r.value > 0)
-
-/** The small caption that labels a block inside a section, as the weekly chart's panels do. */
-function PanelLabel({ children }: { children: ReactNode }) {
-  return <p className="mt-3 mb-1 text-caption text-muted">{children}</p>
-}
 
 // --- 1. the headline --------------------------------------------------------------------------
 
@@ -188,6 +192,9 @@ export function AdaaPanel({ kpi, range, filter }: Props) {
   const pain = painkillerYesN > 0 || pethidineYesN > 0
   return (
     <DashSection title="Adaa KPIs, tracked cases only" icon={<ListChecks size={18} />}>
+      {/* Phase 11: the same six benchmarked KPIs as pictures first; the table stays under them, and
+          stays the section's first table, which is how the suites find it. */}
+      <AdaaBullets bullets={adaaBullets(kpi.adaaOverall)} />
       <DataTable
         head={['KPI', 'n', 'Value']}
         rows={rows.map((row) => ({

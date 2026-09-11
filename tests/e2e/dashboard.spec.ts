@@ -883,6 +883,77 @@ test('a filter that matches nothing says so, rather than "No cases yet."', async
   await expect(page.locator('[data-filter-note]')).toHaveText('Filtered: Stage: zzz-no-such-stage')
 })
 
+/**
+ * Phase 11. Every payer at once is the fixture and nothing else — no other spec file records a
+ * payer — so the figures below can be named. Its twelve cases with a payer are 3200001–3200010,
+ * 3200012 and 3200013 (the repeat MRN records none).
+ */
+const FIXTURE_ONLY = 'r=all&payer=GOVERNMENT&payer=INSURED&payer=SELF_PAY'
+
+/** Where the centre of `mark` sits across `track`, from 0 at its left edge to 1 at its right. */
+async function across(mark: Locator, track: Locator): Promise<number> {
+  const [m, t] = await Promise.all([mark.boundingBox(), track.boundingBox()])
+  if (!m || !t) throw new Error('no geometry for the marker or its track')
+  return (m.x + m.width / 2 - t.x) / t.width
+}
+
+/**
+ * Item 1. Door to doctor over the ten fixture cases with a physician time is 18, 24, 24, 30, 30,
+ * 30, 30, 36, 60 and 60 minutes: a median of 30, "needs improvement", halfway along a track that
+ * ends at 60. Two of the eight resolved cases left within four hours, so KPI 5 is 25 %,
+ * unacceptable, and — the scale running from 100 % on the left — three quarters of the way along.
+ * One case records a painkiller, so KPI 8 is a track with no marker.
+ */
+test('the Adaa KPIs sit against their four tiers, with the table still under them', async ({ page }, testInfo) => {
+  await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.241' : '198.51.100.242')
+  await signIn(page, E2E_USERS.navigator)
+  await page.goto(`/dashboard?${FIXTURE_ONLY}`)
+
+  const heading = page.getByRole('heading', { name: 'Adaa KPIs, tracked cases only', exact: true })
+  const adaa = heading.locator('xpath=..')
+  const bullets = adaa.locator('[data-bullet]')
+  expect(await bullets.evaluateAll((els) => els.map((e) => e.getAttribute('data-bullet')))).toEqual([
+    'kpi1',
+    'kpi2',
+    'kpi3',
+    'kpi5',
+    'kpi8',
+    'kpi4',
+  ])
+
+  const kpi1 = adaa.locator('[data-bullet="kpi1"]')
+  await expect(kpi1).toContainText('KPI 1 · Door to doctor, median')
+  await expect(kpi1).toContainText('30 min')
+  await expect(kpi1).toContainText('needs improvement')
+  await expect(kpi1.locator('[data-tier]')).toHaveCount(4)
+  expect(await kpi1.locator('[data-tier]').evaluateAll((els) => els.map((e) => e.getAttribute('data-tier')))).toEqual([
+    'world',
+    'acceptable',
+    'improve',
+    'unacceptable',
+  ])
+  // Only the value's tier is shaded, and the marker sits at 30 of 60 minutes.
+  await expect(kpi1.locator('[data-current]')).toHaveAttribute('data-tier', 'improve')
+  expect(await across(kpi1.locator('[data-marker]'), kpi1.locator('[data-track]'))).toBeCloseTo(0.5, 1)
+
+  const kpi5 = adaa.locator('[data-bullet="kpi5"]')
+  await expect(kpi5).toContainText('25%')
+  await expect(kpi5).toContainText('unacceptable')
+  await expect(kpi5.locator('[data-current]')).toHaveAttribute('data-tier', 'unacceptable')
+  expect(await across(kpi5.locator('[data-marker]'), kpi5.locator('[data-track]'))).toBeCloseTo(0.75, 1)
+
+  // Below three cases: the track, "n<3" and no marker.
+  const kpi8 = adaa.locator('[data-bullet="kpi8"]')
+  await expect(kpi8).toContainText('n<3')
+  await expect(kpi8.locator('[data-tier]')).toHaveCount(4)
+  await expect(kpi8.locator('[data-marker]')).toHaveCount(0)
+  await expect(kpi8.locator('[data-current]')).toHaveCount(0)
+
+  // The table is still there, still the section's first table, and says the same.
+  const table = heading.locator('xpath=../table[1]')
+  await expect(table.getByRole('row', { name: /^KPI 1 · Door to doctor, median/ })).toContainText('30 min')
+})
+
 test('an unknown drill key renders the dashboard rather than an error', async ({ page }, testInfo) => {
   await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.101' : '198.51.100.102')
   await signIn(page, E2E_USERS.navigator)

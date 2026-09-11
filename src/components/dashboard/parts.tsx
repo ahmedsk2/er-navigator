@@ -53,6 +53,11 @@ export function Footnote({ children }: { children: ReactNode }) {
   return <p className="mt-2 mb-0 text-caption text-muted">{children}</p>
 }
 
+/** The small caption that labels a block inside a section, as the weekly chart's panels do. */
+export function PanelLabel({ children }: { children: ReactNode }) {
+  return <p className="mt-3 mb-1 text-caption text-muted">{children}</p>
+}
+
 /**
  * One headline figure.
  *
