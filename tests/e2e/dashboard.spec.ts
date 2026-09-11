@@ -1058,6 +1058,26 @@ test('the last days are drawn by day, with a 6 h line, and each day drills to it
     await expect(chart.locator('[data-chart-panel="cases"] svg[role="application"]')).toBeVisible()
     await expect(chart.locator('[data-chart-panel="median"] .recharts-reference-line')).toHaveCount(1)
     await expect(chart.locator('[data-chart-panel="median"]')).toContainText('6 h')
+    // The two panels share their days: every date label stays inside the chart, and a median dot
+    // sits over its own day's bar (a line alone would get a point scale and drift off the bars).
+    const geometry = await chart.evaluate((el) => {
+      const median = el.querySelector('[data-chart-panel="median"] svg')!
+      const box = median.getBoundingClientRect()
+      const labels = [...median.querySelectorAll('text')].filter((t) => /\d\d\/\d\d/.test(t.textContent ?? ''))
+      const bars = [...el.querySelectorAll('[data-chart-panel="cases"] .recharts-bar-rectangle')]
+        .map((b) => b.getBoundingClientRect())
+        .filter((r) => r.height > 0)
+        .map((r) => r.left + r.width / 2)
+      return {
+        overflow: Math.max(...labels.map((t) => t.getBoundingClientRect().right - box.right)),
+        dots: [...median.querySelectorAll('circle')].map((c) => {
+          const r = c.getBoundingClientRect()
+          return Math.min(...bars.map((x) => Math.abs(x - (r.left + r.width / 2))))
+        }),
+      }
+    })
+    expect(geometry.overflow, `${query}: a date label runs past the chart`).toBeLessThanOrEqual(0)
+    for (const offset of geometry.dots) expect(offset, `${query}: a median dot is off its bar`).toBeLessThan(2)
   }
   // Ninety days and all time keep the weekly chart.
   for (const query of ['?r=90', '?r=all']) {

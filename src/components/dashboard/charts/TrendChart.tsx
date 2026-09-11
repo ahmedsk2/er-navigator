@@ -103,7 +103,17 @@ export function TrendChart({
       <div style={{ height: PANEL_HEIGHT }} data-chart-panel="median">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={points} margin={{ left: 0, right: 8, top: 6, bottom: 0 }} accessibilityLayer>
-            <XAxis dataKey="name" tick={CHART_TICK} tickLine={false} axisLine={{ stroke: CHART.line }} interval={interval} />
+            {/* A band scale, as the bars above have: a line on its own gets a point scale, which
+                runs its first and last points out to the edges — off their bars by half a band,
+                and the last date label past the edge of the chart. */}
+            <XAxis
+              dataKey="name"
+              scale="band"
+              tick={CHART_TICK}
+              tickLine={false}
+              axisLine={{ stroke: CHART.line }}
+              interval={interval}
+            />
             <YAxis
               tick={CHART_TICK}
               width={28}
