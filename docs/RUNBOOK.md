@@ -384,6 +384,98 @@ be permanent). The same script produced the before-and-after screens of the Phas
    `DEMO_SHOTS`.
 4. `docker compose -p ernav-demo -f docker-compose.dev.yml down -v` when done.
 
+## Demo instance (Phase 12)
+
+**Written 11 September 2026 from `docs/specs/phase12-go-live-readiness.md`, before the instance
+exists. Slice 12B corrects this section with the real uuids and record ids once it is provisioned;
+until then, read it as the specification of what is to be built, not as a description of what is
+running.**
+
+A second, hosted copy of the same application, for putting the app in staff hands without any risk
+to production. Ahmed chose a hosted copy over a local one so fifteen people can use their own
+phones.
+
+| Setting | Value |
+| --- | --- |
+| Coolify project | a new project `demo`, not `clinical` |
+| Application | `er-navigator-demo` |
+| Repository | the same one, `git@github.com:ahmedsk2/er-navigator.git`, branch `main`, with the same read-only private key `er-navigator-deploy` (`l48u5xcuzddx3vr1hb4zsqlb`) |
+| Build | the same, `dockercompose`, `/docker-compose.production.yml`, base directory `/` |
+| Domain | `https://demo-nav.towardpcc.com`, bound as `docker_compose_domains` with the `app` service on port 3000 |
+| DNS | Cloudflare A record for `demo-nav.towardpcc.com` to the host, **proxied**, like every other subdomain here. Grey cloud takes it offline and breaks certificate renewal |
+| Database | its own `db` container and its own volume inside its own compose project. Nothing is shared with production: not the volume, not the network, not one secret value |
+
+**Nothing is shared with production.** Every key is copied by *name* from the production
+environment table above, and every secret gets a **new random value** (`openssl rand -hex 24` on
+the host), set in both the production and the preview copy. No production password is reused.
+
+**What is set there**
+
+| Key | Value |
+| --- | --- |
+| `APP_URL` | `https://demo-nav.towardpcc.com` |
+| `INSTANCE_LABEL` | `DEMO`. Every page then carries the undismissable banner `DEMO: invented patients only`, on screen and on paper, and the demo tooling and the demo seed will refuse to run without it |
+| `LOGIN_RATE_LIMIT_PER_MINUTE` | `60`. Fifteen staff behind one hospital NAT address would otherwise hit the production limit of 5 per minute per IP and the sixth person would be turned away |
+| `REPORT_HEADER` | `DEMO. Qatif Central Hospital, Emergency Department. ER Navigator` |
+| `ADMIN_USERNAME`, `ADMIN_DISPLAY_NAME`, `ADMIN_PASSWORD` | the seeded first admin, with a **random** password |
+| `DEMO_USER_PASSWORD` | random, the one shared password for the four demo staff accounts |
+
+Ahmed reads the demo admin password and `DEMO_USER_PASSWORD` off the demo application's Coolify
+environment page himself. Neither is ever printed into a session, a log or this repository.
+
+**What is blank there, and what that means**
+
+`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` and `ALERT_PUSH_URL` are all
+empty. Read from the code, not assumed: with an empty `SMTP_HOST` the worker builds no mailer, logs
+`email: 'log only (SMTP_HOST empty)'` at start, and each cycle writes "SMTP_HOST is empty; would
+have emailed …" instead of sending. Alert rows are still recorded, so the demo shows real 6-hour
+alerts on Admin → Alerts with **Emailed: –**, which is correct and not a fault. An empty
+`ALERT_PUSH_URL` gives `pushMonitor: none`: no Uptime Kuma monitor watches the demo, deliberately,
+because a demo that is switched off must not page anyone.
+
+**Seed it** (on the host, after the deploy is verified). `$OWNER_URL` and `$DEMO_PW` are read from
+the demo application's Coolify environment page into shell variables and **never echoed**;
+`OWNER_URL` is the URL the `migrate` service uses. `docker exec` does not run the image's
+`ENTRYPOINT`, so the entrypoint allowlist does not strip what is passed on the exec line, and
+neither value has to live in the container's own environment.
+
+```bash
+APPC=$(sudo docker ps --format '{{.Names}}' | grep '^app-<demo-app-uuid>')
+sudo docker exec \
+  -e DATABASE_URL="$OWNER_URL" \
+  -e INSTANCE_LABEL=DEMO \
+  -e DEMO_USER_PASSWORD="$DEMO_PW" \
+  "$APPC" node demo-seed.js
+```
+
+It creates four demo accounts (`demo.nav.a`, `demo.nav.b`, `demo.charge`, `demo.lead`) and about
+ten invented patients backdated so the board shows every elapsed band, some resolved, one with a
+referral. Every MRN is `999999` plus a two-digit ordinal, eight digits, which cannot collide with a
+hospital record number. The script refuses to run unless `INSTANCE_LABEL` is set, refuses without a
+`DEMO_USER_PASSWORD`, and refuses if the database already holds a case opened by anyone who is not
+a demo user. It is idempotent: a second run adds nothing and prints a count summary.
+
+**Reset it between sessions.** Re-running the seed adds nothing, so a reset means clearing first.
+Either redeploy the application with a fresh volume (delete the demo application's volume in
+Coolify, then Deploy: `migrate` recreates the schema and seeds the reference lists, then run the
+command above), or drop and recreate the demo database as its owner in the demo `db` container and
+redeploy. Never point a reset at production: the seed's own guards are the backstop, not the plan.
+
+**Delete it** when the demos are over, in this order: the Coolify application `er-navigator-demo`
+with its volumes box **ticked** (which removes the demo database volume), then the Coolify project
+`demo` if nothing else is in it, then the Cloudflare A record for `demo-nav.towardpcc.com`. Nothing
+in production references any of it.
+
+**`scripts/backup.sh` does not back the demo up, and that is intended.** It selects the database
+container by production's application uuid (`APP_UUID` defaults to `jqcjqhmcmizxs1u51wnqlfwv`), so
+it never sees the demo's. Everything in the demo database is invented and is meant to be
+disposable.
+
+**On the day of a demo** (readiness audit C11): turn **auto-deploy off** on the demo application,
+and push nothing to `main` from the start of the session until it ends. A push redeploys both
+applications, and a compose deploy is stop-then-start: about a minute of 404 in the middle of a
+room full of people trying the app, or longer if a migration fails.
+
 ## Security headers
 
 Since Phase 10 the Permissions-Policy allows the microphone to this origin only (`microphone=(self)`): the in-app dictation button uses the browser's speech recognition where it exists (Chrome, Android); every other feature in the header stays denied. `tests/e2e/headers.spec.ts` pins the exact string.
