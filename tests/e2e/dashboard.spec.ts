@@ -954,6 +954,69 @@ test('the Adaa KPIs sit against their four tiers, with the table still under the
   await expect(table.getByRole('row', { name: /^KPI 1 · Door to doctor, median/ })).toContainText('30 min')
 })
 
+/**
+ * Items 2 and 7. Seven fixture cases with a payer were resolved with all three phases measured —
+ * front end, decision, after the decision, in hours:
+ *
+ *   admitted    3200001 (0.5, 1.5, 24)  3200003 (1, 5, 3)  3200007 (0.6, 7.4, 22)   2.1, 13.9, 49 of 65
+ *   discharged  3200002 (0.4, 11.6, 2)  3200004 (0.3, 3.7, 3)  3200005 (0.5, 1.5, 3)  1.2, 16.8, 8 of 26
+ *   other       3200013, deceased (0.4, 0.6, 1)
+ *
+ * so all seven split 3.7, 31.3 and 58 of 93 hours (4 %, 34 %, 62 %), the admitted 3 %, 21 % and
+ * 75 %, the discharged 5 %, 65 % and 31 %; "other" has one case and is not drawn.
+ */
+test('the stay splits overall and by outcome, and a stage with no case is left out', async ({ page }, testInfo) => {
+  await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.243' : '198.51.100.244')
+  await signIn(page, E2E_USERS.navigator)
+  await page.goto(`/dashboard?${FIXTURE_ONLY}`)
+
+  const section = page.getByRole('heading', { name: 'Where the time goes', exact: true }).locator('xpath=..')
+  const split = section.locator('[data-chart="stay-split"]')
+  await expect(split).toContainText('over the 7 cases with all three measured')
+  expect(await split.locator('[data-split]').evaluateAll((els) => els.map((e) => e.getAttribute('data-split')))).toEqual([
+    'all',
+    'admitted',
+    'discharged',
+  ])
+
+  const bar = (key: string) => split.locator(`[data-split="${key}"]`)
+  await expect(bar('all')).toContainText('All outcomes')
+  for (const text of ['4%', '0h 30m', '34%', '3h 42m', '62%', '3h 00m']) await expect(bar('all')).toContainText(text)
+  await expect(bar('admitted')).toContainText('Admitted')
+  await expect(bar('admitted')).toContainText('3 cases')
+  for (const text of ['3%', '21%', '75%', '22h 00m']) await expect(bar('admitted')).toContainText(text)
+  for (const text of ['5%', '65%', '31%']) await expect(bar('discharged')).toContainText(text)
+
+  // Three segments in time order, to scale: after the decision is three quarters of the admitted bar.
+  const segments = bar('admitted').locator('[data-segment]')
+  expect(await segments.evaluateAll((els) => els.map((e) => e.getAttribute('data-segment')))).toEqual([
+    'front',
+    'decision',
+    'after',
+  ])
+  const [after, whole] = await Promise.all([
+    bar('admitted').locator('[data-segment="after"]').boundingBox(),
+    bar('admitted').locator('[data-bar]').boundingBox(),
+  ])
+  expect(after!.width / whole!.width).toBeCloseTo(0.75, 1)
+
+  // Item 7: only the stages with a case. The fixture's front-end reasons are one registration and
+  // one triage delay, so resus and exam room are gone; no case waits on the disposition decision or
+  // on administration.
+  const stages = (phase: string) => section.locator(`[data-phase-stages="${phase}"]`)
+  await expect(stages('front').getByRole('link', { name: 'Registration', exact: true })).toBeVisible()
+  await expect(stages('front').getByRole('link', { name: 'Triage', exact: true })).toBeVisible()
+  await expect(stages('front').getByRole('link')).toHaveCount(2)
+  await expect(stages('decision').getByRole('link', { name: 'Disposition decision', exact: true })).toHaveCount(0)
+  await expect(stages('after').getByRole('link', { name: 'Administrative / coordination', exact: true })).toHaveCount(0)
+
+  // A phase with none says so: the admission-process cases carry no reason before the decision.
+  await page.goto(`/dashboard?${FIXTURE_ONLY}&stage=adm`)
+  await expect(stages('front')).toContainText('No case in this range carries one.')
+  await expect(stages('front').getByRole('table')).toHaveCount(0)
+  await expect(stages('after').getByRole('link', { name: 'Admission process', exact: true })).toBeVisible()
+})
+
 test('an unknown drill key renders the dashboard rather than an error', async ({ page }, testInfo) => {
   await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.101' : '198.51.100.102')
   await signIn(page, E2E_USERS.navigator)

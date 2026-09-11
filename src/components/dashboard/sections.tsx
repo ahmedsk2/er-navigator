@@ -12,7 +12,7 @@
  * "By ED area" on a hospital that has not started recording areas is noise, and the sections that
  * can be empty say so where they are defined.
  */
-import { Fragment, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import {
   Activity,
   BarChart3,
@@ -30,11 +30,13 @@ import {
 import { AdaaBullets } from '@/src/components/dashboard/charts/AdaaBullets'
 import { HBar, type HBarColor, type HBarRow } from '@/src/components/dashboard/charts/HBar'
 import { StackedBar, type StackRow } from '@/src/components/dashboard/charts/StackedBar'
+import { StaySplit } from '@/src/components/dashboard/charts/StaySplit'
 import {
   BandLegend,
   BarLinks,
   DashSection,
   DataTable,
+  EmptyNote,
   Footnote,
   Median,
   PanelLabel,
@@ -533,29 +535,24 @@ export function DocumentationSection({ kpi, range, filter }: Props) {
 
 /**
  * The stay in three parts (docs/specs/phase10-delays.md): front end, decision, after the
- * decision. Three tables under one heading, all siblings of the h3 as every section keeps them:
- * the phases with a median and a share, the longest phase per case, then the stages of each
- * phase. Every row drills down; the grid key is `phase|what`.
+ * decision. Phase 11 put the split on top as bars, overall and by outcome (`StaySplit`); under it
+ * the tables, the phases with a median and a share, the longest phase per case, then the stages of
+ * each phase — only the stages some case in the range carries, and a line saying so when a phase
+ * has none. Every row drills down; the grid key is `phase|what`.
  */
 export function WhereTimeGoesSection({ kpi, range, filter }: Props) {
   const { phases, completeN } = kpi.phases
   if (!phases.some((p) => p.n > 0)) return null
   return (
     <DashSection title="Where the time goes" icon={<Clock size={18} />}>
+      <StaySplit rows={kpi.staySplit} />
+      {/* The share is text only now: the bars above draw it, where it was an 80 px sliver here. */}
       <DataTable
         head={['Phase', 'Cases', 'Median', 'Share']}
         rows={phases.map((p) => ({
           key: p.key,
           href: href(range, filter, 'phase', gridKey(p.key, 'median')),
-          cells: [
-            p.name,
-            p.n,
-            <Median key="m" value={p.med} n={p.n} />,
-            <span key="s" className="inline-flex min-w-[56px] flex-col items-end gap-1">
-              {fmtShare(p.share)}
-              <ShareBar share={p.share} label={p.name} />
-            </span>,
-          ],
+          cells: [p.name, p.n, <Median key="m" value={p.med} n={p.n} />, fmtShare(p.share)],
         }))}
       />
       <PanelLabel>Longest phase of the stay, over the {completeN} cases with all three measured</PanelLabel>
@@ -567,23 +564,34 @@ export function WhereTimeGoesSection({ kpi, range, filter }: Props) {
           cells: [p.name, p.longestN],
         }))}
       />
-      {phases.map((p) => (
-        <Fragment key={p.key}>
-          <PanelLabel>Reasons recorded in the {p.name.toLowerCase()}</PanelLabel>
-          <DataTable
-            head={['Stage', 'Cases']}
-            rows={p.stages.map((s) => ({
-              key: `${p.key}-${s.name}`,
-              href: href(range, filter, 'phase', gridKey(p.key, s.name)),
-              cells: [s.name, s.value],
-            }))}
-          />
-        </Fragment>
-      ))}
+      {phases.map((p) => {
+        // `phaseSplit` keeps every stage, zero rows included; a stage no case carries is not a
+        // finding, so it is left out here rather than in the figure (Phase 11, item 7).
+        const carried = p.stages.filter((s) => s.value > 0)
+        return (
+          <div key={p.key} data-phase-stages={p.key}>
+            <PanelLabel>Reasons recorded in the {p.name.toLowerCase()}</PanelLabel>
+            {carried.length > 0 ? (
+              <DataTable
+                head={['Stage', 'Cases']}
+                rows={carried.map((s) => ({
+                  key: `${p.key}-${s.name}`,
+                  href: href(range, filter, 'phase', gridKey(p.key, s.name)),
+                  cells: [s.name, s.value],
+                }))}
+              />
+            ) : (
+              <EmptyNote>No case in this range carries one.</EmptyNote>
+            )}
+          </div>
+        )
+      })}
       <Footnote>
         Front end is door to physician; decision is physician to the disposition decision; after the decision is
         decision to leaving, so it counts resolved cases only. Shares are summed hours over the cases with all three
-        measured. Tap a row for the cases.
+        measured. The bars take their medians from those same cases, so they can differ from the table&apos;s, which
+        count every case with that phase measured; an outcome with fewer than 3 such cases has no bar. Tap a row for the
+        cases.
       </Footnote>
     </DashSection>
   )
