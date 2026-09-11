@@ -6,13 +6,21 @@
  * (`scripts/demo-seed.ts`). `scripts/demo-reset.sh` states the same rule in shell, in its header,
  * because a shell script cannot import this.
  *
- * The order matters and is asserted:
+ * The order matters and is asserted, over the URL it is handed:
  *  1. a production host throws, always, even with INSTANCE_LABEL set — no environment variable
  *     may talk the tooling into writing to `nav.towardpcc.com`;
  *  2. loopback passes with no label, because a laptop database is nobody's record;
  *  3. any other host passes only when this process carries an instance label, which is how the
  *     hosted demo identifies itself;
  *  4. anything that is not a URL throws, rather than being treated as "not production".
+ *
+ * IT CAN ONLY JUDGE THE URL IT IS GIVEN, and which URL that is decides whether it is a barrier at
+ * all (corrected in the Phase 12 review round). The Playwright config hands it a base URL, which
+ * is exactly the thing that would point at production. The seed runs *inside* the app container,
+ * where `DATABASE_URL`'s hostname is `db` on production and on the demo alike — so that URL alone
+ * can never distinguish them, and the seed therefore also puts `APP_URL`, the container's own
+ * address, through this function. `scripts/demo-seed.ts` says which of its refusals is load
+ * bearing and why.
  *
  * A run against the live database would be permanent: the audit log is append-only and a case can
  * only be voided, never deleted.

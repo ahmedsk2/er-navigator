@@ -9,10 +9,10 @@ import { band, elapsedHours } from '@/src/lib/domain/time'
 /**
  * Phase 12 item 3, against a real Postgres.
  *
- * IT OWNS A SCHEMA, and that is not a detail. Refusals 4 and 5 are whole-table counts — any Case
+ * IT OWNS A SCHEMA, and that is not a detail. Refusals 5 and 6 are whole-table counts — any Case
  * opened by a non-demo user, any MRN outside the demo prefix — which is the safety property and
  * must not be scoped away. The lead's local database permanently holds the Playwright fixture
- * cases and the sibling `tests/db` files create more in parallel, so refusal 4 would fire before
+ * cases and the sibling `tests/db` files create more in parallel, so refusal 5 would fire before
  * anything was created and every happy-path assertion here would throw instead of seeding.
  *
  * So the file migrates and seeds a schema of its own, hands `runDemoSeed` a client pointed at it,
@@ -105,7 +105,15 @@ let env: NodeJS.ProcessEnv
 describeDb('the demo seed', () => {
   beforeAll(async () => {
     url = testUrl(parentUrl!)
-    env = { ...ENV, INSTANCE_LABEL: 'DEMO', DEMO_USER_PASSWORD: PASSWORD, DATABASE_URL: url }
+    // APP_URL is the refusal that can tell production from a demo (see the test below): the
+    // lead's own copy is loopback, which the guard allows with or without a label.
+    env = {
+      ...ENV,
+      INSTANCE_LABEL: 'DEMO',
+      APP_URL: 'http://localhost:3000',
+      DEMO_USER_PASSWORD: PASSWORD,
+      DATABASE_URL: url,
+    }
     const run = (args: string[]): void => {
       execFileSync(CMD, [...PREFIX, ...args], {
         cwd: ROOT,
@@ -150,9 +158,45 @@ describeDb('the demo seed', () => {
     expect(await prisma.case.count()).toBe(0)
   })
 
+  /**
+   * The refusal that can actually tell the two instances apart, and the reason it exists.
+   *
+   * `DATABASE_URL`'s hostname is `db` inside the compose project — on production and on the demo
+   * alike — so the guard on it never fires in the place the seed is really run from. It catches a
+   * hand-typed external URL and nothing else. `APP_URL` is the one value in the container's own
+   * environment that names which copy this is (`https://nav.towardpcc.com` there,
+   * `https://demo-nav.towardpcc.com` on the demo), `docker exec` inherits it, and a stray
+   * `-e INSTANCE_LABEL=DEMO` on the exec line cannot talk the guard out of it.
+   */
+  it('refuses a production APP_URL even with INSTANCE_LABEL set and a container DATABASE_URL', async () => {
+    await expect(
+      runDemoSeed({
+        env: {
+          ...ENV,
+          INSTANCE_LABEL: 'DEMO',
+          DEMO_USER_PASSWORD: PASSWORD,
+          APP_URL: 'https://nav.towardpcc.com',
+          DATABASE_URL: 'postgresql://u:p@db:5432/ernav',
+        },
+        prisma,
+      }),
+    ).rejects.toThrow(/nav\.towardpcc\.com/)
+    expect(await prisma.case.count()).toBe(0)
+  })
+
+  it('refuses when APP_URL is missing, so an unlabelled copy cannot be guessed at', async () => {
+    const withoutAppUrl: NodeJS.ProcessEnv = { ...env }
+    delete withoutAppUrl.APP_URL
+    await expect(runDemoSeed({ env: withoutAppUrl, prisma })).rejects.toThrow(/APP_URL/)
+    expect(await prisma.case.count()).toBe(0)
+  })
+
   it('refuses without a DATABASE_URL, and refuses production outright', async () => {
     await expect(
-      runDemoSeed({ env: { ...ENV, INSTANCE_LABEL: 'DEMO', DEMO_USER_PASSWORD: PASSWORD }, prisma }),
+      runDemoSeed({
+        env: { ...ENV, INSTANCE_LABEL: 'DEMO', APP_URL: 'http://localhost:3000', DEMO_USER_PASSWORD: PASSWORD },
+        prisma,
+      }),
     ).rejects.toThrow(/DATABASE_URL/)
     await expect(
       runDemoSeed({ env: { ...env, DATABASE_URL: 'postgresql://u:p@nav.towardpcc.com:5432/ernav' }, prisma }),

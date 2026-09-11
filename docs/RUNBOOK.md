@@ -448,12 +448,28 @@ sudo docker exec \
   "$APPC" node demo-seed.js
 ```
 
+**`APP_URL` is deliberately not on that exec line.** The container already carries it (it is on the
+entrypoint allowlist and set per application in Coolify), and the seed reads it from the
+container's own environment: `https://demo-nav.towardpcc.com` here,
+`https://nav.towardpcc.com` on production. That is the refusal that actually keeps this command off
+production — passing `APP_URL` yourself would only let a typo talk it round.
+
 It creates four demo accounts (`demo.nav.a`, `demo.nav.b`, `demo.charge`, `demo.lead`) and about
 ten invented patients backdated so the board shows every elapsed band, some resolved, one with a
 referral. Every MRN is `999999` plus a two-digit ordinal, eight digits, which cannot collide with a
-hospital record number. The script refuses to run unless `INSTANCE_LABEL` is set, refuses without a
-`DEMO_USER_PASSWORD`, and refuses if the database already holds a case opened by anyone who is not
-a demo user. It is idempotent: a second run adds nothing and prints a count summary.
+hospital record number. It is idempotent: a second run adds nothing and prints a count summary.
+
+It refuses, in this order (corrected 11 September 2026 in the Phase 12 review round; this
+paragraph used to say the barrier was `INSTANCE_LABEL` and the database URL, and neither is one
+here — the label arrives on the exec line, and `DATABASE_URL`'s host is `db` on both copies):
+
+1. `INSTANCE_LABEL` is not set;
+2. `DEMO_USER_PASSWORD` is missing or too short;
+3. **`APP_URL` is missing, or names a production host** — the barrier, unbluffable from the exec
+   line;
+4. `DATABASE_URL` is missing, or names a production host (a URL typed by hand from elsewhere);
+5. the database already holds a case opened by anyone who is not a demo user;
+6. the database already holds a case whose MRN is not a `999999…` demo MRN.
 
 **Reset it between sessions.** Re-running the seed adds nothing, so a reset means clearing first.
 Either redeploy the application with a fresh volume (delete the demo application's volume in

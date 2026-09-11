@@ -344,6 +344,19 @@ sudo docker exec \
 5. **Foreign MRNs**, belt and braces: `count(Case where NOT mrn LIKE '999999%') > 0` → exit 1 with
    the same shape of message.
 
+**Recorded deviation (Phase 12 review round, 11 September 2026): six refusals, not five, and the
+one that matters is new.** What shipped inserts `APP_URL` as refusal 3 — missing, or a production
+host through `assertDemoTarget` — and pushes the rest down one, so the whole-table counts are
+refusals 5 and 6 and `DEMO_USERNAMES` is used by refusal 5. The reason is that nothing in this
+list was a barrier where the command is actually run: `INSTANCE_LABEL` arrives on the exec line, so
+refusal 1 says whatever the operator typed, and `DATABASE_URL`'s hostname inside the compose
+project is `db` on production and on the demo alike, so the guard on it never fires there.
+`APP_URL` is the container's own (`https://nav.towardpcc.com` versus
+`https://demo-nav.towardpcc.com`), `docker exec` inherits it, and it is not passed on the exec
+line — so a stray `-e INSTANCE_LABEL=DEMO` against the production container is refused.
+`scripts/demo-seed.ts`, `src/lib/demo-guard.ts`, the `Dockerfile` comment and
+`docs/RUNBOOK.md` say the same thing; `tests/db/demo-seed.test.ts` proves both halves.
+
 ### What it creates
 
 **Four users.** All with `active: true`, all with the one password read from `DEMO_USER_PASSWORD`

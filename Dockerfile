@@ -56,8 +56,10 @@ COPY --from=build --chown=app:app /repo/public ./public
 # The `worker` service in docker-compose.production.yml runs this same image as `node worker.js`.
 COPY --from=build --chown=app:app /repo/dist/worker.js ./worker.js
 # The demo seed (Phase 12 item 3): never run by a service, only by `docker exec ... node
-# demo-seed.js` on a demo instance. It refuses unless INSTANCE_LABEL is set, so carrying it in the
-# production image costs one file and can do nothing there.
+# demo-seed.js` on a demo instance. Carrying it in the production image costs one file and can do
+# nothing there — not because INSTANCE_LABEL is unset (that arrives on the exec line, so it says
+# whatever the operator typed), but because the seed reads the container's own APP_URL and refuses
+# a production host whatever else it is given. Corrected in the Phase 12 review round.
 COPY --from=build --chown=app:app /repo/dist/demo-seed.js ./demo-seed.js
 USER 100
 EXPOSE 3000

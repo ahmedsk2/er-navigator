@@ -39,6 +39,17 @@ describe('assertDemoTarget', () => {
     ).not.toThrow()
   })
 
+  /**
+   * Why `scripts/demo-seed.ts` cannot rely on the database URL alone (Phase 12 review round).
+   * Inside the compose project the database host is `db` on production and on the demo alike, so
+   * this guard, handed only that URL, passes on both — it can only judge what it is given. The
+   * seed therefore also puts `APP_URL`, the one value in the container's own environment that
+   * names which copy it is, through this same function.
+   */
+  it('cannot tell production from a demo by a compose-internal database host', () => {
+    expect(() => assertDemoTarget('postgresql://u:p@db:5432/ernav', env({ INSTANCE_LABEL: 'DEMO' }))).not.toThrow()
+  })
+
   it('refuses an unparseable target', () => {
     expect(() => assertDemoTarget('not a url', env({ INSTANCE_LABEL: 'DEMO' }))).toThrow(DemoTargetError)
     expect(() => assertDemoTarget('', env({ INSTANCE_LABEL: 'DEMO' }))).toThrow(DemoTargetError)

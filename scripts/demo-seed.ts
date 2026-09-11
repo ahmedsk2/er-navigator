@@ -20,12 +20,25 @@
  *   1. INSTANCE_LABEL is not set — this is not a labelled demo instance;
  *   2. DEMO_USER_PASSWORD is missing or shorter than the app's own NEW_PASSWORD_MIN. Never a
  *      literal in this repository, never printed, never logged;
- *   3. DATABASE_URL is missing, or names a production host (src/lib/demo-guard.ts);
- *   4. the database already holds a Case opened by someone who is not a demo user;
- *   5. the database already holds a Case whose MRN is outside the demo prefix — belt and braces
+ *   3. APP_URL is missing, or names a production host (src/lib/demo-guard.ts);
+ *   4. DATABASE_URL is missing, or names a production host — the same guard, over the other URL;
+ *   5. the database already holds a Case opened by someone who is not a demo user;
+ *   6. the database already holds a Case whose MRN is outside the demo prefix — belt and braces
  *      for the same question.
- * Refusals 4 and 5 are whole-table counts on purpose: that is the safety property, and scoping
+ * Refusals 5 and 6 are whole-table counts on purpose: that is the safety property, and scoping
  * them to "the demo's own rows" would answer a different question.
+ *
+ * WHICH REFUSAL IS THE REAL BARRIER (corrected in the Phase 12 review round). Refusal 4 used to
+ * be described as the one that keeps this script off production. It is not, in the place the
+ * script is actually run: inside the compose project `DATABASE_URL`'s hostname is `db` on
+ * production and on the demo alike, so the guard passes on both, and it only catches a
+ * hand-typed external URL. Refusal 1 is no barrier either — `INSTANCE_LABEL=DEMO` is passed on
+ * the exec line, so it says whatever the operator typed. `APP_URL` is the value that cannot be
+ * bluffed away: it is the container's own (`https://nav.towardpcc.com` on production,
+ * `https://demo-nav.towardpcc.com` on the demo), `docker exec` inherits it, and refusal 3 throws
+ * on a production host whatever else is on the exec line. Missing is refused too, rather than
+ * read as "not production". Nothing has to be added to the exec line for this: the container
+ * already carries `APP_URL` (it is on the entrypoint allowlist).
  *
  * MRNs. `MRN_RE` is `/^\d+$/` — digits only, no length bound — so the pattern is chosen, not
  * derived: six 9s and a two-digit ordinal, eight digits in all. Valid under the app's own rule,
@@ -70,7 +83,7 @@ const DEMO_USERS: ReadonlyArray<DemoUserSeed> = [
   { username: 'demo.lead', displayName: 'Demo Leadership (read-only)', role: 'VIEWER', email: 'demo.lead@demo.invalid' },
 ]
 
-/** Used by refusal 4, and by the database test that proves it. */
+/** Used by refusal 5, and by the database test that proves it. */
 export const DEMO_USERNAMES: ReadonlyArray<string> = DEMO_USERS.map((u) => u.username)
 
 const H = 3_600_000
@@ -289,7 +302,16 @@ export async function runDemoSeed(deps: DemoSeedDeps = {}): Promise<DemoSeedSumm
     refuse(`DEMO_USER_PASSWORD is missing or shorter than ${NEW_PASSWORD_MIN} characters`)
   }
 
-  // 3 — a target, and not production's.
+  // 3 — which copy of the app this container is. The one value on the entrypoint allowlist that
+  // production and the demo genuinely differ on, and `docker exec` inherits it, so no label
+  // passed on the exec line can turn nav.towardpcc.com into a demo.
+  const appUrl = env.APP_URL ?? ''
+  if (!appUrl) refuse('APP_URL is not set, so this container cannot say which copy of the app it is')
+  assertDemoTarget(appUrl, env)
+
+  // 4 — a target, and not production's. Inside the compose project this host is `db` either way
+  // (see the header): the refusal that stops production is 3, and this one catches a URL typed by
+  // hand at some other machine.
   const url = env.DATABASE_URL ?? ''
   if (!url) refuse('DATABASE_URL is not set')
   assertDemoTarget(url, env)
@@ -308,7 +330,7 @@ export async function runDemoSeed(deps: DemoSeedDeps = {}): Promise<DemoSeedSumm
 async function seed(prisma: PrismaClient, password: string, now: Date): Promise<DemoSeedSummary> {
   const summary: DemoSeedSummary = { users: DEMO_USERS.length, usersCreated: 0, cases: CASES.length, casesCreated: 0 }
 
-  // 4 and 5 — whole-table counts, so a database with anyone else's work in it is left alone.
+  // 5 and 6 — whole-table counts, so a database with anyone else's work in it is left alone.
   const foreignByAuthor = await prisma.case.count({
     where: { openedBy: { username: { notIn: [...DEMO_USERNAMES] } } },
   })
