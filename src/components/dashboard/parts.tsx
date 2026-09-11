@@ -3,7 +3,7 @@
  * the link list that sits beside every chart.
  *
  * Server components with no state at all — the page must render, and every drill-down must work,
- * with JavaScript off; only the two chart components are clients. That is also why a "tap a row
+ * with JavaScript off; only the two Recharts charts are clients. That is also why a "tap a row
  * to drill" table row is a real `<a>` stretched over the row rather than an onClick handler.
  */
 import Link from 'next/link'

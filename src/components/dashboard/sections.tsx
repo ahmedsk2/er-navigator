@@ -2,8 +2,8 @@
  * The Phase 8 dashboard sections: the weekly deck's headline, bands, longest stays, actions,
  * outcomes and documentation checks, and the Adaa and August-sheet panels.
  *
- * Server components, like everything else on this page except the three charts. Not one of them
- * counts anything: every figure arrives on `dashboard().kpi`, already computed by
+ * Server components, like everything else on this page except the two Recharts charts. Not one
+ * of them counts anything: every figure arrives on `dashboard().kpi`, already computed by
  * `src/lib/domain/kpi.ts` and already guarded — a median or a share the module refused to give
  * below `MIN_N` arrives as null and renders "n<3". Turning a number into a string is
  * `src/lib/dashboard/panels.ts`, which is unit-tested; this file only lays out.
@@ -29,7 +29,7 @@ import {
 } from '@/src/components/icons'
 import { AdaaBullets } from '@/src/components/dashboard/charts/AdaaBullets'
 import { ArrivalTable } from '@/src/components/dashboard/charts/ArrivalTable'
-import { HBar, type HBarColor, type HBarRow } from '@/src/components/dashboard/charts/HBar'
+import { BarList, type HBarColor, type HBarRow } from '@/src/components/dashboard/charts/BarList'
 import { StackedBar, type StackRow } from '@/src/components/dashboard/charts/StackedBar'
 import { StaySplit } from '@/src/components/dashboard/charts/StaySplit'
 import {
@@ -80,7 +80,10 @@ export const hbarRows = (
 ): HBarRow[] =>
   rows.map((row) => ({ name: row.name, value: row.value, href: href(range, filter, section, row.name) }))
 
-/** A bar section: the chart, and the same rows as links for keyboard, screen readers and print. */
+/**
+ * A bar section. Since Phase 11 each bar is itself the link, so there is no second, hidden list
+ * of the same rows beside it: keyboard, screen reader and paper all read the bars.
+ */
 export function BarSection({
   title,
   rows,
@@ -98,8 +101,7 @@ export function BarSection({
 }) {
   return (
     <DashSection title={title} icon={icon}>
-      <HBar rows={rows} color={color} unit={unit} />
-      <BarLinks caption={title} rows={rows} unit={unit} />
+      <BarList rows={rows} color={color} unit={unit} />
       {footnote ? <Footnote>{footnote}</Footnote> : null}
     </DashSection>
   )

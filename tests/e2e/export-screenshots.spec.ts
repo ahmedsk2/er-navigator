@@ -54,6 +54,6 @@ test('phase 5 gate screenshots', async ({ page }, testInfo) => {
   await expect(page.locator('[data-report-header]')).toBeVisible()
   // The charts are client components: wait for both to have drawn before the shutter.
   await expect(page.locator('[data-chart-panel="cases"] svg[role="application"]')).toBeVisible()
-  await expect(page.locator('[data-chart="hbar"] svg[role="application"]').first()).toBeVisible()
+  await expect(page.locator('[data-chart="hbar"] [data-bar]').first()).toBeVisible()
   await shoot(page, 'report', suffix)
 })

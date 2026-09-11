@@ -4,9 +4,10 @@
  * Phase 8 panels from `sections.tsx` interleaved into it.
  *
  * Nothing on this page counts anything. Every number, every row and every drill-down id comes out
- * of that one call, which is tested against a fixture with hand-computed answers. The three charts
- * are the only client components; the tiles, the tables and every link are server-rendered HTML,
- * so leadership can read this page with JavaScript off and print it.
+ * of that one call, which is tested against a fixture with hand-computed answers. The two Recharts
+ * charts — the trend panels and the turnaround stack — are the only client components; the tiles,
+ * the tables, the bars and every link are server-rendered HTML, so leadership can read this page
+ * with JavaScript off and print it.
  */
 import Link from 'next/link'
 import {

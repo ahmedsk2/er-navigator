@@ -291,9 +291,9 @@ test('every section the seeded data earns is on the page, charts included', asyn
     await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible()
   }
 
-  // The two client charts actually mounted.
+  // The trend chart actually mounted, and the bar sections drew (plain HTML since Phase 11).
   await expect(page.locator('[data-chart-panel="cases"] svg[role="application"]')).toBeVisible()
-  await expect(page.locator('[data-chart="hbar"] svg[role="application"]').first()).toBeVisible()
+  await expect(page.locator('[data-chart="hbar"] [data-bar]').first()).toBeVisible()
 
   // MROD was consulted on four seeded cases, so its median is a number and not "n<3". Scoped to
   // this table: Phase 8's "Exam to consult, median" names the same teams a few sections down.
@@ -1168,6 +1168,58 @@ test('arrivals are a weekday-by-block table whose cells open their cases', async
   await expect(page.locator('[data-drill-label]')).toHaveText(`Arrivals on ${WEEKDAYS[weekday]}s, ${hours}`)
   await expect(rowFor(page, '3200008')).toHaveCount(1)
   await expect(rowFor(page, '3200009')).toHaveCount(0)
+})
+
+/**
+ * Item 6. The horizontal bar sections are rows of links with the whole label — above the bar on a
+ * phone, beside it on a laptop — where the chart used to cut a reason at 22 characters
+ * ("Awaiting consulted te…"). 3200003 is the one fixture case waiting on a consulted team.
+ */
+test('the bar sections show whole labels and stay links to their cases', async ({ page }, testInfo) => {
+  const mobile = testInfo.project.name === 'mobile'
+  await fromClientIp(page, '198.51.100.245')
+  await signIn(page, E2E_USERS.navigator)
+  await page.goto(`/dashboard?${FIXTURE_ONLY}`)
+
+  const primary = page.getByRole('heading', { name: 'Primary delay reason', exact: true }).locator('xpath=..')
+  const row = primary.getByRole('link', { name: /^Awaiting consulted team response\/callback: 1 case$/ })
+  await expect(row).toBeVisible()
+  await expect(row.locator('[data-bar-label]')).toHaveText('Awaiting consulted team response/callback')
+  // Nothing is cut, and nothing is clipped by its own box.
+  await expect(primary.getByText('…')).toHaveCount(0)
+  for (const title of ['Primary delay reason', 'Pathways', 'Departments involved', 'Outcomes', 'By day of week']) {
+    const labels = page.getByRole('heading', { name: title, exact: true }).locator('xpath=..').locator('[data-bar-label]')
+    expect(await labels.count(), title).toBeGreaterThan(0)
+    const clipped = await labels.evaluateAll((els) => els.filter((e) => e.scrollWidth > e.clientWidth + 1).length)
+    expect(clipped, `${title}: a label is clipped`).toBe(0)
+  }
+
+  // Above the bar on a phone; beside it, on the same line, on a laptop.
+  const [label, bar] = await Promise.all([
+    row.locator('[data-bar-label]').boundingBox(),
+    row.locator('[data-bar-fill]').boundingBox(),
+  ])
+  if (!label || !bar) throw new Error('no geometry for the label or its bar')
+  if (mobile) {
+    expect(label.y + label.height).toBeLessThanOrEqual(bar.y + 1)
+  } else {
+    expect(label.x + label.width).toBeLessThanOrEqual(bar.x + 1)
+    expect(bar.y).toBeLessThan(label.y + label.height)
+    expect(bar.y + bar.height).toBeGreaterThan(label.y)
+  }
+
+  // Every bar section is drawn this way now, and no longer as an SVG chart.
+  await expect(page.locator('[data-chart="hbar"]')).toHaveCount(6)
+  await expect(page.locator('[data-chart="hbar"] svg')).toHaveCount(0)
+
+  // The row is the drill-down, inside the filter the page is drawn with.
+  const href = (await row.getAttribute('href')) ?? ''
+  const params = new URL(href, 'http://dashboard.invalid').searchParams
+  expect(params.get('drill')).toBe('primary:Awaiting consulted team response/callback')
+  expect(params.getAll('payer')).toEqual(['GOVERNMENT', 'INSURED', 'SELF_PAY'])
+  await row.click()
+  await expect(page.locator('[data-drill-label]')).toHaveText('Awaiting consulted team response/callback')
+  await expect(rowFor(page, '3200003')).toHaveCount(1)
 })
 
 test('an unknown drill key renders the dashboard rather than an error', async ({ page }, testInfo) => {

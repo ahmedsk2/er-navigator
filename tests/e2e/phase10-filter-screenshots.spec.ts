@@ -59,7 +59,7 @@ test('phase 10 filter gate screenshots', async ({ page }, testInfo) => {
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
   await expect(page.locator('[data-filter-note]')).toHaveText('Filtered: Payer: Insured')
   await expect(page.locator('[data-chart-panel="cases"] svg[role="application"]')).toBeVisible()
-  await expect(page.locator('[data-chart="hbar"] svg[role="application"]').first()).toBeVisible()
+  await expect(page.locator('[data-chart="hbar"] [data-bar]').first()).toBeVisible()
   await shoot(page, 'dashboard', suffix)
 
   // 4. The export page: the same bar, and a count that is the number of rows the workbook holds.
