@@ -580,6 +580,34 @@ if (user.mustChangePassword) {
 }
 ```
 
+> **Recorded deviation (Slice 12A, 11 September 2026): there is no `x-pathname` header. The
+> exemption is an argument, `requireUser({ allowMustChange })`.** The two paragraphs and the block
+> above are the design as specified and are kept for the record; what shipped is:
+>
+> ```ts
+> function assertPasswordChanged(user: AuthUser, opts: RequireOptions): void {
+>   if (!user.mustChangePassword) return
+>   if (opts.as === 'api') throw new UnauthorizedError()
+>   if (opts.allowMustChange) return
+>   redirect('/account')
+> }
+> ```
+>
+> The header loops. A server action POSTs to the page it was invoked from, and Next renders the
+> action's redirect destination inside that same request — so while `/account` is rendering, the
+> header still says the page the action was called from (`/login` on sign-in). The guard fires
+> again, the router is handed a payload whose URL and tree disagree, and the browser refetches
+> `/account` for ever. `tests/e2e/auth.spec.ts` walking the real sign-in is the evidence.
+>
+> So `proxy.ts` sets no `x-pathname` at all — `src/lib/auth/__tests__/route-gate.test.ts:164`
+> asserts its *absence*, which is the inverse of the assertion this spec asked for — and the
+> exemption is passed by the exactly two callers that together are the render of `/account`: the
+> `(app)` layout and `app/(app)/account/page.tsx`. A unit test keeps that list at two.
+> `app/login/actions.ts` is the other half of the same fact: it sends an account that must change
+> its password straight to `/account`, because a redirect out of the action's destination render
+> has the same effect. Everything else below — one exempt path, sign-out untouched, server actions
+> covered, API callers refused — is unchanged in substance; only the mechanism differs.
+
 - **Exactly one exempt path, `/account`.** Nothing else. `/login` never calls `requireUser`.
 - **Sign-out keeps working** without an exemption: `app/(app)/actions.ts` `logout` calls
   `getSession()`, not `requireUser()`, so it is untouched. So is the change-password action
@@ -588,6 +616,8 @@ if (user.mustChangePassword) {
   the URL of the page it was invoked from, so `x-pathname` is that page: an admin who must change
   their password cannot create a user, and a navigator cannot save a case. The two actions that
   call `requireUser()` are `app/(app)/admin/actions.ts:41` and `app/cases/actions.ts:32`.
+  (Deviation, as above: neither action passes `allowMustChange`, so both are covered by the
+  default — the outcome the sentence describes, reached without the header.)
 - **API routes are not redirected, they are refused.** `{ as: 'api' }` throws `UnauthorizedError`,
   which all four route handlers already map to a 401 with `cache-control: no-store`
   (`app/api/board/route.ts:21`, `app/api/cases/[id]/summary/route.ts:28`,
@@ -624,7 +654,10 @@ unchanged, so `tests/e2e/auth.spec.ts:110` keeps passing.
 `expect(AUTH_USER_SELECT).toHaveProperty('mustChangePassword', true)`.
 
 **Unit — `src/lib/auth/__tests__/route-gate.test.ts`.** Failing assertion to start from:
-`expect(proxySource).toContain("x-pathname")`.
+`expect(proxySource).toContain("x-pathname")`. (Deviation, as above: the header was never
+shipped, so the assertion that stands is its inverse — `route-gate.test.ts:164`
+`expect(proxy).not.toContain('x-pathname')` — with the same file's grep over `app/` holding the
+`allowMustChange` callers to two.)
 
 **Database — `tests/db/admin.test.ts` and `tests/db/auth.test.ts`.** Failing assertions to start
 from:

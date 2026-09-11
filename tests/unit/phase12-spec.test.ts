@@ -130,6 +130,23 @@ describe('item 5: must change the first password', () => {
     expect(rule, 'an api caller must be refused, not skipped').toContain('UnauthorizedError')
   })
 
+  /**
+   * The Phase 12 review round. Item 5 specified the redirect rule around an `x-pathname` header
+   * that `proxy.ts` would set; Slice 12A found the header loops inside a server action's own
+   * destination render and shipped `requireUser({ allowMustChange })` instead, so
+   * `route-gate.test.ts:164` now asserts the header's *absence*. A spec that still mandates a
+   * mechanism the code replaced is a trap for the next reader of it, so the deviation is recorded
+   * in place, the way `docs/specs/phase6-admin-alerts.md:9` records the settings row that became
+   * an environment variable.
+   */
+  it('records that x-pathname was never shipped, and names what replaced it', () => {
+    const rule = item(5)
+    const proxy = readFileSync(path.join(ROOT, 'proxy.ts'), 'utf8')
+    expect(proxy, 'the gate sets x-pathname after all; this deviation would be stale').not.toContain('x-pathname')
+    expect(rule, 'item 5 specifies x-pathname with no deviation recorded beside it').toContain('Recorded deviation')
+    expect(rule).toContain('allowMustChange')
+  })
+
   it('accounts for the two suites that mint an account through the Admin UI', () => {
     const rule = item(5)
     // "The existing suite must stay green unchanged, because every fixture account has the column
