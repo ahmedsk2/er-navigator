@@ -132,7 +132,9 @@ export async function createUser(
 
   const created = await prisma.$transaction(async (tx) => {
     const row = await tx.user.create({
-      data: { username, displayName, role, email, passwordHash, active: true },
+      // Phase 12 (P12): the temporary password below is read out across a ward desk. The account
+      // reaches nothing but /account until its owner sets one of their own.
+      data: { username, displayName, role, email, passwordHash, active: true, mustChangePassword: true },
       select: { id: true },
     })
     await audit(
@@ -140,7 +142,7 @@ export async function createUser(
         action: 'user.create',
         entity: 'User',
         entityId: row.id,
-        after: { username, displayName, role, active: true, email },
+        after: { username, displayName, role, active: true, email, mustChangePassword: true },
       },
       ctx,
       tx,
@@ -313,14 +315,20 @@ export async function resetUserPassword(
   await prisma.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: userId },
-      data: { passwordHash, failedLogins: 0, lockedUntil: null },
+      // Phase 12 (P12): a reset hands out another temporary password, so the flag goes back on.
+      data: { passwordHash, failedLogins: 0, lockedUntil: null, mustChangePassword: true },
     })
     await audit(
       {
         action: 'user.password',
         entity: 'User',
         entityId: userId,
-        after: { username: target.username, self: false, byAdmin: actor.username },
+        after: {
+          username: target.username,
+          self: false,
+          byAdmin: actor.username,
+          mustChangePassword: true,
+        },
       },
       ctx,
       tx,

@@ -11,9 +11,9 @@
  */
 import { audit, type AuditContext } from '@/src/lib/audit'
 import { prisma } from '@/src/lib/db'
-import type { AlertStore, FireOutcome, Recipient } from './cycle'
+import type { AlertStore, FireOutcome, PendingEmail, Recipient } from './cycle'
 import type { AlertCase } from './rules'
-import { thresholdUpdateText } from './rules'
+import { EMAIL_MAX_ATTEMPTS, EMAIL_THRESHOLD_H, thresholdUpdateText } from './rules'
 
 /** Prisma's unique-constraint failure, without importing the error class into the bundle. */
 export function isUniqueViolation(error: unknown): boolean {
@@ -124,6 +124,87 @@ export function prismaAlertStore(systemUserId: string, client: PrismaLike = pris
 
     async markEmailSent(alertId: string, at: Date): Promise<void> {
       await client.alert.update({ where: { id: alertId }, data: { emailSentAt: at } })
+    },
+
+    /**
+     * The retry queue (Phase 12 item 6, readiness audit C1). Four conditions, and the third is
+     * the one that keeps this honest: a patient who has left is not escalated, which is the same
+     * rule `thresholdsDue()` states for firing. Oldest first, so a backlog drains in the order it
+     * built up, and capped so one cycle cannot try to carry an unbounded queue.
+     *
+     * `now` is not part of the query — an alert that is due is due — but it is on the port so a
+     * future rule ("nothing older than a day") has somewhere to go without changing every caller.
+     */
+    async pendingEmails(): Promise<PendingEmail[]> {
+      const rows = await client.alert.findMany({
+        where: {
+          emailSentAt: null,
+          thresholdHours: { gte: EMAIL_THRESHOLD_H },
+          emailAttempts: { lt: EMAIL_MAX_ATTEMPTS },
+          case: { status: 'OPEN' },
+        },
+        orderBy: { firedAt: 'asc' },
+        take: 50,
+        select: {
+          id: true,
+          caseId: true,
+          thresholdHours: true,
+          emailAttempts: true,
+          case: {
+            select: {
+              mrn: true,
+              status: true,
+              registrationAt: true,
+              departedAt: true,
+              resolvedAt: true,
+              primaryReason: { select: { name: true } },
+              consults: { select: { department: { select: { name: true } } } },
+            },
+          },
+        },
+      })
+      return rows.map((row) => ({
+        alertId: row.id,
+        caseId: row.caseId,
+        thresholdHours: row.thresholdHours,
+        attempts: row.emailAttempts,
+        mrn: row.case.mrn,
+        status: row.case.status,
+        registrationAt: row.case.registrationAt,
+        departedAt: row.case.departedAt,
+        resolvedAt: row.case.resolvedAt,
+        primaryReason: row.case.primaryReason?.name ?? null,
+        departments: row.case.consults.map((c) => c.department.name),
+      }))
+    },
+
+    /**
+     * The durable trace C1 asked for: the counter, the stamp and one audit row, together or not
+     * at all. No Alert row is ever inserted by this — the unique index on
+     * (caseId, thresholdHours) is untouched, and the app role holds UPDATE on Alert already.
+     */
+    async markEmailFailed(alertId: string, at: Date): Promise<void> {
+      await client.$transaction(async (tx) => {
+        const row = await tx.alert.update({
+          where: { id: alertId },
+          data: { emailAttempts: { increment: 1 }, emailFailedAt: at },
+          select: { id: true, caseId: true, thresholdHours: true, emailAttempts: true },
+        })
+        await audit(
+          {
+            action: 'alert.email.failed',
+            entity: 'Alert',
+            entityId: row.id,
+            after: {
+              caseId: row.caseId,
+              thresholdHours: row.thresholdHours,
+              attempts: row.emailAttempts,
+            },
+          },
+          ctx,
+          tx,
+        )
+      })
     },
 
     /**

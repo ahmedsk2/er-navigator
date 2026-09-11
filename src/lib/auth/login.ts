@@ -114,6 +114,7 @@ export async function attemptLogin(attempt: LoginAttempt): Promise<LoginOutcome>
       role: user.role,
       active: user.active,
       lastShift: user.lastShift,
+      mustChangePassword: user.mustChangePassword,
     },
   }
 }

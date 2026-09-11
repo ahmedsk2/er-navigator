@@ -16,17 +16,37 @@ import { PrismaClient } from '@prisma/client'
  */
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient }
 
+/**
+ * The driver adapter does NOT read `?schema=` out of the connection string — `getConnectionInfo()`
+ * returns only its own `schema` option, and Prisma falls back to `public` when that is absent. So
+ * a URL naming another schema would be silently written to `public` instead. Production's URL says
+ * `?schema=public`, so passing it through changes not one generated query; what it buys is that
+ * the URL means what it says, which is what lets `tests/db/demo-seed.test.ts` migrate and seed a
+ * schema of its own (Phase 12 item 3).
+ */
+function schemaOf(connectionString: string): string | undefined {
+  try {
+    return new URL(connectionString).searchParams.get('schema') ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
 function createClient(): PrismaClient {
   const connectionString = process.env.DATABASE_URL
   if (!connectionString) throw new Error('DATABASE_URL is not set — the database client cannot start.')
-  const adapter = new PrismaPg({
-    connectionString,
-    connectionTimeoutMillis: 5_000,
-    statement_timeout: 10_000,
-    query_timeout: 10_000,
-    max: 10,
-    idleTimeoutMillis: 30_000,
-  })
+  const schema = schemaOf(connectionString)
+  const adapter = new PrismaPg(
+    {
+      connectionString,
+      connectionTimeoutMillis: 5_000,
+      statement_timeout: 10_000,
+      query_timeout: 10_000,
+      max: 10,
+      idleTimeoutMillis: 30_000,
+    },
+    schema ? { schema } : undefined,
+  )
   return new PrismaClient({ adapter, log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'] })
 }
 

@@ -6,7 +6,9 @@ import { ChangePasswordForm } from './change-password-form'
 export const metadata: Metadata = { title: 'Account · ER Navigator' }
 
 export default async function AccountPage() {
-  const user = await requireUser()
+  // Phase 12 item 5 (P12): the one exempt page. This is where the password is changed, so a
+  // must-change user has to be able to open it.
+  const user = await requireUser({ allowMustChange: true })
 
   // The shell no longer pads its <main>, because the board's rows are full-bleed; every other
   // page in the group brings its own padding — `PageHeader` for the title, this wrapper for the
@@ -18,6 +20,18 @@ export default async function AccountPage() {
     <div>
       <PageHeader title="Your account" />
       <div className="px-4 pb-6 lg:px-0">
+        {/* Phase 12 (P12): the flag on the row is the whole truth, so a hand-typed /account shows
+            this too. No dismiss control and no query parameter — until the password is changed,
+            `requireUser()` sends every other signed-in page back here. */}
+        {user.mustChangePassword ? (
+          <p
+            role="status"
+            data-must-change
+            className="mb-4 rounded-card border border-band-h4 border-l-4 border-l-band-h4 bg-panel p-4 text-body text-band-h4-ink shadow-card lg:max-w-[560px]"
+          >
+            Set your own password before you use the board. The one you were given is temporary.
+          </p>
+        ) : null}
         <dl className="divide-y divide-line-soft rounded-card border border-line bg-panel px-4 shadow-card lg:max-w-[560px]">
           <div className="flex min-h-11 items-center justify-between gap-3 py-2.5">
             <dt className="text-label font-medium text-muted">Username</dt>

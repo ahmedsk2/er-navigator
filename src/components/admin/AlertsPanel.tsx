@@ -102,7 +102,16 @@ export function AlertsPanel({ alerts, canAcknowledge }: { alerts: AlertRow[]; ca
                   </td>
                   <td className="num p-3 text-ink-2">{fmtStamp(row.firedAt)}</td>
                   <td className="num p-3 text-ink-2">
-                    {row.emailSentAt ? fmtStamp(row.emailSentAt) : '–'}
+                    {/* Phase 12 (C1): "-" used to mean both "not due an email" and "the mail
+                        server has been refusing this one for an hour". Now it means only the
+                        first, and a failure says how many times. */}
+                    {row.emailSentAt ? (
+                      fmtStamp(row.emailSentAt)
+                    ) : row.emailAttempts > 0 ? (
+                      <span className="text-band-h6">Failed ×{row.emailAttempts}</span>
+                    ) : (
+                      '–'
+                    )}
                   </td>
                   <td className="p-3 text-ink-2" data-acknowledged={row.acknowledgedAt ? 'yes' : 'no'}>
                     {row.acknowledgedAt ? (

@@ -119,22 +119,25 @@ enum OtherReviewStatus {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  username     String    @unique
-  passwordHash String
-  displayName  String
-  role         Role
-  active       Boolean   @default(true)
-  lastShift    Shift?
-  createdAt    DateTime  @default(now())
-  lastLoginAt  DateTime?
-  failedLogins Int       @default(0)
-  lockedUntil  DateTime?
+  id                 String    @id @default(cuid())
+  username           String    @unique
+  passwordHash       String
+  displayName        String
+  role               Role
+  active             Boolean   @default(true)
+  lastShift          Shift?
+  createdAt          DateTime  @default(now())
+  lastLoginAt        DateTime?
+  failedLogins       Int       @default(0)
+  lockedUntil        DateTime?
+  /// Phase 12 (P12): set when an Admin creates the account or resets its password; cleared when
+  /// the user sets their own at /account. While true, every signed-in page sends them there.
+  mustChangePassword Boolean   @default(false)
   // Staff work address, set by an Admin in Admin → Users. It is the alerts worker's whole
   // directory: the recipients of a 6 h+ threshold email are the active SUPERVISOR and ADMIN
   // rows that have one (Phase 7 replaced the ALERT_EMAIL_MAP environment directory with this).
   // Contact data for a member of staff, never a patient — the PHI rule is about Case.
-  email        String?   @unique
+  email              String?   @unique
 
   openedCases     Case[]        @relation("CaseOpenedBy")
   updates         CaseUpdate[]
@@ -420,6 +423,10 @@ model Alert {
   thresholdHours   Int // 4, 6, 12, 24
   firedAt          DateTime  @default(now())
   emailSentAt      DateTime?
+  /// Phase 12 (C1): how many send attempts this alert's email has cost, and when the last one
+  /// failed. The unique index on (caseId, thresholdHours) is unchanged: a retry never inserts.
+  emailAttempts    Int       @default(0)
+  emailFailedAt    DateTime?
   acknowledgedById String?
   acknowledgedAt   DateTime?
 
@@ -434,7 +441,7 @@ model AuditLog {
   id        String   @id @default(cuid())
   at        DateTime @default(now())
   actorId   String?
-  action    String // case.create, case.update, case.resolve, case.void, user.create, list.update, auth.login, auth.fail, auth.forbidden
+  action    String // case.create, case.update, case.resolve, case.void, user.create, list.update, auth.login, auth.fail, auth.forbidden, export.xlsx, report.print, alert.email.failed
   entity    String
   entityId  String?
   before    Json?

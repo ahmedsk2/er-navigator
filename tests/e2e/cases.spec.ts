@@ -62,7 +62,23 @@ test('a navigator opens a case, adds an update and resolves it as discharged hom
   await page.getByLabel('What changed?').press('Enter')
   await expect(page.getByText('Bed coordinator says one hour')).toBeVisible()
   await expect(page.getByText(E2E_USERS.navigator.displayName, { exact: false }).first()).toBeVisible()
-  await expect(page.getByText('MRN only, no names.')).toBeVisible()
+  // Phase 12 item 4 (C4): the hint is now under every free-text box, not only this one. On an
+  // existing OPEN case that is the working diagnosis, the updates box and the resolution note.
+  await expect(page.locator('[data-mrn-hint]')).toHaveCount(3)
+  for (const hint of await page.locator('[data-mrn-hint]').all()) {
+    await expect(hint).toHaveText('MRN only, no names.')
+  }
+  // Selecting an "Other" reason opens a fourth box, and it carries one too.
+  await page
+    .getByRole('group', { name: `${STAGE} reasons` })
+    .getByRole('button', { name: 'Other', exact: true })
+    .click()
+  await expect(page.locator('[data-mrn-hint]')).toHaveCount(4)
+  await page
+    .getByRole('group', { name: `${STAGE} reasons` })
+    .getByRole('button', { name: 'Other', exact: true })
+    .click()
+  await expect(page.locator('[data-mrn-hint]')).toHaveCount(3)
 
   // Resolve: the button is dead until a disposition is chosen.
   await expect(page.getByRole('button', { name: 'Mark resolved' })).toBeDisabled()
@@ -72,6 +88,22 @@ test('a navigator opens a case, adds an update and resolves it as discharged hom
   await expect(page.getByRole('heading', { name: 'Resolved' })).toBeVisible()
   await expect(page.getByText('Resolved: Discharged home')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Reopen case' })).toBeVisible()
+})
+
+/**
+ * Phase 12 item 4 (readiness audit C4). `docs/PLAN.md` claimed every free-text box carried the
+ * "MRN only, no names" hint; one of five did. A new case has exactly one box — the working
+ * diagnosis — so it has exactly one hint.
+ */
+test('a new case shows the MRN-only hint under its one free-text box', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.61')
+  await signIn(page, E2E_USERS.navigator)
+  await page.goto('/cases/new')
+  await expect(page.getByLabel('MRN (digits only)')).toBeVisible()
+
+  const hints = page.locator('[data-mrn-hint]')
+  await expect(hints).toHaveCount(1)
+  await expect(hints).toHaveText('MRN only, no names.')
 })
 
 test('an admission needs a ward before it can be resolved', async ({ page }) => {
@@ -217,7 +249,14 @@ test('a supervisor voids a case with a reason and it becomes read-only', async (
   const taps = await signIn(page, E2E_USERS.supervisor)
   await openCase(page, uniqueMrn(), STAGE, REASON, taps)
 
+  // Phase 12 item 4 (C4): three hints before the void panel is open, four after — the void reason
+  // is a free-text box like the rest, and it is where "opened twice for Mrs X" is most tempting.
+  const hints = page.locator('[data-mrn-hint]')
+  const before = await hints.count()
   await page.getByRole('button', { name: 'Void', exact: true }).click()
+  await expect(hints).toHaveCount(before + 1)
+  await expect(hints.last()).toBeVisible()
+  await expect(hints.last()).toHaveText('MRN only, no names.')
   // A reason is mandatory, and the commit needs two taps (the prototype's ConfirmButton).
   await expect(page.getByRole('button', { name: 'Void this case' })).toBeDisabled()
   await page.getByLabel('Why is this case voided?').fill('opened twice by mistake')

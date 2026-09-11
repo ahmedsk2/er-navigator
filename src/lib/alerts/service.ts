@@ -18,6 +18,9 @@ export type AlertRow = {
   thresholdHours: number
   firedAt: string
   emailSentAt: string | null
+  /** Phase 12 (C1): how many send attempts this alert's email has cost, and when the last failed. */
+  emailAttempts: number
+  emailFailedAt: string | null
   acknowledgedBy: string | null
   acknowledgedAt: string | null
 }
@@ -38,6 +41,8 @@ export async function loadAlerts(limit = 200): Promise<AlertRow[]> {
       thresholdHours: true,
       firedAt: true,
       emailSentAt: true,
+      emailAttempts: true,
+      emailFailedAt: true,
       acknowledgedAt: true,
       acknowledgedBy: { select: { displayName: true } },
       case: { select: { mrn: true } },
@@ -50,6 +55,8 @@ export async function loadAlerts(limit = 200): Promise<AlertRow[]> {
     thresholdHours: row.thresholdHours,
     firedAt: row.firedAt.toISOString(),
     emailSentAt: iso(row.emailSentAt),
+    emailAttempts: row.emailAttempts,
+    emailFailedAt: iso(row.emailFailedAt),
     acknowledgedBy: row.acknowledgedBy?.displayName ?? null,
     acknowledgedAt: iso(row.acknowledgedAt),
   }))

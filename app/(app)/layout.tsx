@@ -19,7 +19,10 @@ import { can } from '@/src/lib/authz/policy'
  * "‹ Back", exactly as the prototype hides the bar and the FAB in its editor view.
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const user = await requireUser()
+  // Phase 12 item 5 (P12): this layout wraps /account, so it must not be the thing that sends a
+  // must-change user away from it. Every page inside the group enforces the flag itself, exactly
+  // as every page here already enforces its own role (tests/unit/page-guards.test.ts).
+  const user = await requireUser({ allowMustChange: true })
 
   // Two layouts, one container. On a phone it is the prototype's centred column and the tab bar
   // is `fixed` at the foot, out of the flow. From `lg` it becomes a two-column grid: the same

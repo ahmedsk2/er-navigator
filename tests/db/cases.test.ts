@@ -52,6 +52,7 @@ function actorOf(user: User): AuthUser {
     role: user.role,
     active: user.active,
     lastShift: user.lastShift,
+    mustChangePassword: user.mustChangePassword,
   }
 }
 

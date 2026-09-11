@@ -18,3 +18,13 @@ Thumbs.db
 .claude/worktrees/
 tsconfig.tsbuildinfo
 *.tsbuildinfo
+
+# Patient data must never be committed (readiness audit P16). Extensions, not paths, so a
+# spreadsheet dropped anywhere in the tree is ignored. `*.xlsx` also matches DIRECTORY names,
+# and git will not descend into an ignored directory, so the export route's directory has to be
+# un-ignored itself before its contents can be — both lines, directory first, and in this order.
+*.xlsx
+*.xls
+*.csv
+!app/api/export.xlsx/
+!app/api/export.xlsx/**

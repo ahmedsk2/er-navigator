@@ -35,6 +35,9 @@ export const SESSION_TTL_MS = 12 * 60 * 60 * 1000
 /** A session's lastSeenAt/expiresAt are refreshed at most this often: one UPDATE per five minutes. */
 export const SLIDING_REFRESH_MS = 5 * 60 * 1000
 
+/** The one page a user who must change their password may reach (Phase 12, P12). Exactly one. */
+export const ACCOUNT_PATH = '/account'
+
 /** The user as the app sees it. `passwordHash` is deliberately absent from the type and the query. */
 export type AuthUser = {
   id: string
@@ -43,6 +46,11 @@ export type AuthUser = {
   role: Role
   active: boolean
   lastShift: Shift | null
+  /**
+   * Phase 12 (P12): the account is still on the password an Admin read out across a ward desk.
+   * `requireUser` sends every signed-in page to /account until the user sets their own.
+   */
+  mustChangePassword: boolean
 }
 
 export type CurrentSession = {
@@ -58,7 +66,14 @@ export const AUTH_USER_SELECT = {
   role: true,
   active: true,
   lastShift: true,
+  mustChangePassword: true,
 } as const satisfies Prisma.UserSelect
+
+/**
+ * `as: 'api'` is a route handler, which gets a status rather than a 307 to HTML.
+ * `allowMustChange` is Phase 12 item 5's single exemption — see `assertPasswordChanged`.
+ */
+export type RequireOptions = { as?: 'page' | 'api'; allowMustChange?: boolean }
 
 export class UnauthorizedError extends Error {
   constructor() {
@@ -291,9 +306,12 @@ export async function auditContext(actorId: string | null): Promise<AuditContext
  * `{ as: 'api' }` and get an UnauthorizedError to map to 401, because answering a fetch with a
  * 307 to an HTML login page is worse than answering it with a status.
  */
-export async function requireUser(opts: { as?: 'page' | 'api' } = {}): Promise<AuthUser> {
+export async function requireUser(opts: RequireOptions = {}): Promise<AuthUser> {
   const current = await getSession()
-  if (current) return current.user
+  if (current) {
+    assertPasswordChanged(current.user, opts)
+    return current.user
+  }
   if (opts.as === 'api') throw new UnauthorizedError()
   /**
    * `?expired=1`, not a bare /login: reaching this line means the gate saw a session cookie and
@@ -303,6 +321,44 @@ export async function requireUser(opts: { as?: 'page' | 'api' } = {}): Promise<A
    * the still-cookied browser straight back here and the two would loop.
    */
   redirect('/login?expired=1')
+}
+
+/**
+ * Phase 12 item 5 (P12): while `mustChangePassword` is set, the only page this account may reach
+ * is /account, where it can set its own.
+ *
+ * One choke point, here, and not a layout: `tests/unit/page-guards.test.ts` records why a layout
+ * is never a gate in this app — Next skips ancestor layouts on an RSC request whose router state
+ * already holds the segment. Every signed-in page reaches this function, directly or through
+ * `requireAction()` / `requireRole()`, and enforces by default.
+ *
+ * `allowMustChange` is the exemption, and there are exactly two callers of it: the `(app)` layout
+ * and `app/(app)/account/page.tsx`, which together are the render of /account. It is an argument
+ * rather than a comparison against the request path, and that is not a style choice —
+ * `x-pathname` was tried first and is wrong here. A server action POSTs to the page it was
+ * invoked from, and Next renders the action's redirect destination inside that same request, so
+ * the header says `/login` while `/account` is being rendered: the guard fires, the router is
+ * handed a payload whose URL and tree disagree, and the browser refetches /account for ever. The
+ * evidence is in tests/e2e/auth.spec.ts, which walks the real sign-in.
+ *
+ * `app/login/actions.ts` is the other half of the same fact: it sends an account that must change
+ * its password straight to /account, because a redirect out of the action's destination render
+ * has the same effect.
+ *
+ * An API caller is refused rather than redirected: a `fetch` cannot use a 307 to HTML. Refused,
+ * not waved through — `/api/export.xlsx` is a plain `<a href>` in ExportPanel, a bookmarkable
+ * top-level navigation, and `parseExportRange` defaults every missing parameter, so a bare URL
+ * returns a workbook of MRNs. Skipping the check there would leave exactly the indefinitely
+ * shared credential this item exists to end. The exemption never applies to an API caller.
+ *
+ * Sign-out and the change-password action both use `getSession()`, not this, so neither needs an
+ * exemption.
+ */
+function assertPasswordChanged(user: AuthUser, opts: RequireOptions): void {
+  if (!user.mustChangePassword) return
+  if (opts.as === 'api') throw new UnauthorizedError()
+  if (opts.allowMustChange) return
+  redirect(ACCOUNT_PATH)
 }
 
 /**
@@ -319,7 +375,7 @@ export async function requireUser(opts: { as?: 'page' | 'api' } = {}): Promise<A
  * the service's `assertCan` decide, so a refused mutation comes back as a result object the
  * screen can render rather than as a thrown navigation.
  */
-export async function requireAction(action: Action, opts: { as?: 'page' | 'api' } = {}): Promise<AuthUser> {
+export async function requireAction(action: Action, opts: RequireOptions = {}): Promise<AuthUser> {
   const user = await requireUser(opts)
   if (opts.as === 'api') {
     await assertCan(user, action, await auditContext(user.id))
@@ -348,7 +404,7 @@ export async function requireAction(action: Action, opts: { as?: 'page' | 'api' 
  */
 export async function requireRole(
   roles: Role | ReadonlyArray<Role>,
-  opts: { as?: 'page' | 'api' } = {},
+  opts: RequireOptions = {},
 ): Promise<AuthUser> {
   const required = typeof roles === 'string' ? [roles] : roles
   const user = await requireUser(opts)

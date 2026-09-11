@@ -89,7 +89,11 @@ test('an admin creates a user, that user signs in, and deactivating them locks t
   // and getByLabel matches a substring by default.
   await their.getByLabel('Password', { exact: true }).fill(password)
   await their.getByRole('button', { name: 'Sign in' }).click()
-  await expect(their).toHaveURL('/')
+  // Phase 12 item 5 (P12): an account created here is still on the temporary password that was
+  // read out, so its first stop is /account and not the board. The lock-out steps below are
+  // unaffected — a deactivated account is sent to /login from wherever it is.
+  await expect(their).toHaveURL('/account')
+  await expect(their.locator('[data-must-change]')).toBeVisible()
 
   // Deactivating ends the session on the spot: the next request goes to the login screen.
   await page.getByRole('button', { name: 'Done', exact: true }).click()
@@ -176,6 +180,10 @@ test('an admin acknowledges an alert from the admin screen', async ({ page }, te
   await expect(row).toBeVisible()
   await expect(row).toContainText(`${ALERT_THRESHOLD_HOURS}h`)
   await expect(row.locator('[data-acknowledged="no"]')).toBeVisible()
+  // Phase 12 item 6 (C1): the fixture's alert has two failed send attempts and no email sent, so
+  // the Emailed cell says so instead of the bare dash it used to, which was indistinguishable
+  // from "this threshold is not due an email at all".
+  await expect(row.getByText('Failed ×2')).toBeVisible()
 
   await row.getByRole('button', { name: /^Acknowledge/ }).click()
   await expect(page.locator(`[data-alert="${alert.id}"] [data-acknowledged="yes"]`)).toBeVisible()

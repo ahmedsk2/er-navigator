@@ -7,11 +7,15 @@
  * way is what lets tests/db/export.test.ts drive the real handler against a real database instead
  * of asserting the policy table a second time.
  *
- * An export is a read, so there is no audit row for a successful one — the audit table is for
- * changes. It is logged at info level with the actor and the range instead, which is what the
- * spec asks for and what an operator needs when someone asks who pulled a month of cases.
+ * A successful export writes an `export.xlsx` audit row (Phase 12 item 7, readiness audit C2).
+ * Until then the decision here read "an export is a read, so there is no audit row", and the only
+ * trace was the `console.info` below, which lives in container logs that rotate. That reasoning
+ * held for a table of changes; it does not hold for a page of MRNs leaving the building, which is
+ * exactly what an information-governance question asks about. The console line stays — it is what
+ * an operator greps — and the row is added beside it, on the success path only: a refusal is
+ * already `auth.forbidden`, and the polled count is not the data.
  */
-import { type AuditContext } from '@/src/lib/audit'
+import { audit, type AuditContext } from '@/src/lib/audit'
 import { assertCan, isForbiddenError, type AuthUser } from '@/src/lib/auth/session'
 import { loadReference } from '@/src/lib/cases/reference'
 import { dashboard } from '@/src/lib/domain/aggregates'
@@ -77,9 +81,30 @@ export async function exportWorkbookResponse(
   const filterLine = filter && reference ? describeFilter(filter, filterOptionsOf(reference)) : undefined
 
   // The filter is part of the request, so it is part of the record: "who pulled a month of cases"
-  // is a different question from "who pulled the insured ones".
+  // is a different question from "who pulled the insured ones". Both serialisations are kept —
+  // the query string the URL carried, and the words the workbook prints — because a year from now
+  // only one of them will still be readable without the code.
+  const filterQuery = filter ? caseFilterQuery(filter) || null : null
   console.info(
-    `[export] xlsx actor=${user.id} format=${range.format} from=${range.from} to=${range.to} status=${range.status} filter=${range.filter ? caseFilterQuery(range.filter) || 'none' : 'none'} cases=${cases.length}`,
+    `[export] xlsx actor=${user.id} format=${range.format} from=${range.from} to=${range.to} status=${range.status} filter=${filterQuery ?? 'none'} cases=${cases.length}`,
+  )
+  // On the plain client, not in a transaction: there is no mutation here to bind it to.
+  await audit(
+    {
+      action: 'export.xlsx',
+      entity: 'Export',
+      entityId: null,
+      after: {
+        format: range.format,
+        from: range.from,
+        to: range.to,
+        status: range.status,
+        filter: filterQuery,
+        filterDescription: filterLine ?? null,
+        cases: cases.length,
+      },
+    },
+    ctx,
   )
   return xlsxResponseOf(workbookFor(cases, range, now, filterLine), exportFilename(range))
 }

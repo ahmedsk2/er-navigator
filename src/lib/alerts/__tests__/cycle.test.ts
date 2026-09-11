@@ -4,14 +4,29 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MailResult, Mailer, OutgoingMessage } from '../email'
-import { runAlertCycle, type AlertStore, type FireOutcome, type Logger, type Recipient } from '../cycle'
-import type { AlertCase } from '../rules'
+import {
+  EMAIL_RETRY_DELAY_MS,
+  runAlertCycle,
+  type AlertStore,
+  type FireOutcome,
+  type Logger,
+  type PendingEmail,
+  type Recipient,
+} from '../cycle'
+import { EMAIL_MAX_ATTEMPTS, RETRY_PASS_BUDGET_MS, type AlertCase } from '../rules'
 
 const HOUR = 36e5
 const T0 = new Date('2026-09-09T00:00:00.000Z')
 const at = (hours: number): Date => new Date(T0.getTime() + hours * HOUR)
 
-type StoredAlert = { id: string; caseId: string; thresholdHours: number; emailSentAt: Date | null }
+type StoredAlert = {
+  id: string
+  caseId: string
+  thresholdHours: number
+  emailSentAt: Date | null
+  emailAttempts: number
+  emailFailedAt: Date | null
+}
 
 /**
  * A store that behaves like the real one: the unique index on (caseId, thresholdHours) is a Set,
@@ -44,7 +59,14 @@ class FakeStore implements AlertStore {
     )
     if (clash) return { fired: false, reason: 'duplicate' }
     const id = `alert${this.next++}`
-    this.alerts.push({ id, caseId: input.caseId, thresholdHours: input.thresholdHours, emailSentAt: null })
+    this.alerts.push({
+      id,
+      caseId: input.caseId,
+      thresholdHours: input.thresholdHours,
+      emailSentAt: null,
+      emailAttempts: 0,
+      emailFailedAt: null,
+    })
     this.updates.push({ caseId: input.caseId, thresholdHours: input.thresholdHours })
     return { fired: true, alertId: id }
   }
@@ -54,9 +76,50 @@ class FakeStore implements AlertStore {
     if (row) row.emailSentAt = sentAt
   }
 
+  /**
+   * Phase 12 item 6. The real store's query lives in `store.ts` and is asserted against Postgres
+   * in `tests/db/alerts.test.ts`; here the queue is handed to the cycle directly, so the cycle's
+   * half of the contract is the only thing under test.
+   */
+  pending: PendingEmail[] = []
+  pendingLookups = 0
+  failed: Array<{ alertId: string; at: Date }> = []
+
+  async pendingEmails(): Promise<PendingEmail[]> {
+    this.pendingLookups += 1
+    return this.pending
+  }
+
+  async markEmailFailed(alertId: string, at: Date): Promise<void> {
+    this.failed.push({ alertId, at })
+    const row = this.alerts.find((a) => a.id === alertId)
+    if (row) {
+      row.emailAttempts += 1
+      row.emailFailedAt = at
+    }
+  }
+
   async recipients(): Promise<Recipient[]> {
     this.recipientLookups += 1
     return this.people
+  }
+}
+
+/** A queue entry shaped the way the store returns one. */
+function pendingOf(alertId: string, caseId: string, thresholdHours = 6, attempts = 0): PendingEmail {
+  const c = caseAt(caseId, thresholdHours)
+  return {
+    alertId,
+    caseId,
+    thresholdHours,
+    attempts,
+    mrn: c.mrn,
+    status: c.status,
+    registrationAt: c.registrationAt,
+    departedAt: c.departedAt,
+    resolvedAt: c.resolvedAt,
+    primaryReason: c.primaryReason,
+    departments: c.departments,
   }
 }
 
@@ -105,7 +168,9 @@ let store: FakeStore
 let mailer: FakeMailer
 let logger: ReturnType<typeof fakeLogger>
 
-const sleep = vi.fn(async () => undefined)
+const sleep = vi.fn(async (ms: number) => {
+  void ms
+})
 
 function cycle(now: Date, over: Partial<Parameters<typeof runAlertCycle>[0]> = {}) {
   return runAlertCycle({
@@ -247,7 +312,14 @@ describe('runAlertCycle', () => {
   it('counts a unique-violation as a duplicate and does not email for it', async () => {
     store.cases = [caseAt('c1', 6)]
     // Another worker got there first between the read and the write.
-    store.alerts.push({ id: 'other', caseId: 'c1', thresholdHours: 6, emailSentAt: null })
+    store.alerts.push({
+      id: 'other',
+      caseId: 'c1',
+      thresholdHours: 6,
+      emailSentAt: null,
+      emailAttempts: 0,
+      emailFailedAt: null,
+    })
     const seen = await store.firedThresholds(['c1'])
     expect(seen.get('c1')).toEqual([6])
 
@@ -266,5 +338,123 @@ describe('runAlertCycle', () => {
     const summary = await cycle(T0)
     expect(summary).toMatchObject({ casesScanned: 0, alertsFired: 0, emailsSent: 0 })
     expect(store.recipientLookups).toBe(0)
+  })
+})
+
+/**
+ * Phase 12 item 6 (readiness audit C1). Today `sendWithOneRetry` returns null after two failures,
+ * `emailsFailed` is incremented, the loop continues — and the Alert row is already committed, so
+ * `firedThresholds()` makes every later cycle a no-op for it, for ever. A wrong SMTP password
+ * stops every 6 h+ escalation while the heartbeat and the Kuma monitor both stay green.
+ */
+describe('an email that fails is not lost', () => {
+  it('marks the alert failed instead of only counting it', async () => {
+    store.cases = [caseAt('c1', 6)]
+    mailer.failuresLeft = 2
+
+    const summary = await cycle(T0)
+    expect(summary.emailsFailed).toBe(1)
+    expect(store.failed).toHaveLength(1)
+    const alert = store.alerts.find((a) => a.thresholdHours === 6)!
+    expect(store.failed[0]).toEqual({ alertId: alert.id, at: T0 })
+    expect(alert.emailAttempts).toBe(1)
+    expect(alert.emailSentAt).toBeNull()
+  })
+
+  it('the next cycle retries it, and a mailer that works now sends it', async () => {
+    store.alerts = [
+      { id: 'alertX', caseId: 'c1', thresholdHours: 6, emailSentAt: null, emailAttempts: 1, emailFailedAt: T0 },
+    ]
+    store.pending = [pendingOf('alertX', 'c1')]
+
+    const summary = await cycle(at(0.1))
+    expect(summary.emailsPending).toBe(1)
+    expect(summary.emailsRetried).toBe(1)
+    expect(summary.emailsFailed).toBe(0)
+    expect(store.failed).toHaveLength(0)
+    expect(store.alerts[0]!.emailSentAt).toEqual(at(0.1))
+    expect(mailer.sent).toHaveLength(1)
+    expect(mailer.sent[0]!.subject).toContain('past 6h')
+  })
+
+  it('counts a retry that fails again, and leaves it for the cycle after', async () => {
+    store.alerts = [
+      { id: 'alertX', caseId: 'c1', thresholdHours: 6, emailSentAt: null, emailAttempts: 1, emailFailedAt: T0 },
+    ]
+    store.pending = [pendingOf('alertX', 'c1', 6, 1)]
+    mailer.failuresLeft = 2
+
+    const summary = await cycle(at(0.1))
+    expect(summary.emailsRetried).toBe(0)
+    expect(summary.emailsFailed).toBe(1)
+    expect(store.failed).toEqual([{ alertId: 'alertX', at: at(0.1) }])
+    expect(store.alerts[0]!.emailAttempts).toBe(2)
+  })
+
+  it('pays no 30 s sleep in the retry pass: the next cycle is the retry', async () => {
+    store.pending = [pendingOf('a1', 'c1'), pendingOf('a2', 'c2'), pendingOf('a3', 'c3')]
+    mailer.failuresLeft = 99
+
+    await cycle(T0)
+    const sleeps = sleep.mock.calls.map((c) => c[0])
+    // The helper sleeps between its two attempts unconditionally, and production injects the real
+    // 30 s. Three heads at 30 s each, with the SMTP timeouts on top, is how one cycle outruns the
+    // 900 s heartbeat window while the worker's overlap guard drops every intervening tick.
+    expect(sleeps).not.toContain(EMAIL_RETRY_DELAY_MS)
+    expect(store.failed).toHaveLength(3)
+  })
+
+  it('stops at the wall-clock budget and leaves the rest for the next cycle', async () => {
+    store.pending = Array.from({ length: 20 }, (_, i) => pendingOf(`a${i}`, `c${i}`))
+    mailer.failuresLeft = 99
+
+    // A clock that jumps past the budget once two alerts have been attempted: read 1 sets the
+    // deadline, then one read per loop head.
+    let reads = 0
+    const clock = (): number => {
+      reads += 1
+      return reads > 3 ? RETRY_PASS_BUDGET_MS + 1 : 0
+    }
+
+    const summary = await cycle(T0, { clock })
+    expect(summary.emailsFailed).toBe(2)
+    expect(store.failed).toHaveLength(2)
+    expect(summary.emailsDeferred).toBe(18)
+    expect(summary.emailsPending).toBe(20)
+    expect(summary.emailsFailed + summary.emailsRetried + summary.emailsDeferred).toBe(20)
+  })
+
+  it('blank SMTP attempts nothing, fails nothing and queries no queue', async () => {
+    store.cases = [caseAt('c1', 6)]
+    store.pending = [pendingOf('a1', 'c9'), pendingOf('a2', 'c8')]
+
+    const summary = await cycle(T0, { mailer: null })
+    expect(store.pendingLookups).toBe(0)
+    expect(store.failed).toHaveLength(0)
+    expect(summary.emailsFailed).toBe(0)
+    expect(summary.emailsPending).toBe(0)
+    // The Phase 6 behaviour, unchanged: the 6 h alert is recorded and logged, not sent.
+    expect(summary.emailsLogged).toBe(1)
+    expect(logger.infos.some((m) => m.includes('SMTP_HOST is empty'))).toBe(true)
+  })
+
+  it('gives up after EMAIL_MAX_ATTEMPTS, and says so at warn', async () => {
+    expect(EMAIL_MAX_ATTEMPTS).toBe(10)
+    store.pending = [pendingOf('a1', 'c1', 6, EMAIL_MAX_ATTEMPTS - 1)]
+    mailer.failuresLeft = 99
+
+    await cycle(T0)
+    expect(store.failed).toHaveLength(1)
+    expect(logger.warns.some((m) => m.includes('giving up'))).toBe(true)
+  })
+
+  it('leaves the unique index alone: a second cycle fires nothing and emails nothing', async () => {
+    store.cases = [caseAt('c1', 6)]
+    await cycle(T0)
+    const sentFirst = mailer.sent.length
+    const again = await cycle(at(0.01))
+    expect(again.alertsFired).toBe(0)
+    expect(mailer.sent).toHaveLength(sentFirst)
+    expect(store.alerts).toHaveLength(2)
   })
 })

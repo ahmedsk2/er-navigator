@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  AUTH_USER_SELECT,
   generateSessionToken,
   hashSessionToken,
   isSessionExpired,
@@ -107,5 +108,19 @@ describe('cookie attributes', () => {
   it('"remember this device" is the only thing that gives the cookie a lifetime', () => {
     expect(sessionCookieOptions(true).maxAge).toBe(SESSION_TTL_MS / 1000)
     expect(sessionCookieOptions(false).maxAge).toBeUndefined()
+  })
+})
+
+/**
+ * Phase 12 item 5 (P12). The flag has to leave the database for `requireUser` to act on it, and
+ * this is the one place that says which columns of User may. `passwordHash` still never does.
+ */
+describe('AUTH_USER_SELECT', () => {
+  it('carries the must-change flag', () => {
+    expect(AUTH_USER_SELECT).toHaveProperty('mustChangePassword', true)
+  })
+
+  it('still refuses to let the password hash out', () => {
+    expect(AUTH_USER_SELECT).not.toHaveProperty('passwordHash')
   })
 })

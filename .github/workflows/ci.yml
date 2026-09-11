@@ -10,9 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -22,6 +22,7 @@ jobs:
           set -e
           for f in docker/entrypoint.sh docker/postgres-init/01-app-role.sh scripts/migrate-and-seed.sh; do sh -n "$f"; done
           bash -n scripts/backup.sh
+          bash -n scripts/demo-reset.sh
           if grep -rl -P '\x00' docker/entrypoint.sh docker/postgres-init/01-app-role.sh scripts/ docs/*.md docs/specs README.md CLAUDE.md; then echo "NUL byte in a script or doc"; exit 1; fi
       - run: pnpm exec prisma generate
       - run: pnpm lint
@@ -30,9 +31,10 @@ jobs:
       - run: pnpm build
         env:
           NEXT_TELEMETRY_DISABLED: '1'
-      # The Docker build stage runs the same command; a bundle that no longer builds would
+      # The Docker build stage runs the same commands; a bundle that no longer builds would
       # otherwise only surface as a failed deploy.
       - run: pnpm run build:worker
+      - run: pnpm run build:demo-seed
 
   # Database-backed checks and the Playwright suite against the production Postgres image:
   # migrations, role sync, seed, then the app on a normal build behind `pnpm start`.
@@ -44,9 +46,9 @@ jobs:
       OWNER_URL: postgresql://ernav_owner:devowner@localhost:5432/ernav?schema=public
       APP_URL_DB: postgresql://ernav_app:devapp@localhost:5432/ernav?schema=public
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm

@@ -96,6 +96,18 @@ export function Field({ label, htmlFor, children }: { label: string; htmlFor?: s
   )
 }
 
+/**
+ * The standing reminder under every free-text box (Phase 12 item 4, readiness audit C4).
+ *
+ * The Updates box has carried this line since Phase 3; the working diagnosis — where a name is
+ * most natural to type — the resolution note, the Other-reason description and the void reason
+ * carried none, while `docs/PLAN.md` claimed all five did. One component, so the wording can
+ * never drift between them, and `[data-mrn-hint]` so a spec can count them.
+ */
+export function MrnOnlyHint() {
+  return <p data-mrn-hint className="mt-1.5 text-caption text-muted">MRN only, no names.</p>
+}
+
 /** Same look, for a group of controls (chips) that must not be wrapped in a <label>. */
 export function FieldGroup({ label, children }: { label: string; children: ReactNode }) {
   return (

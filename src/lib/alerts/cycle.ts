@@ -13,8 +13,14 @@
  *    Alert row stays; only `emailSentAt` stays null.
  */
 import { buildAlertEmail, type Mailer, type OutgoingMessage } from './email'
-import { emailsAt, thresholdsDue, type AlertCase } from './rules'
-import { elapsedHours } from '@/src/lib/domain/time'
+import {
+  emailsAt,
+  thresholdsDue,
+  EMAIL_MAX_ATTEMPTS,
+  RETRY_PASS_BUDGET_MS,
+  type AlertCase,
+} from './rules'
+import { elapsedHours, type CaseClock } from '@/src/lib/domain/time'
 
 export const EMAIL_RETRY_DELAY_MS = 30_000
 
@@ -28,6 +34,21 @@ export type FireOutcome = { fired: true; alertId: string } | { fired: false; rea
  */
 export type Recipient = { username: string; displayName: string; email: string | null }
 
+/**
+ * An alert that is due an email and has not had one (Phase 12 item 6). It carries what the
+ * template needs, so the retry pass never loads the case a second time.
+ */
+export type PendingEmail = CaseClock & {
+  alertId: string
+  caseId: string
+  thresholdHours: number
+  /** How many attempts this alert's email has already cost. */
+  attempts: number
+  mrn: string
+  primaryReason: string | null
+  departments: string[]
+}
+
 export type AlertStore = {
   /** Every OPEN case, with what the email needs to say. */
   openCases(): Promise<AlertCase[]>
@@ -36,6 +57,13 @@ export type AlertStore = {
   /** Alert + system-user CaseUpdate + `alert.fire` audit row, in one transaction. */
   fire(input: { caseId: string; thresholdHours: number; now: Date }): Promise<FireOutcome>
   markEmailSent(alertId: string, at: Date): Promise<void>
+  /**
+   * Alerts that are due an email, have not had one, whose case is still OPEN and whose attempts
+   * are not exhausted, oldest first (Phase 12 item 6). Capped by the store.
+   */
+  pendingEmails(now: Date): Promise<PendingEmail[]>
+  /** +1 attempt, stamp emailFailedAt, write the `alert.email.failed` audit row. One transaction. */
+  markEmailFailed(alertId: string, at: Date): Promise<void>
   recipients(): Promise<Recipient[]>
 }
 
@@ -54,6 +82,8 @@ export type CycleDeps = {
   appUrl: string
   sleep?: (ms: number) => Promise<void>
   retryDelayMs?: number
+  /** Read only by the retry pass's wall-clock budget, so a test can move time without waiting. */
+  clock?: () => number
 }
 
 export type CycleSummary = {
@@ -63,6 +93,10 @@ export type CycleSummary = {
   emailsSent: number
   emailsFailed: number
   emailsLogged: number
+  /** Phase 12 item 6, the retry pass. All three appear in the worker's "cycle done" line. */
+  emailsRetried: number
+  emailsPending: number
+  emailsDeferred: number
 }
 
 const defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
@@ -99,6 +133,84 @@ export async function sendWithOneRetry(
   }
 }
 
+/**
+ * The retry pass (Phase 12 item 6, readiness audit C1), run at the top of every cycle so a backlog
+ * is worked through before new work is made.
+ *
+ * `retryDelayMs: 0` is deliberate and load-bearing. `sendWithOneRetry` sleeps between its two
+ * attempts - 30 s in production, which the worker injects nothing to shorten - and this pass
+ * replays a whole queue through it. Paying that here would cost half a minute a head before the
+ * heartbeat is touched. The next cycle IS the retry, five minutes from now.
+ *
+ * When `mailer` is null - blank SMTP, which is the demo instance - the pass does not run at all:
+ * nothing is attempted, nothing is counted failed, no audit row is written, and the queue is not
+ * even queried.
+ */
+async function retryPass(
+  deps: CycleDeps,
+  summary: CycleSummary,
+  recipientAddresses: () => Promise<string[]>,
+): Promise<void> {
+  const { store, mailer, logger, now, appUrl } = deps
+  if (!mailer) return
+  const sleep = deps.sleep ?? defaultSleep
+  const clock = deps.clock ?? Date.now
+
+  const pending = await store.pendingEmails(now)
+  summary.emailsPending = pending.length
+  if (pending.length === 0) return
+
+  const deadline = clock() + RETRY_PASS_BUDGET_MS
+  for (const alert of pending) {
+    if (clock() >= deadline) {
+      summary.emailsDeferred += 1
+      continue
+    }
+    const to = await recipientAddresses()
+    if (to.length === 0) {
+      logger.warn('[alerts] no recipients with an address; the retry queue waits for later', {
+        pending: pending.length,
+      })
+      break
+    }
+
+    const body = buildAlertEmail({
+      mrn: alert.mrn,
+      caseId: alert.caseId,
+      thresholdHours: alert.thresholdHours,
+      elapsedHours: elapsedHours(alert, now),
+      primaryReason: alert.primaryReason,
+      departments: alert.departments,
+      appUrl,
+    })
+    const sent = await sendWithOneRetry(mailer, { to, ...body }, logger, sleep, 0)
+    if (sent) {
+      await store.markEmailSent(alert.alertId, now)
+      summary.emailsRetried += 1
+      logger.info('[alerts] retried and emailed', {
+        subject: body.subject,
+        attempts: alert.attempts + 1,
+      })
+      continue
+    }
+
+    await store.markEmailFailed(alert.alertId, now)
+    summary.emailsFailed += 1
+    if (alert.attempts + 1 >= EMAIL_MAX_ATTEMPTS) {
+      logger.warn('[alerts] giving up on this email; the alert stays visibly failed on Admin', {
+        alertId: alert.alertId,
+        attempts: alert.attempts + 1,
+      })
+    }
+  }
+
+  if (summary.emailsDeferred > 0) {
+    logger.warn('[alerts] the retry pass spent its budget; the rest waits for the next cycle', {
+      deferred: summary.emailsDeferred,
+    })
+  }
+}
+
 export async function runAlertCycle(deps: CycleDeps): Promise<CycleSummary> {
   const { store, mailer, logger, now, appUrl } = deps
   const sleep = deps.sleep ?? defaultSleep
@@ -111,13 +223,10 @@ export async function runAlertCycle(deps: CycleDeps): Promise<CycleSummary> {
     emailsSent: 0,
     emailsFailed: 0,
     emailsLogged: 0,
+    emailsRetried: 0,
+    emailsPending: 0,
+    emailsDeferred: 0,
   }
-
-  const cases = await store.openCases()
-  summary.casesScanned = cases.length
-  if (cases.length === 0) return summary
-
-  const fired = await store.firedThresholds(cases.map((c) => c.id))
 
   // Looked up at most once per cycle and never cached across cycles (spec), and only when an
   // email is actually due — a quiet night must not query the user table at all.
@@ -133,6 +242,16 @@ export async function runAlertCycle(deps: CycleDeps): Promise<CycleSummary> {
     addresses = found
     return found
   }
+
+  // Phase 12 item 6: clear the backlog before making new work, and before the early return below
+  // - a quiet night with a stuck queue must still work through it.
+  await retryPass(deps, summary, recipientAddresses)
+
+  const cases = await store.openCases()
+  summary.casesScanned = cases.length
+  if (cases.length === 0) return summary
+
+  const fired = await store.firedThresholds(cases.map((c) => c.id))
 
   for (const c of cases) {
     for (const thresholdHours of thresholdsDue(c, fired.get(c.id) ?? [], now)) {
@@ -181,6 +300,8 @@ export async function runAlertCycle(deps: CycleDeps): Promise<CycleSummary> {
 
       const sent = await sendWithOneRetry(mailer, message, logger, sleep, retryDelayMs)
       if (!sent) {
+        // Phase 12 item 6: a durable trace, so the next cycle picks it up and Admin can see it.
+        await store.markEmailFailed(outcome.alertId, now)
         summary.emailsFailed += 1
         continue
       }

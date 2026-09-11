@@ -71,7 +71,33 @@ export class SlidingWindowLimiter {
   }
 }
 
-export const LOGIN_RATE_LIMIT = 5
+/** The locked plan's number, and what production runs: five attempts per rolling 60 seconds. */
+export const DEFAULT_LOGIN_RATE_LIMIT = 5
+
+/**
+ * Phase 12 item 8 (readiness audit P3). The key is the client IP, and fifteen staff behind one
+ * hospital NAT address at a demo are one client IP: the sixth person to try in a minute would be
+ * turned away by a limit that exists to slow a password guesser down. `LOGIN_RATE_LIMIT_PER_MINUTE`
+ * raises the count for an instance that needs it; production leaves it unset.
+ *
+ * Raising it raises the brute-force ceiling in the same proportion, and that is the trade being
+ * made knowingly. The control that does NOT move is the account lockout — ten failures locks the
+ * account for fifteen minutes (`lockout.ts`), per account rather than per address, so a guesser
+ * gains attempts spread across accounts and none against any one of them.
+ *
+ * The window is fixed at 60 s; only the count is configurable. A bad value never throws: the
+ * login page must not fail to render because someone typed "five" into Coolify.
+ */
+export function loginRateLimitFrom(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.LOGIN_RATE_LIMIT_PER_MINUTE?.trim()
+  if (!raw || !/^\d+$/.test(raw)) return DEFAULT_LOGIN_RATE_LIMIT
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value < 1 || value > 1000) return DEFAULT_LOGIN_RATE_LIMIT
+  return value
+}
+
+/** Same name and same type as before Phase 12, so every import and every test is untouched. */
+export const LOGIN_RATE_LIMIT = loginRateLimitFrom()
 export const LOGIN_RATE_WINDOW_MS = 60_000
 
 export const loginRateLimiter = new SlidingWindowLimiter(LOGIN_RATE_LIMIT, LOGIN_RATE_WINDOW_MS)

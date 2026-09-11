@@ -16,6 +16,27 @@ import { elapsedHours, type CaseClock } from '@/src/lib/domain/time'
 /** Thresholds at or above this one are emailed as well as recorded (spec: `if t >= 6`). */
 export const EMAIL_THRESHOLD_H = 6
 
+/**
+ * How many cycles an alert's email may cost before the worker stops trying (Phase 12 item 6,
+ * readiness audit C1). One attempt per cycle at the five-minute tick is roughly fifty minutes of
+ * a broken mail server for an alert at the head of the queue — longer for one behind a backlog,
+ * because the budget below can push it into a later cycle. Beyond this the row is left visibly
+ * failed on Admin → Alerts rather than retried for ever.
+ */
+export const EMAIL_MAX_ATTEMPTS = 10
+
+/**
+ * The wall-clock the retry pass may spend before leaving the rest of the queue to the next cycle.
+ *
+ * This is the load-bearing bound, not the count cap. `heartbeat()` and the Kuma push both run
+ * only after `runAlertCycle` resolves, and the worker's overlap guard drops every tick that
+ * arrives while a cycle is running — so a slow pass is silent as well as long, and a pass that
+ * outran the 900 s healthcheck window would report the worker unhealthy and page Kuma for a
+ * locked mailbox, which is precisely the page this item exists to avoid. A minute is a fifth of
+ * the five-minute tick and a fifteenth of the heartbeat window, whatever the backlog.
+ */
+export const RETRY_PASS_BUDGET_MS = 60_000
+
 /** What the worker needs to know about a case to decide, plus what the email needs to say. */
 export type AlertCase = CaseClock & {
   id: string

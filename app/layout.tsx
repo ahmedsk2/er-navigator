@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { IBM_Plex_Sans } from 'next/font/google'
+import { InstanceBanner } from '@/src/components/shell/InstanceBanner'
 import { buildFingerprint } from '@/src/lib/fingerprint'
 import './globals.css'
 
@@ -43,7 +44,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     // data-build: the fingerprint of the build that rendered this page. app/error.tsx compares it
     // with the live one and reloads a screen that stayed open across a deploy (src/lib/build-check.ts).
     <html lang="en" className={plex.variable} data-build={buildFingerprint()}>
-      <body className="min-h-dvh antialiased">{children}</body>
+      {/* The instance banner is first in the body and in normal flow (Phase 12, D6): on the demo
+          copy every page says so, and it prints. It renders nothing at all when INSTANCE_LABEL is
+          unset, which is production. */}
+      <body className="min-h-dvh antialiased">
+        <InstanceBanner />
+        {children}
+      </body>
     </html>
   )
 }

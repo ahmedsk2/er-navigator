@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { REMEMBER_COOKIE, SESSION_COOKIE, SESSION_TTL_MS } from '@/src/lib/auth/session'
@@ -96,5 +96,71 @@ describe('the route gate agrees with the session module', () => {
     expect(proxy).toContain('cookieAttrs(0)')
     const session = readFileSync(path.resolve(__dirname, '../session.ts'), 'utf8')
     expect(session).toContain(`redirect('/login?expired=1')`)
+  })
+})
+
+/**
+ * Phase 12 item 5 (P12): the must-change exemption, and where it may appear.
+ *
+ * The first attempt at this rule compared the request path, stamped into `x-pathname` by the
+ * gate. It is wrong, and the way it is wrong is worth keeping written down: Next renders a server
+ * action's redirect DESTINATION inside the action's own POST request, so while `/account` is
+ * being rendered the header still says `/login`. The guard fires, the router is handed a payload
+ * whose URL and tree disagree, and the browser refetches `/account` for ever — a blank page that
+ * never settles, which is what the real sign-in in `tests/e2e/auth.spec.ts` caught.
+ *
+ * So the exemption is an argument, `allowMustChange`, and this is the grep that keeps it to the
+ * two callers that together are the render of /account. Deliberately dumb, in the spirit of
+ * `page-guards.test.ts`: a third caller fails this test.
+ */
+describe('the must-change exemption', () => {
+  const ROOT = path.resolve(__dirname, '../../../..')
+  const session = readFileSync(path.join(ROOT, 'src/lib/auth/session.ts'), 'utf8')
+
+  function walk(dir: string): string[] {
+    const found: string[] = []
+    for (const entry of readdirSync(dir)) {
+      const full = path.join(dir, entry)
+      if (statSync(full).isDirectory()) found.push(...walk(full))
+      else if (entry.endsWith('.tsx') || entry.endsWith('.ts')) found.push(full)
+    }
+    return found
+  }
+
+  it('enforces by default and redirects to exactly one path', () => {
+    expect(session).toContain("export const ACCOUNT_PATH = '/account'")
+    expect(session).toContain('redirect(ACCOUNT_PATH)')
+    expect(session).toContain('if (opts.allowMustChange) return')
+    // An API caller is refused before the exemption is even consulted.
+    const guard = session.slice(session.indexOf('function assertPasswordChanged'))
+    expect(guard.indexOf('UnauthorizedError')).toBeLessThan(guard.indexOf('allowMustChange'))
+  })
+
+  it('is passed by the (app) layout and the account page, and by nothing else', () => {
+    const callers = walk(path.join(ROOT, 'app'))
+      .filter((f) => readFileSync(f, 'utf8').includes('allowMustChange'))
+      .map((f) => path.relative(ROOT, f).replaceAll('\\', '/'))
+      .sort()
+    expect(callers).toEqual(['app/(app)/account/page.tsx', 'app/(app)/layout.tsx'])
+  })
+
+  it('is not smuggled in through src/', () => {
+    const callers = walk(path.join(ROOT, 'src'))
+      .filter((f) => !f.includes('__tests__'))
+      .filter((f) => readFileSync(f, 'utf8').includes('allowMustChange'))
+      .map((f) => path.relative(ROOT, f).replaceAll('\\', '/'))
+    expect(callers).toEqual(['src/lib/auth/session.ts'])
+  })
+
+  it('sends a must-change account straight to /account at sign-in', () => {
+    // The other half of the same Next behaviour: a redirect out of the action's destination
+    // render loops exactly as the header did.
+    const login = readFileSync(path.join(ROOT, 'app/login/actions.ts'), 'utf8')
+    expect(login).toContain('mustChangePassword')
+    expect(login).toContain('redirect(ACCOUNT_PATH)')
+  })
+
+  it('left no x-pathname behind in the gate', () => {
+    expect(proxy).not.toContain('x-pathname')
   })
 })

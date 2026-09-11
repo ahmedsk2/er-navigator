@@ -7,7 +7,12 @@ import { attemptLogin, auditRateLimited } from '@/src/lib/auth/login'
 import { safeNextPath } from '@/src/lib/auth/next-path'
 import { loginSchema } from '@/src/lib/auth/password'
 import { loginRateLimiter } from '@/src/lib/auth/rate-limit'
-import { deleteSessionByToken, readSessionCookie, setSessionCookie } from '@/src/lib/auth/session'
+import {
+  ACCOUNT_PATH,
+  deleteSessionByToken,
+  readSessionCookie,
+  setSessionCookie,
+} from '@/src/lib/auth/session'
 
 export type LoginErrorCode = 'invalid' | 'locked' | 'rate_limited' | 'invalid_input'
 
@@ -55,6 +60,16 @@ export async function login(_previous: LoginState, formData: FormData): Promise<
   }
 
   await setSessionCookie(outcome.token, parsed.data.remember)
+  /**
+   * Phase 12 item 5 (P12): an account still on the password an Admin read out goes straight to
+   * /account, and not through the board.
+   *
+   * Not only a courtesy. Next renders this action's redirect destination inside this same
+   * request, so a `redirect()` out of that render — which is what the board would do for this
+   * user — hands the router a payload whose URL and tree disagree, and the browser refetches for
+   * ever. Sending them where they are going to end up anyway is what keeps that from happening.
+   */
+  if (outcome.user.mustChangePassword) redirect(ACCOUNT_PATH)
   // Resolved, not pattern-matched: see src/lib/auth/next-path.ts for why.
   redirect(safeNextPath(formData.get('next')))
 }

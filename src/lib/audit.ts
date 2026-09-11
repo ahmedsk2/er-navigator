@@ -23,6 +23,12 @@ export type AuditAction =
   | 'case.review'
   | 'alert.acknowledge'
   | 'alert.fire'
+  /**
+   * Phase 12 (C1): an alert's email failed again. Written by the store inside the same
+   * transaction that increments the counter, actor = the system user, exactly as `alert.fire` is.
+   * MRN-free: the case is named by id. after: { caseId, thresholdHours, attempts }.
+   */
+  | 'alert.email.failed'
   | 'user.create'
   | 'user.update'
   | 'user.password'
@@ -34,6 +40,16 @@ export type AuditAction =
   | 'auth.fail'
   | 'auth.locked'
   | 'auth.forbidden'
+  /**
+   * Phase 12 (C2): a workbook was downloaded, and the printable report was rendered. Reads, both
+   * of them, and on the record because a page of MRNs leaving the building is the fact an
+   * information-governance question asks about. Deliberately spelled like the two actions in the
+   * permission matrix they record, so the audit log and the matrix use one vocabulary.
+   * after: { format, from, to, status, filter, filterDescription, cases } / the same without the
+   * format and the count.
+   */
+  | 'export.xlsx'
+  | 'report.print'
   | 'phi.scrub'
 
 export type AuditContext = {

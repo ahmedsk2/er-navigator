@@ -1,4 +1,6 @@
+import { randomBytes } from 'node:crypto'
 import { expect, test, type Page } from '@playwright/test'
+import { E2E_TEMP_USER_PREFIX, E2E_USERS } from './fixtures/seed-users'
 import { LOCKED_PASSWORD, LOCKED_USERNAME } from './global-setup'
 
 /**
@@ -77,6 +79,24 @@ test.describe('signing in', () => {
     await fromClientIp(page, '198.51.100.24')
     await signIn(page, LOCKED_USERNAME, LOCKED_PASSWORD)
     await expect(page.getByText(/^Too many attempts\. Try again in \d+ minutes?\.$/)).toBeVisible()
+  })
+
+  /**
+   * Phase 12 item 8 (readiness audit P3): the limit becomes configurable, and production leaves
+   * the variable unset. This is the proof that unset still means exactly five, at both viewports.
+   * The demo shape — the number raised — is `tests/instance/instance.spec.ts`.
+   */
+  test('five attempts a minute from one address, and the sixth is refused', async ({ page }, testInfo) => {
+    // Its own address, like every other test here: this one deliberately exhausts a bucket,
+    // so sharing one with board.spec or cases.spec would turn their sign-in into a refusal.
+    const ip = testInfo.project.name === 'mobile' ? '198.51.100.179' : '198.51.100.180'
+    await fromClientIp(page, ip)
+    for (let i = 0; i < 5; i += 1) {
+      await signIn(page, 'nobody_at_all', 'definitely-not-the-password')
+      await expect(page.getByText('Wrong username or password.')).toBeVisible()
+    }
+    await signIn(page, 'nobody_at_all', 'definitely-not-the-password')
+    await expect(page.getByText('Too many attempts from this device. Wait a minute and try again.')).toBeVisible()
   })
 
   test('signing in again on the same browser goes to the board, not the form', async ({ page }) => {
@@ -178,5 +198,105 @@ test.describe('the sign-in screen', () => {
     await expect(password).toHaveAttribute('type', 'password')
     // The typed value survives the round trip: the toggle must not remount the input.
     await expect(password).toHaveValue('not-the-real-one')
+  })
+})
+
+/**
+ * Phase 12 item 5 (readiness audit P12): the first password must be changed.
+ *
+ * A temporary password is read out across a ward desk and, until now, could stay in use for ever
+ * while the audit log named that account for everything done with it. The whole journey is driven
+ * through the Admin UI, so the flag is set exactly the way it will be in life, and it runs at both
+ * viewports because a nurse meets it on a phone.
+ *
+ * The account is a SUPERVISOR because the API half of the rule turns on `export.xlsx`, which is a
+ * SUPERVISOR / ADMIN / VIEWER action.
+ */
+test.describe('the first password must be changed', () => {
+  test('a new account reaches nothing but /account until it sets its own password', async ({
+    browser,
+    page,
+  }, testInfo) => {
+    const mobile = testInfo.project.name === 'mobile'
+    const username = `${E2E_TEMP_USER_PREFIX}${randomBytes(4).toString('hex')}`
+    await fromClientIp(page, mobile ? '198.51.100.175' : '198.51.100.176')
+
+    // 1. The admin creates the account and reads the one-shot temporary password.
+    await signInAndLand(page, E2E_USERS.admin.username, E2E_USERS.admin.password)
+    await page.goto('/admin/users')
+    await page.getByLabel('Username', { exact: true }).fill(username)
+    await page.getByLabel('Display name', { exact: true }).fill('Temporary Supervisor')
+    await page.getByLabel('Role', { exact: true }).selectOption('SUPERVISOR')
+    await page.getByRole('button', { name: 'Create user', exact: true }).click()
+    const secret = page.locator('[data-temporary-password] [data-secret]')
+    await expect(secret).toBeVisible()
+    const temporary = (await secret.innerText()).trim()
+    await page.getByRole('button', { name: 'Done', exact: true }).click()
+
+    const theirs = await browser.newContext()
+    const their = await theirs.newPage()
+    await fromClientIp(their, mobile ? '198.51.100.177' : '198.51.100.178')
+
+    // 2. Their first sign-in lands on /account, not on the board.
+    await signIn(their, username, temporary)
+    await expect(their).toHaveURL(/\/account$/)
+    await expect(their.locator('[data-must-change]')).toBeVisible()
+
+    // 3. Every other signed-in page comes straight back.
+    for (const path of ['/', '/dashboard', '/cases/new', '/export']) {
+      await their.goto(path)
+      await expect(their).toHaveURL(/\/account$/)
+    }
+
+    // 4. The API is refused too, not only the pages. /api/export.xlsx is a plain <a href> that
+    // returns the whole MRN workbook, and parseExportRange defaults every missing parameter, so a
+    // bare URL yields one — this is the half that would otherwise leave the shared credential
+    // useful for ever.
+    const today = new Date().toISOString().slice(0, 10)
+    for (const url of [
+      `/api/export.xlsx?from=${today}&to=${today}&status=all&format=qch`,
+      '/api/export.xlsx',
+      '/api/board',
+    ]) {
+      const response = await their.request.get(url)
+      expect(response.status(), url).toBe(401)
+      expect((await response.body()).length, url).toBeLessThan(2048)
+    }
+
+    // 5. Sign-out still works from /account, and signing back in lands there again.
+    await their.goto('/account')
+    await their.getByRole('button', { name: 'Menu' }).click()
+    await their.getByRole('menuitem', { name: 'Log out' }).click()
+    await expect(their).toHaveURL(/\/login/)
+    await signIn(their, username, temporary)
+    await expect(their).toHaveURL(/\/account$/)
+
+    // 6. Setting their own password clears it, and the board opens.
+    const chosen = 'a-password-of-their-own'
+    await their.getByLabel('Current password', { exact: true }).fill(temporary)
+    await their.getByLabel('New password', { exact: true }).fill(chosen)
+    await their.getByLabel('New password again', { exact: true }).fill(chosen)
+    await their.getByRole('button', { name: 'Change password', exact: true }).click()
+    await expect(their.getByText('Password changed. Your other devices have been signed out.')).toBeVisible()
+    await expect(their.locator('[data-must-change]')).toHaveCount(0)
+    await their.goto('/')
+    await expect(their.getByRole('heading', { name: 'ER board' })).toBeVisible()
+
+    // 7. A reset by the admin puts them back there.
+    await page.goto('/admin/users')
+    await page
+      .locator(`[data-user="${username}"]`)
+      .getByRole('button', { name: 'Reset password', exact: true })
+      .click()
+    const resetSecret = page.locator('[data-temporary-password] [data-secret]')
+    await expect(resetSecret).toBeVisible()
+    const reissued = (await resetSecret.innerText()).trim()
+    await page.getByRole('button', { name: 'Done', exact: true }).click()
+
+    await signIn(their, username, reissued)
+    await expect(their).toHaveURL(/\/account$/)
+    await expect(their.locator('[data-must-change]')).toBeVisible()
+
+    await theirs.close()
   })
 })
