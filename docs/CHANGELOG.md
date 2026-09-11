@@ -2,6 +2,10 @@
 
 One line per finished slice, newest first. The gate reports reference this file.
 
+## Phase 12
+
+- 2026-09-11 [ERN-P12.2] Revise the playbook after Phases 10 and 11: Opus does the work, Fable leads (the brief, the gate, tie-breaks); a phase runs in an Opus session; from a Fable session every agent is started with `model: 'opus'`; reviewers at effort `high`. `CLAUDE.md` "Cost discipline" and `docs/PLAN.md` Section 6.
+
 ## Phase 11
 
 - 2026-09-11 [ERN-P11.40] Close Phase 11: the plan and this log record the demo, its fixes, the dashboard's new figures and the mark; every gate screenshot is from the final green chain (966 unit and database tests in 58 files; 198 Playwright tests at both viewports, 60 project-specific skips; no schema drift).

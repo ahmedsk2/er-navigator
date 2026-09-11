@@ -304,40 +304,51 @@ Recipe: Fable maps the UI code with a five-reader workflow, writes the spec and 
 
 ---
 
-## 6. The Fable playbook: best results at the lowest cost
+## 6. The playbook: Opus does the work, Fable leads (revised 11 September 2026)
 
-Fable is the most capable model available here and the most expensive per token. The cheapest way to use it is to let it do only what smaller models get wrong, and to make every Fable turn short and well fed.
+Fable's monthly allowance ran out in the middle of the Phase 10 review on 10 September. Opus finished that review, ran two fix rounds of three worktree agents each and re-reviewed the fixes. It then ran Phase 11 end to end: the hands-on demo, the spec, two slices in worktrees, a four-lens review with three refuters per finding that confirmed seven real findings and refuted five, the fixes, the deploy and the docs. The chain stayed green at the gate: 966 unit and database tests, 198 Playwright tests at both viewports. On 11 September Ahmed asked to use Opus for the majority of the work. The evidence of the two phases is that Opus, given the spec, the rules in `CLAUDE.md` and the verification chain, produces the same quality across a whole phase. Fable's value is therefore concentrated in a few decisions and in the gate, and that is the only place it is spent.
 
-**Split the work by what fails expensively**
+**The split**
 
-- Fable: architecture and module boundaries, the rules code (`validation.ts`, `warnings.ts`, `aggregates.ts`), security (auth, audit, DB privileges, headers), gate reviews, any bug that survives one Opus attempt, and the final answers to Ahmed's questions.
-- Opus: implementing a well-specified slice (a server action from its zod schema, a UI section from the prototype, a Playwright step), in a worktree, with the test written first; also table-driven tests from an existing matrix.
-- Sonnet or Haiku: only trivial mechanics where a wrong answer is obvious and cheap: formatting, renames, lockfile bumps, doc sweeps.
-- Effort setting: `low` for mechanical subagents, default for implementation, `high` only for gate review and security review. `max` is not needed anywhere in this project.
+- Fable, the phase brief. What the phase does, what it does not do, and the decisions it needs from Ahmed. One turn.
+- Fable, the gate. Read the Opus gate summary, the test totals and the screenshots, then write the five-line report. One turn.
+- Fable, tie-breaks. A bug that survived two Opus attempts. A disagreement between an Opus builder and an Opus reviewer. A security question about auth, DB privileges or headers where the Opus review's summary is not conclusive.
+- Opus, everything else. The spec from the brief; the slices in worktrees, tests first; scoped runs while building and the full chain at hand-back; the end-of-phase review workflow (finders, refuters, fixes); deploy verification by fingerprint; the `docs/CHANGELOG.md` and `docs/PLAN.md` entries; the memory updates; the plan page.
+- Sonnet or Haiku, trivial mechanics only. Formatting, renames, lockfile bumps, doc sweeps.
 
-**Keep every Fable turn small**
+**Mechanics that make it cheap**
 
-- One session per phase. The handoff between sessions is the gate report plus `docs/CHANGELOG.md`, not the previous conversation.
-- Load only the plan section for the phase and the locked-plan sections it names. Never paste the prototype; reference its path and the function names.
-- `CLAUDE.md` stays under 60 lines. Detail lives in this plan and the runbook, one hop away.
+- Run the phase in an Opus session. Switch the desktop app's model picker to Fable only for the brief and for the gate, then switch back.
+- From a Fable session, pass `model: 'opus'` on every Agent and every Workflow agent. Agents inherit the session model, so an unset `model` spends Fable tokens on the whole tree.
+- Fable's turns carry summaries, test totals and screenshot paths. Never file contents. An Opus agent reads the file or the diff and returns what the decision needs.
+- Effort: `high` for reviewers and refuters, because they stall at `max`; the default or `max` for builders; `low` for mechanics.
+- Worktrees share the main checkout's `node_modules` through a directory junction instead of a fresh install. Windows long paths make an installed worktree hard to delete.
 - Prompt caching rewards a stable prefix: the same pre-reads at the top of every session, the new task at the bottom.
 - Tests before code for every slice. A failing test is a cheaper spec than a paragraph, and it stops the iterate-until-it-looks-right loop that burns tokens.
-- Verify with tools, not prose: Playwright screenshots at 390 x 844 and 1280 x 800, `pnpm test`, `curl /api/health` for the fingerprint. Never ask Fable to describe what a screen probably looks like.
-- Scoped test runs while building (`vitest run src/lib/domain`), full suite only at the gate.
-- Push-to-deploy. Nobody deploys by hand; nobody polls Coolify every thirty seconds. Wait about five minutes, then read the fingerprint.
+- Verify with tools, not prose: Playwright screenshots at 390 x 844 and 1280 x 800, `pnpm test`, `curl /api/health` for the fingerprint.
+- Scoped test runs while building (`vitest run src/lib/domain`), the full suite at hand-back and at the gate.
+- Push-to-deploy. Nobody deploys by hand; nobody polls Coolify. Wait about five minutes, then read the fingerprint.
 
-**Use multi-agent workflows only where they pay**
+**Workflows, where they pay**
 
-- Yes: end-of-phase adversarial review (independent finders, then refuters per finding) for Phases 1, 2, 4 and 7; independent recomputation of the Phase 4 fixture answers.
-- No: writing code in parallel on the same files, "exploring the codebase" with several agents when one `Explore` pass will do, and any loop that runs until a budget is spent.
+- Yes: the end-of-phase adversarial review, four lenses with three refuters per finding, as run in Phase 11.
+- Yes: independent recomputation of the KPI fixtures, as in Phases 4 and 10.
+- Yes: read-only audits with skeptics, as the go-live audit of 11 September.
+- No: parallel edits of the same files.
+- No: exploration that one pass can do.
+- No: any loop that runs until a budget is spent.
+- Reviewers and refuters run at effort `high` in every one of these.
 
-**Things that waste Fable tokens, seen in comparable projects**
+**What still wastes tokens**
 
-- Re-reading large files a second time in the same session. Read once, keep the summary in the plan or the CLAUDE.md.
+- Re-reading large files a second time in the same session. Read once, keep the summary in this plan or in `CLAUDE.md`.
 - Long gate reports. The locked plan gives the exact five-line shape; use it.
 - Letting the lead model write boilerplate (CRUD forms, table rows, seed data) that an Opus subagent produces identically.
 - Debugging a deploy by re-deploying. Read the Coolify deployment log once, fix the cause, push once.
 - Re-litigating locked decisions at each gate. The do-not list in the locked plan section 9 is final; this plan's Section 1 is final once Gate 0 passes.
+- Running a phase from a Fable session with agents that inherit Fable.
+- Fable running the verification chain itself. An Opus agent runs it and reports the totals.
+- Fable reading a diff instead of the review's verdict.
 
 ---
 
