@@ -28,6 +28,7 @@ import {
   Users,
 } from '@/src/components/icons'
 import { AdaaBullets } from '@/src/components/dashboard/charts/AdaaBullets'
+import { ArrivalTable } from '@/src/components/dashboard/charts/ArrivalTable'
 import { HBar, type HBarColor, type HBarRow } from '@/src/components/dashboard/charts/HBar'
 import { StackedBar, type StackRow } from '@/src/components/dashboard/charts/StackedBar'
 import { StaySplit } from '@/src/components/dashboard/charts/StaySplit'
@@ -53,7 +54,7 @@ import {
   fmtShare,
   headlineTiles,
 } from '@/src/lib/dashboard/panels'
-import type { DashboardKpi, Range } from '@/src/lib/domain/aggregates'
+import type { ArrivalGrid, DashboardKpi, Range } from '@/src/lib/domain/aggregates'
 import type { CaseFilter } from '@/src/lib/domain/case-filter'
 import { NOT_RECORDED, TURNAROUND_BANDS, type IdRow } from '@/src/lib/domain/kpi'
 import { DISPOSITION_LABELS } from '@/src/lib/domain/taxonomy'
@@ -592,6 +593,43 @@ export function WhereTimeGoesSection({ kpi, range, filter }: Props) {
         measured. The bars take their medians from those same cases, so they can differ from the table&apos;s, which
         count every case with that phase measured; an outcome with fewer than 3 such cases has no bar. Tap a row for the
         cases.
+      </Footnote>
+    </DashSection>
+  )
+}
+
+// --- Phase 11: when the patients arrive --------------------------------------------------------
+
+/**
+ * "Arrivals by day and time": `arrivalGrid()` as a table, each cell with cases a drill-down
+ * (`arrival:{weekday}|{block}`), carrying the filter like every other row on the page.
+ */
+export function ArrivalsSection({
+  arrivals,
+  range,
+  filter,
+}: {
+  arrivals: ArrivalGrid
+  range: Range
+  filter?: CaseFilter
+}) {
+  if (arrivals.max === 0) return null
+  return (
+    <DashSection title="Arrivals by day and time" icon={<Clock size={18} />}>
+      <ArrivalTable
+        max={arrivals.max}
+        rows={arrivals.rows.map((row) => ({
+          weekday: row.weekday,
+          cells: row.cells.map((cell) => ({
+            block: cell.block,
+            value: cell.value,
+            href: href(range, filter, 'arrival', gridKey(row.weekday, cell.block)),
+          })),
+        }))}
+      />
+      <Footnote>
+        Registration time in Asia/Riyadh, in three-hour blocks. The darker the cell, the more cases, against the fullest
+        cell in this range. Tap a cell for its cases.
       </Footnote>
     </DashSection>
   )

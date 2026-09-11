@@ -906,8 +906,8 @@ async function across(mark: Locator, track: Locator): Promise<number> {
  * unacceptable, and — the scale running from 100 % on the left — three quarters of the way along.
  * One case records a painkiller, so KPI 8 is a track with no marker.
  */
-test('the Adaa KPIs sit against their four tiers, with the table still under them', async ({ page }, testInfo) => {
-  await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.241' : '198.51.100.242')
+test('the Adaa KPIs sit against their four tiers, with the table still under them', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.241')
   await signIn(page, E2E_USERS.navigator)
   await page.goto(`/dashboard?${FIXTURE_ONLY}`)
 
@@ -967,8 +967,8 @@ test('the Adaa KPIs sit against their four tiers, with the table still under the
  * so all seven split 3.7, 31.3 and 58 of 93 hours (4 %, 34 %, 62 %), the admitted 3 %, 21 % and
  * 75 %, the discharged 5 %, 65 % and 31 %; "other" has one case and is not drawn.
  */
-test('the stay splits overall and by outcome, and a stage with no case is left out', async ({ page }, testInfo) => {
-  await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.243' : '198.51.100.244')
+test('the stay splits overall and by outcome, and a stage with no case is left out', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.242')
   await signIn(page, E2E_USERS.navigator)
   await page.goto(`/dashboard?${FIXTURE_ONLY}`)
 
@@ -1039,8 +1039,8 @@ async function registeredAt(page: Page, mrn: string): Promise<string> {
  * day — eight bars and thirty-one, because the window is the last N x 24 hours and opens part way
  * through a day — with a 6 h line on the median panel. Each day with a case is a drill-down.
  */
-test('the last days are drawn by day, with a 6 h line, and each day drills to its cases', async ({ page }, testInfo) => {
-  await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.245' : '198.51.100.246')
+test('the last days are drawn by day, with a 6 h line, and each day drills to its cases', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.243')
   await signIn(page, E2E_USERS.navigator)
 
   const byDay = page.getByRole('heading', { name: 'By day: cases and median stay', exact: true })
@@ -1088,6 +1088,86 @@ test('the last days are drawn by day, with a 6 h line, and each day drills to it
   await bars.nth(heights.indexOf(Math.max(...heights))).click()
   await expect(page).toHaveURL(/[?&]drill=day%3A\d{4}-\d{2}-\d{2}/)
   await expect(page.locator('[data-drill-label]')).toHaveText(/^Registered on /)
+})
+
+const WEEKDAYS: Record<string, string> = {
+  Sun: 'Sunday',
+  Mon: 'Monday',
+  Tue: 'Tuesday',
+  Wed: 'Wednesday',
+  Thu: 'Thursday',
+  Fri: 'Friday',
+  Sat: 'Saturday',
+}
+
+/** The Riyadh weekday ("Mon") and three-hour block ("12–15") an instant falls in. */
+function arrivalOf(iso: string): { weekday: string; block: string } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Riyadh',
+    weekday: 'short',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(iso))
+  const hour = Number(parts.find((p) => p.type === 'hour')?.value)
+  const start = Math.floor(hour / 3) * 3
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return { weekday: parts.find((p) => p.type === 'weekday')!.value, block: `${pad(start)}–${pad(start + 3)}` }
+}
+
+/**
+ * Item 4. A real table: Sunday to Saturday down, eight three-hour blocks across, a count in every
+ * cell and a link in every cell with a case. The cell is found from the case's own registration
+ * instant, so the test holds whatever time of day the suite runs.
+ */
+test('arrivals are a weekday-by-block table whose cells open their cases', async ({ page }) => {
+  await fromClientIp(page, '198.51.100.244')
+  await signIn(page, E2E_USERS.navigator)
+  const { weekday, block } = arrivalOf(await registeredAt(page, '3200008'))
+  await page.goto('/dashboard?payer=GOVERNMENT')
+
+  const table = page.getByRole('heading', { name: 'Arrivals by day and time', exact: true }).locator('xpath=../table')
+  await expect(table).toHaveCount(1)
+  expect(await table.locator('thead th').evaluateAll((els) => els.map((e) => (e.textContent ?? '').trim()))).toEqual([
+    'Day',
+    '00–03',
+    '03–06',
+    '06–09',
+    '09–12',
+    '12–15',
+    '15–18',
+    '18–21',
+    '21–24',
+  ])
+  expect(await table.locator('tbody th').evaluateAll((els) => els.map((e) => (e.textContent ?? '').trim()))).toEqual([
+    'Sun',
+    'Mon',
+    'Tue',
+    'Wed',
+    'Thu',
+    'Fri',
+    'Sat',
+  ])
+  // Fifty-six cells, a count in each; the empty ones plain and not links, the rest filled and links.
+  await expect(table.locator('tbody td')).toHaveCount(56)
+  await expect(table.locator('td[data-count="0"] a')).toHaveCount(0)
+  await expect(table.locator('td[data-count="0"][data-step]')).toHaveCount(0)
+  const filled = await table.locator('td:not([data-count="0"])').count()
+  expect(filled).toBeGreaterThan(0)
+  await expect(table.locator('td:not([data-count="0"]) a')).toHaveCount(filled)
+  await expect(page.locator('[data-heat-legend]')).toBeVisible()
+
+  // 3200008's own cell, named in full, carrying the page's filter.
+  const hours = `${block.slice(0, 2)}:00 to ${block.slice(3, 5)}:00`
+  const cell = table.getByRole('link', { name: new RegExp(`^${WEEKDAYS[weekday]} ${hours}: \\d+ cases?$`) })
+  await expect(cell).toHaveCount(1)
+  const href = (await cell.getAttribute('href')) ?? ''
+  const params = new URL(href, 'http://dashboard.invalid').searchParams
+  expect(params.get('drill')).toBe(`arrival:${weekday}|${block}`)
+  expect(params.getAll('payer')).toEqual(['GOVERNMENT'])
+  await cell.click()
+  await expect(page.locator('[data-drill-label]')).toHaveText(`Arrivals on ${WEEKDAYS[weekday]}s, ${hours}`)
+  await expect(rowFor(page, '3200008')).toHaveCount(1)
+  await expect(rowFor(page, '3200009')).toHaveCount(0)
 })
 
 test('an unknown drill key renders the dashboard rather than an error', async ({ page }, testInfo) => {

@@ -34,6 +34,7 @@ import {
   ActionsDocumented,
   AdaaPanel,
   AdmissionToUnit,
+  ArrivalsSection,
   BarSection,
   ByAreaSection,
   ByCtasSection,
@@ -382,6 +383,7 @@ export function DashboardBody({
               color="muted"
             />
           )}
+          <ArrivalsSection arrivals={data.arrivals} range={range} filter={filter} />
 
           <OutcomesSection kpi={kpi} range={range} filter={filter} />
           <DischargeCommunication kpi={kpi} range={range} filter={filter} />
