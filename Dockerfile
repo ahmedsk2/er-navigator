@@ -2,6 +2,13 @@
 # Production image for ER Navigator. Builds natively on the OCI ARM64 host (all bases are
 # multi-arch). Base images pinned by digest; Dependabot bumps them as reviewed PRs.
 # node:24-alpine digest captured 2026-09-08 (the digest towardpcc already ships on this host).
+#
+# NODE STAYS ON 24 (Phase 12 item 10, readiness audit P6/P19). Dependabot PR #2 moves both stages
+# to node:26-alpine and it does not build: package.json pins engines.node ">=24 <25" and .npmrc
+# sets engine-strict=true, so `pnpm install --frozen-lockfile` aborts in the deps stage and every
+# stage after it fails. CI never builds this file (ci.yml runs on .nvmrc = 24), so that PR's green
+# check means nothing. Moving to 26 is a deliberate change to engines, .nvmrc and this line at
+# once, not a bump to merge in a hurry.
 FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS base
 RUN corepack enable
 WORKDIR /repo
