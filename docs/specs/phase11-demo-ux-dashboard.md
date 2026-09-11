@@ -173,6 +173,10 @@ go in the gate report beside the findings they answer.
 
 ## The logo (Envato Elements)
 
+Decided 11 September: Ahmed chose "Medical Cross Logo — Healthcare & Hospital Health" (3ab2ou) and
+downloaded it; the cross is the mark, recoloured to the app's teal (P11.3). What follows is the
+shortlist as it was offered.
+
 Six shortlisted from "medical heart logo", "heartbeat pulse logo", "emergency care cross logo",
 "medical arrow direction logo", "ecg line medical logo" and "hospital pin location logo" (Logos):
 Health Pulse (3ab2ou, a teal outlined cross with an ECG trace — recommended: it carries the
