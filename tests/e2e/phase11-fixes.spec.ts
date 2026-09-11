@@ -23,7 +23,7 @@ type CdpNode = { nodeId: number; nodeName: string; attributes?: string[]; childr
  * Not only the input's own `scrollWidth`, which is what the spec proposed: Chromium draws the value
  * in a user-agent shadow tree (`::-webkit-datetime-edit`) that scrolls inside the input, so the
  * input itself reports `scrollWidth === clientWidth` even while the day is cut off. The build the
- * demo ran (903044c) said 176 === 176 on every clipped row while its edit box needed 175 px and had
+ * demo found it on said 176 === 176 on every clipped row while its edit box needed 175 px and had
  * 132. The edit box is the one that knows, and a page script cannot reach a user-agent shadow
  * root; the DevTools protocol can, and both projects run Chromium.
  */
@@ -271,14 +271,41 @@ test('a new case opens from the bar at the foot of the screen', async ({ page },
 })
 
 /**
+ * Finding 5: a new account is told to change its password "at /account", and nothing on the way
+ * there said Account — the menu's row showed a name. It says what it is now, in the menu at both
+ * widths and in the rail on a laptop.
+ *
  * The administrator's screens: the export's Format and Status, the Lists "Stage", the new user's
  * Role and the audit log's three filters are named by their labels like the case page's selects
  * (finding 4).
  */
-test('the export and admin screens name every select by its label', async ({ page }, testInfo) => {
+test('the way to the account says so, and the export and admin screens name every select by its label', async ({ page }, testInfo) => {
   const mobile = testInfo.project.name === 'mobile'
   await fromClientIp(page, mobile ? '198.51.100.235' : '198.51.100.236')
   await signIn(page, E2E_USERS.admin)
+
+  await page.getByRole('button', { name: 'Menu' }).click()
+  const row = page.getByRole('menuitem', { name: /Account and password$/ })
+  await expect(row).toBeVisible()
+  await expect(row).toContainText(`${E2E_USERS.admin.displayName} · Admin`)
+  await expect(row).toContainText('Account and password')
+  await row.click()
+  await expect(page).toHaveURL('/account')
+  await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible()
+
+  const rail = page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Account and password', exact: true })
+  if (mobile) {
+    // The phone's tab bar has no room for it; the menu is the way there.
+    await expect(rail).toBeHidden()
+  } else {
+    // The rail's foot names who is signed in and is the way to their account.
+    await expect(rail).toBeVisible()
+    await expect(rail).toHaveAttribute('aria-current', 'page')
+    await page.goto('/')
+    await expect(rail).not.toHaveAttribute('aria-current', 'page')
+    await rail.click()
+    await expect(page).toHaveURL('/account')
+  }
 
   await page.goto('/export')
   await expect(page.getByRole('heading', { name: 'Export and print' })).toBeVisible()
@@ -296,4 +323,5 @@ test('the export and admin screens name every select by its label', async ({ pag
   await page.goto('/admin/audit')
   await expect(page.locator('[data-audit-total]')).toBeVisible()
   for (const label of ['Action', 'Entity', 'Actor']) await expectNamedByItsLabel(page, label)
+
 })
