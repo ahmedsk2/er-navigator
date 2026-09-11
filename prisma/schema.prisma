@@ -437,7 +437,7 @@ model AuditLog {
   id        String   @id @default(cuid())
   at        DateTime @default(now())
   actorId   String?
-  action    String // case.create, case.update, case.resolve, case.void, user.create, list.update, auth.login, auth.fail, auth.forbidden
+  action    String // case.create, case.update, case.resolve, case.void, user.create, list.update, auth.login, auth.fail, auth.forbidden, export.xlsx, report.print, alert.email.failed
   entity    String
   entityId  String?
   before    Json?

@@ -367,6 +367,68 @@ describe('GET /api/export.xlsx as a NAVIGATOR', () => {
     const response = await exportCountResponse(navigator, RANGE, ctxFor(navigator.id))
     expect(response.status).toBe(403)
   })
+
+  /** Phase 12 item 7 (C2): a refusal is not a download, so it leaves no export.xlsx row. */
+  it('leaves no export.xlsx row behind', async () => {
+    expect(await prisma.auditLog.count({ where: { action: 'export.xlsx', actorId: navigator.id } })).toBe(0)
+  })
+})
+
+/**
+ * Phase 12 item 7 (readiness audit C2). src/lib/audit.ts listed 21 actions and none of them was a
+ * download or a print, so "who pulled a month of MRNs" lived only in a container log line. The
+ * decision the service header used to state — "an export is a read, so there is no audit row" —
+ * is reversed here: the row is the read, and the range and the filter are what make it answerable.
+ */
+describe('an export leaves an audit row', () => {
+  it('writes exactly one export.xlsx row carrying the format, the range and the row count', async () => {
+    const before = await prisma.auditLog.count({ where: { action: 'export.xlsx', actorId: supervisor.id } })
+    await exportWorkbookResponse(supervisor, RANGE, ctxFor(supervisor.id), new Date())
+
+    const rows = await prisma.auditLog.findMany({
+      where: { action: 'export.xlsx', actorId: supervisor.id },
+      orderBy: { at: 'desc' },
+      select: { entity: true, entityId: true, after: true },
+    })
+    expect(rows).toHaveLength(before + 1)
+    expect(rows[0]!.entity).toBe('Export')
+    expect(rows[0]!.entityId).toBeNull()
+    expect(rows[0]!.after).toMatchObject({
+      format: 'navigator',
+      from: RANGE.from,
+      to: RANGE.to,
+      status: 'all',
+      cases: 3,
+      filter: null,
+      filterDescription: null,
+    })
+  })
+
+  it('writes none for the count endpoint, which the page polls as the dates move', async () => {
+    const before = await prisma.auditLog.count({ where: { action: 'export.xlsx', actorId: supervisor.id } })
+    await exportCountResponse(supervisor, RANGE, ctxFor(supervisor.id))
+    await exportCountResponse(supervisor, { ...RANGE, status: 'open' }, ctxFor(supervisor.id))
+    expect(await prisma.auditLog.count({ where: { action: 'export.xlsx', actorId: supervisor.id } })).toBe(before)
+  })
+
+  it('carries the filter both ways, and neither is a patient identifier', async () => {
+    const filter: CaseFilter = { ...EMPTY_FILTER, ctas: [3], dept: ['MROD'] }
+    await exportWorkbookResponse(supervisor, { ...RANGE, filter }, ctxFor(supervisor.id), new Date())
+
+    const row = await prisma.auditLog.findFirstOrThrow({
+      where: { action: 'export.xlsx', actorId: supervisor.id },
+      orderBy: { at: 'desc' },
+      select: { after: true },
+    })
+    const after = row.after as { filter: string; filterDescription: string; cases: number }
+    // The query serialisation the URL carries, and the words the workbook prints.
+    expect(after.filter).toContain('ctas')
+    expect(after.filterDescription).toMatch(/CTAS/i)
+    expect(after.cases).toBe(1)
+    // MRN-free by construction: describeFilter composes stage, reason, area, department, CTAS,
+    // payer and disposition names, and no free text. Six digits in a row is the shape to refuse.
+    expect(JSON.stringify(after)).not.toMatch(/\d{6,}/)
+  })
 })
 
 describe('GET /api/export.xlsx as a SUPERVISOR', () => {

@@ -382,3 +382,52 @@ test('the report prints the hospital header, the range and the threshold table',
   await expect(page.getByRole('navigation', { name: 'Sections' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Print' })).toBeVisible()
 })
+
+/**
+ * Phase 12 item 7 (readiness audit C2). `src/lib/audit.ts` listed 21 actions and none of them was
+ * a download or a print, so "who opened a page of MRNs, over what range" lived only in a
+ * container log line. Both viewports: the supervisor prints from the phone as readily as from the
+ * laptop, and the row must be there either way.
+ */
+test('a download and a print each leave an audit row an admin can find', async ({ browser }, testInfo) => {
+  const mobile = testInfo.project.name === 'mobile'
+  const window = await fixtureWindow()
+  const to = riyadhDateKey(new Date())
+
+  const theirs = await browser.newContext()
+  const supervisor = await theirs.newPage()
+  await fromClientIp(supervisor, mobile ? '198.51.100.161' : '198.51.100.162')
+  await signIn(supervisor, E2E_USERS.supervisor)
+
+  await supervisor.goto(`/report?from=${window.from}&to=${to}&status=all&payer=INSURED`)
+  await expect(supervisor.locator('[data-report-header]')).toBeVisible()
+
+  const download = await supervisor.request.get(
+    `/api/export.xlsx?from=${window.from}&to=${to}&status=all&format=qch`,
+  )
+  expect(download.status()).toBe(200)
+  await theirs.close()
+
+  const admin = await browser.newPage()
+  await fromClientIp(admin, mobile ? '198.51.100.163' : '198.51.100.164')
+  await signIn(admin, E2E_USERS.admin)
+
+  for (const [action, entity] of [
+    ['report.print', 'Report'],
+    ['export.xlsx', 'Export'],
+  ] as const) {
+    await admin.goto(`/admin/audit?action=${action}`)
+    const rows = admin.locator(`[data-audit-row="${action}"]`)
+    expect(await rows.count()).toBeGreaterThan(0)
+    await expect(rows.first()).toContainText(entity)
+    await expect(rows.first()).toContainText(E2E_USERS.supervisor.displayName)
+    // The range is on the record, and no MRN is: the whole row is digits-and-dashes dates.
+    await expect(rows.first()).toContainText(window.from)
+  }
+
+  // The print row names the filter in words, which is what makes "over what population" readable
+  // a year later without the code.
+  await admin.goto('/admin/audit?action=report.print')
+  await expect(admin.locator('[data-audit-row="report.print"]').first()).toContainText('Insured')
+  await admin.close()
+})

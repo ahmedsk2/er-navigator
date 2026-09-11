@@ -1,6 +1,12 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import {
+  caseFilterQuery,
+  describeFilter,
+  filterOptionsOf,
+  type CaseFilter,
+} from '@/src/lib/domain/case-filter'
 
 /**
  * Plan §3 hard rule: no column may ever hold a patient name, national ID, or date of birth.
@@ -63,5 +69,64 @@ describe('PHI guard on the schema', () => {
 
   it('identifies the patient by the MRN and nothing else', () => {
     expect(models.get('Case')).toContain('mrn')
+  })
+})
+
+/**
+ * Phase 12 item 7 (readiness audit C2). The two new audit rows carry the range and the filter, and
+ * they are the first audit payloads built out of a user-supplied request rather than out of a
+ * database row. So the same dumb question is asked of them: could a patient identifier end up in
+ * one? It cannot — `caseFilterQuery` emits stage and area CODES, reason and department NAMES,
+ * CTAS digits and two enums, and `describeFilter` turns exactly those into words. No free text
+ * anywhere. This asserts it over a filter that uses every dimension at once.
+ */
+describe('the export and report audit payloads', () => {
+  const OPTIONS = {
+    stages: [
+      {
+        code: 'inv',
+        name: 'Investigations',
+        reasons: [{ name: 'Lab: delay in processing' }, { name: 'Other' }],
+      },
+      {
+        code: 'adm',
+        name: 'Admission process',
+        reasons: [{ name: 'No bed available on accepting ward' }, { name: 'Other' }],
+      },
+    ],
+    departments: [{ name: 'MROD' }],
+    areas: [{ code: 'RESUS', name: 'Resuscitation area' }],
+  }
+
+  const FULL: CaseFilter = {
+    stage: ['inv', 'adm'],
+    reason: ['Lab: delay in processing'],
+    dept: ['MROD'],
+    area: ['RESUS'],
+    ctas: [1, 2, 3, 4, 5],
+    payer: ['GOVERNMENT', 'INSURED', 'SELF_PAY'],
+    dispo: ['ADMITTED', 'TRANSFERRED'],
+    not: true,
+    lone: true,
+  }
+
+  it('holds no run of six or more digits, in either serialisation', () => {
+    const payload = {
+      format: 'qch',
+      from: '2026-08-01',
+      to: '2026-08-31',
+      status: 'all',
+      filter: caseFilterQuery(FULL),
+      filterDescription: describeFilter(FULL, filterOptionsOf(OPTIONS)),
+      cases: 128,
+    }
+    // An MRN is a run of digits; the dates are groups of four and two, and CTAS is one.
+    expect(JSON.stringify(payload)).not.toMatch(/\d{6,}/)
+  })
+
+  it('says something a person can read a year later, without naming anyone', () => {
+    const words = describeFilter(FULL, filterOptionsOf(OPTIONS))
+    expect(words.length).toBeGreaterThan(0)
+    expect(words).not.toMatch(/\d{6,}/)
   })
 })
