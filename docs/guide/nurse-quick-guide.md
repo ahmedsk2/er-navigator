@@ -41,7 +41,7 @@ password that is still being passed around the ward desk is a problem for you, n
 ## 3. Opening a case
 
 Tap **+ New case** (the button floating at the bottom right of the board; on a laptop it sits at
-the top of the left-hand rail).
+the foot of the left-hand rail, just above the block with your name in it).
 
 - **MRN (digits only).** Digits, nothing else. No name in this box and no name anywhere else.
 - **Registration time.** This is where the clock starts, so it has to be the real registration

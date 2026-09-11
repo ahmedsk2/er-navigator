@@ -137,6 +137,19 @@ describe('the guides name the controls the app actually renders', () => {
     expect(sheet).toMatch(/onClick=\{onCopy\}>\s*Copy\s*</)
     expect([...script.matchAll(/\*\*(Copy[^*]*)\*\*/g)].map((m) => m[1]!)).toEqual(['Copy'])
   })
+
+  it('puts "+ New case" where the rail actually puts it', () => {
+    const rail = readFileSync(path.join(ROOT, 'src/components/shell/TabBar.tsx'), 'utf8')
+    const guide = readFileSync(path.join(ROOT, 'docs/guide/nurse-quick-guide.md'), 'utf8')
+    // The rail's order is the wordmark, the tab list, "+ New case", then the signed-in block
+    // whose last line links to /account. So on a laptop the button is at the foot, above that
+    // block — not at the top, where the guide sent a nurse looking.
+    const newCase = rail.indexOf('href="/cases/new"')
+    expect(newCase).toBeGreaterThan(rail.indexOf('{tabs.map('))
+    expect(newCase).toBeLessThan(rail.indexOf('href="/account"'))
+    expect(guide, 'the guide puts + New case at the top of the rail').not.toMatch(/top of the left-hand rail/)
+    expect(guide).toMatch(/foot of the left-hand rail/)
+  })
 })
 
 describe('item 6: the alert email retry pass', () => {
