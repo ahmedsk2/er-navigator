@@ -22,6 +22,7 @@ jobs:
           set -e
           for f in docker/entrypoint.sh docker/postgres-init/01-app-role.sh scripts/migrate-and-seed.sh; do sh -n "$f"; done
           bash -n scripts/backup.sh
+          bash -n scripts/demo-reset.sh
           if grep -rl -P '\x00' docker/entrypoint.sh docker/postgres-init/01-app-role.sh scripts/ docs/*.md docs/specs README.md CLAUDE.md; then echo "NUL byte in a script or doc"; exit 1; fi
       - run: pnpm exec prisma generate
       - run: pnpm lint
