@@ -19,9 +19,12 @@ import { describe, expect, it } from 'vitest'
 const ROOT = path.resolve(__dirname, '../..')
 const spec = readFileSync(path.join(ROOT, 'docs/specs/phase12-go-live-readiness.md'), 'utf8')
 
-/** The body of `## N. …` up to the next `## ` heading. */
+/**
+ * The body of `## N. …` up to the next `## ` heading or the `---` that ends the slice. Not
+ * `\n# `: the seed's `docker exec` block is a shell script whose comment lines start that way.
+ */
 function item(n: number): string {
-  const match = spec.match(new RegExp(`\\n## ${n}\\. [^\\n]*\\n([\\s\\S]*?)(?=\\n## |\\n# )`))
+  const match = spec.match(new RegExp(`\\n## ${n}\\. [^\\n]*\\n([\\s\\S]*?)(?=\\n## |\\n---\\n)`))
   expect(match, `item ${n} not found in the spec`).not.toBeNull()
   return match![1]!
 }
@@ -71,6 +74,21 @@ describe('item 1: the instance banner', () => {
     const markup = banner.match(/<div data-instance-banner[^\n]*/)
     expect(markup, 'the banner markup sample is gone').not.toBeNull()
     expect(markup![0]).toContain('print-color-adjust:exact')
+  })
+})
+
+describe('item 3: the demo seed', () => {
+  it('runs its happy-path database test somewhere the whole-table refusals can pass', () => {
+    const seed = item(3)
+    // Refusals 4 and 5 are whole-table counts — any Case opened by a non-demo user, any MRN
+    // outside the 999999 prefix — and that is the safety property, so it must not be scoped away.
+    // The consequence is that the happy-path tests cannot run on the lead's shared database: it
+    // permanently holds the Playwright fixture cases (60 today, opened by e2e_*), and the sibling
+    // tests/db files create more in parallel. So the file gets its own Postgres schema and the
+    // seed takes an injected client.
+    expect(seed).toContain('demo_seed_test')
+    expect(seed).toMatch(/migrate deploy/)
+    expect(seed, 'runDemoSeed must accept the client its test points at').toMatch(/prisma\??: PrismaClient/)
   })
 })
 

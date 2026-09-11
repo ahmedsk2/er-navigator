@@ -403,11 +403,38 @@ when no `Case` with that MRN exists. The final line is a count summary
 
 ### Tests
 
-**Database — `tests/db/demo-seed.test.ts` (new)**, against the lead's local database like the
-other `tests/db` files, calling the module's exported `runDemoSeed(deps)` rather than the process
-wrapper. Failing assertion to start from:
+**Database — `tests/db/demo-seed.test.ts` (new)**, calling the module's exported
+`runDemoSeed(deps)` rather than the process wrapper. Failing assertion to start from:
 `await expect(runDemoSeed({ env: {} })).rejects.toThrow(/INSTANCE_LABEL/)` — the module does not
 exist.
+
+**It does not run against the shared `public` schema, and that is not a detail.** Refusals 4 and 5
+are whole-table counts, which is the safety property and must not be scoped away — but it means
+the happy-path assertions can never pass on the lead's local database. That database permanently
+holds the Playwright fixture cases (60 today: 55 `e2e_navigator`, 3 `e2e_supervisor`,
+2 `e2e_admin`, none demo-prefixed; `playwright.config.ts` declares a `globalSetup` and no
+teardown, and `prisma/seed.ts` never touches `Case`), and the sibling `tests/db` files each create
+more, deleting only their own ids in `afterAll`, while vitest runs files in parallel. Refusal 4
+would fire before anything is created and tests 1, 2, 3, 4 and 7 below would throw instead of
+seeding. (Corrected in the Phase 12 review round; the first draft said "against the lead's local
+database like the other `tests/db` files".)
+
+So:
+
+- **`runDemoSeed(deps)` takes the client**: `deps` is `{ env?: NodeJS.ProcessEnv; prisma?: PrismaClient; now?: Date }`,
+  defaulting to `process.env`, the shared `src/lib/db` client and `new Date()`. The process
+  wrapper passes nothing. This is the only change the isolation asks of the module.
+- **The test owns a schema.** `beforeAll` derives `TEST_URL` from `DATABASE_URL` with
+  `schema=demo_seed_test`, runs `pnpm exec prisma migrate deploy` and then `pnpm exec tsx prisma/seed.ts`
+  against it with `execFileSync` (`prisma/seed.ts` is what puts the stages, reasons, departments,
+  ED areas and the `system` user there; give it `ADMIN_USERNAME`/`ADMIN_PASSWORD`/`ADMIN_DISPLAY_NAME`
+  as the chain already does), then constructs its own `PrismaClient` on that URL and passes it in.
+  `afterAll` does `DROP SCHEMA "demo_seed_test" CASCADE` and disconnects. Two CLI calls cost a few
+  seconds once, so the file sets a generous `beforeAll` timeout; the whole-table counts are then
+  true counts over a schema nothing else writes to, and the file cannot be disturbed by, or
+  disturb, the parallel siblings or the Playwright fixtures.
+- The file skips itself with a clear message when `DATABASE_URL` is unset, the way the rest of
+  `tests/db` is excluded by `vitest.config.ts`.
 
 Then, with `INSTANCE_LABEL=DEMO` and a `DEMO_USER_PASSWORD`:
 1. Creates 4 users and 10 cases; every MRN starts with `DEMO_MRN_PREFIX`.
@@ -415,8 +442,10 @@ Then, with `INSTANCE_LABEL=DEMO` and a `DEMO_USER_PASSWORD`:
    and assert the set is `{ ok, ok, h4, h6, h12, h24 }`.
 3. All four demo users have `mustChangePassword === false`.
 4. A second run creates nothing: counts are identical and no user's `passwordHash` changed.
-5. Refuses when a case exists whose creator is not a demo user (insert one as the e2e navigator
-   fixture, expect a throw naming the count, and assert nothing was created).
+5. Refuses when a case exists whose creator is not a demo user: insert one non-demo user and one
+   case of its own into the test schema (the e2e fixtures do not exist there), expect a throw
+   naming the count, and assert nothing was created. Run this test after the idempotence test and
+   clean the row up, so the schema is back to demo-only rows for anything that follows.
 6. Refuses with a blank `DEMO_USER_PASSWORD`.
 7. The resolved TRANSFERRED case has a referral number; the `h12` case has an "Other" reason with
    a description.
