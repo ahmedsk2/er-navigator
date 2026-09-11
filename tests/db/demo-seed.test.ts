@@ -47,6 +47,57 @@ function testUrl(from: string): string {
   return url.toString()
 }
 
+/**
+ * The append-only rule at the database level (CLAUDE.md; locked plan sections 3 and 4), as the
+ * privileges CI's guard reads back after this suite. Schema-qualified on purpose: these are the
+ * rights on `public`, the schema this file does not own and must not widen.
+ */
+const APP_ROLE = 'ernav_app'
+const PUBLIC_MUST_NOT_HOLD: ReadonlyArray<readonly [table: string, privilege: string]> = [
+  ['public."AuditLog"', 'UPDATE'],
+  ['public."AuditLog"', 'DELETE'],
+  ['public."CaseUpdate"', 'UPDATE'],
+  ['public."CaseUpdate"', 'DELETE'],
+  ['public."Case"', 'DELETE'],
+  ['public."User"', 'DELETE'],
+  ['public."Alert"', 'DELETE'],
+  ['public."_prisma_migrations"', 'SELECT'],
+]
+
+/** A plain dev Postgres has no app role, and `has_table_privilege` on a missing role throws. */
+async function appRoleExists(client: PrismaClient): Promise<boolean> {
+  const rows = await client.$queryRawUnsafe<Array<{ present: boolean }>>(
+    `SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${APP_ROLE}') AS present`,
+  )
+  return rows[0]?.present === true
+}
+
+/**
+ * Undo, on `public`, what this file's `prisma migrate deploy` just did to it. The statements are
+ * prisma/sync-app-role.ts's own revoke list, schema-qualified so nothing depends on a search_path.
+ * The last test in this file is what proves it worked. Runs as the owner, on the parent URL.
+ */
+async function narrowPublicAgain(): Promise<void> {
+  const owner = new PrismaClient({
+    adapter: new PrismaPg({ connectionString: parentUrl! }, { schema: 'public' }),
+  })
+  try {
+    if (!(await appRoleExists(owner))) return
+    for (const sql of [
+      `REVOKE UPDATE, DELETE ON public."AuditLog" FROM ${APP_ROLE}`,
+      `REVOKE UPDATE, DELETE ON public."CaseUpdate" FROM ${APP_ROLE}`,
+      `REVOKE DELETE ON public."Case" FROM ${APP_ROLE}`,
+      `REVOKE DELETE ON public."User" FROM ${APP_ROLE}`,
+      `REVOKE DELETE ON public."Alert" FROM ${APP_ROLE}`,
+      `REVOKE ALL ON public."_prisma_migrations" FROM ${APP_ROLE}`,
+    ]) {
+      await owner.$executeRawUnsafe(sql)
+    }
+  } finally {
+    await owner.$disconnect()
+  }
+}
+
 let prisma: PrismaClient
 let url: string
 let env: NodeJS.ProcessEnv
@@ -69,6 +120,8 @@ describeDb('the demo seed', () => {
       })
     }
     run(['exec', 'prisma', 'migrate', 'deploy'])
+    // Immediately, before anything else runs: that deploy widened `public`. See the last test.
+    await narrowPublicAgain()
     // prisma/seed.ts is what puts the stages, reasons, departments, wards, ED areas and the
     // `system` user in the schema; the demo seed reads them and refuses without them.
     run(['exec', 'tsx', 'prisma/seed.ts'])
@@ -216,4 +269,30 @@ describeDb('the demo seed', () => {
     await prisma.user.delete({ where: { id: stranger.id } })
     expect(await prisma.case.count()).toBe(10)
   }, 60_000)
+
+  /**
+   * The reason this file cannot migrate a schema of its own and walk away.
+   *
+   * `prisma migrate deploy` replays 20260908190100_app_role_privileges here, and that migration's
+   * GRANTs name `SCHEMA public` literally while its REVOKEs are unqualified and resolve against the
+   * migration's own search_path — this schema. Deploying into any schema but `public` therefore
+   * hands `ernav_app` UPDATE and DELETE straight back on `public."AuditLog"` and
+   * `public."CaseUpdate"`, plus DELETE on Case, User and Alert and the run of `_prisma_migrations`:
+   * the append-only rule, undone by running the test suite. The chain's privilege guard is what
+   * caught it; this is the assertion that keeps it caught.
+   *
+   * The migration itself cannot be corrected — it is applied on production, checksum and all — so
+   * `beforeAll` narrows `public` again the moment it has widened it.
+   */
+  it('leaves the app role’s privileges on public where it found them', async () => {
+    if (!(await appRoleExists(prisma))) return
+    const held: string[] = []
+    for (const [table, privilege] of PUBLIC_MUST_NOT_HOLD) {
+      const rows = await prisma.$queryRawUnsafe<Array<{ held: boolean }>>(
+        `SELECT has_table_privilege('${APP_ROLE}', '${table}', '${privilege}') AS held`,
+      )
+      if (rows[0]?.held) held.push(`${privilege} on ${table}`)
+    }
+    expect(held).toEqual([])
+  })
 })
