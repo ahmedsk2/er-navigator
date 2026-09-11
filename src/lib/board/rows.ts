@@ -60,10 +60,18 @@ export function isStale(idle: number | null): boolean {
   return idle != null && idle >= STALE_AFTER_H
 }
 
+/**
+ * Under a minute, a row was "Updated 0h 00m ago" — true, and it reads as a machine talking
+ * (Phase 11, finding 8). Below this it says "Updated just now"; from the first whole minute the
+ * clock takes over as before.
+ */
+export const JUST_NOW_H = 1 / 60
+
 /** Line 3 of an open row. null when the row is not open, so the caller renders the outcome. */
 export function stalenessText(idle: number | null): string | null {
   if (idle == null) return null
-  return isStale(idle) ? `No update for ${fmtHours(idle)}` : `Updated ${fmtHours(idle)} ago`
+  if (isStale(idle)) return `No update for ${fmtHours(idle)}`
+  return idle < JUST_NOW_H ? 'Updated just now' : `Updated ${fmtHours(idle)} ago`
 }
 
 /**

@@ -21,7 +21,11 @@ const BAND_BARS = [
   { label: '12 h and over', fill: '#b56aa6', width: 274 },
 ] as const
 
-/** The ECG trace across the phone hero: two ordinary beats and a third, drawn once. */
+/**
+ * The ECG trace across the hero: two ordinary beats and a third, drawn once. Its peaks run from
+ * y 20 to 72 in a 390-wide box, so the viewBox below is cropped to the band they use (and the
+ * stroke's width either side) rather than drawing 26 units of empty teal.
+ */
 const ECG =
   '0,50 60,50 78,50 88,20 98,72 108,50 150,50 170,50 180,34 190,64 200,50 260,50 275,50 284,26 294,68 302,50 390,50'
 
@@ -44,18 +48,9 @@ export default async function LoginPage({
         data-login-hero
         className="bg-hero relative flex min-h-[300px] flex-col overflow-hidden px-6 pt-14 pb-14 text-white lg:min-h-dvh lg:px-12 lg:py-11"
       >
-        <svg
-          viewBox="0 0 390 80"
-          className="pointer-events-none absolute inset-x-0 top-[150px] w-full opacity-[0.28] lg:hidden"
-          aria-hidden="true"
-          focusable="false"
-        >
-          <polyline points={ECG} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-
         <Wordmark as="h1" tone="onTeal" size="md" className="relative" />
 
-        <div className="relative mt-14 lg:mt-0 lg:flex lg:flex-1 lg:flex-col lg:justify-center">
+        <div className="relative mt-10 lg:mt-0 lg:flex lg:flex-1 lg:flex-col lg:justify-center">
           <p className="max-w-[300px] text-[26px] leading-[1.15] font-bold lg:max-w-[380px] lg:text-[36px] lg:leading-[1.12]">
             Every long stay, seen in time.
           </p>
@@ -80,7 +75,21 @@ export default async function LoginPage({
           </svg>
         </div>
 
-        <p className="relative mt-2 text-[14px] text-white/85 lg:mt-0 lg:text-caption lg:text-white/75">
+        {/* Phase 11, finding 7: the trace used to be laid over the hero at a fixed 150 px from the
+            top, which is where the headline's second line lands on a phone — "seen in time." sat
+            on it — and it was not drawn on a laptop at all. It is in the flow now, under the
+            headline block at both widths and edge to edge across the hero, so nothing is ever
+            written over it; the headline block starts 16 px higher on a phone to make room. */}
+        <svg
+          viewBox="0 18 390 56"
+          className="pointer-events-none -mx-6 mt-4 block h-auto w-[calc(100%+3rem)] max-w-none opacity-[0.28] lg:-mx-12 lg:mt-8 lg:w-[calc(100%+6rem)]"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <polyline points={ECG} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+
+        <p className="relative mt-2 text-[14px] text-white/85 lg:mt-3 lg:text-caption lg:text-white/75">
           Qatif Central Hospital · Emergency Department
         </p>
       </section>

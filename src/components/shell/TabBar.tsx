@@ -5,7 +5,8 @@
  * `.tabbar`) is still what a phone gets; from `lg` up the same element becomes the navy left rail
  * of the desktop layout. Same `<nav aria-label="Sections">`, same `<ul>`, same four link names,
  * same `aria-current` — a screen reader and every Playwright selector see one navigation, because
- * that is what it is.
+ * that is what it is. The rail adds two links a tab bar has no room for: "+ New case" and, at its
+ * foot, the signed-in user's "Account and password" (Phase 11).
  *
  * Two tabs are role-dependent: Export (`export.xlsx`, so not a NAVIGATOR) and Admin (ADMIN only).
  * Hiding a tab is not a permission — both pages check the action again on the server, and write
@@ -101,11 +102,16 @@ export function TabBar({
 
       {/*
         Who is signed in, at the foot of the rail — the MedAxis pattern, and the one place on a
-        laptop where the name is on screen without opening the menu. Not a control: the account
-        page and Log out are behind the header's Menu button, which is the same on both shapes.
+        laptop where the name is on screen without opening the menu. Since Phase 11 (finding 5) it
+        is also the way to the account page, and says so as the menu's row does: the name, the role
+        and "Account and password". The link is that last line, stretched over the whole block by
+        its ::after, so the block is what a pointer clicks and the link's name is what it does —
+        "Admin" stays the name of one link in this navigation, the tab's. On /account it is lit
+        like the current tab. Log out is still behind the header's Menu button, which is the same
+        on both shapes.
       */}
       {displayName ? (
-        <div className="hidden items-center gap-2.5 px-1.5 py-2 lg:flex">
+        <div className="relative hidden items-center gap-2.5 rounded-button px-1.5 py-2 hover:bg-white/5 has-[[aria-current=page]]:bg-white/10 lg:flex">
           <span
             aria-hidden="true"
             className="grid size-9 shrink-0 place-items-center rounded-chip bg-white/15 text-label font-semibold text-white"
@@ -115,6 +121,13 @@ export function TabBar({
           <span className="min-w-0">
             <span className="block truncate text-label font-semibold text-white">{displayName}</span>
             {roleLabel ? <span className="block truncate text-caption text-rail-ink/80">{roleLabel}</span> : null}
+            <Link
+              href="/account"
+              aria-current={pathname.startsWith('/account') ? 'page' : undefined}
+              className="block truncate text-caption text-rail-ink after:absolute after:inset-0 after:rounded-button"
+            >
+              Account and password
+            </Link>
           </span>
         </div>
       ) : null}

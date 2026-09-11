@@ -11,10 +11,13 @@
  *
  * The Email column is the alerts directory (Phase 7): a supervisor or admin with an address here
  * gets the 6 h+ threshold mail. Emptying the box and pressing Save takes them off the list.
+ *
+ * On a phone (below `md`) the list is a column of cards, one per account, with every control of
+ * its row on screen (Phase 11); from `md` it is the table.
  */
 import type { Role } from '@prisma/client'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import {
   createUser as createUserAction,
   resetUserPassword as resetUserPasswordAction,
@@ -28,6 +31,9 @@ import { fmtStamp } from '@/src/lib/cases/local-time'
 
 type Secret = { username: string; password: string; reason: 'created' | 'reset' }
 
+/** A cell's own heading on the phone's card, in the look of every label over a control (`Field`). */
+const PHONE_HEADING = 'mb-1 block text-label font-medium text-muted md:hidden'
+
 export function UsersPanel({ users, currentUserId }: { users: UserRow[]; currentUserId: string }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
@@ -37,6 +43,7 @@ export function UsersPanel({ users, currentUserId }: { users: UserRow[]; current
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<Role>('NAVIGATOR')
+  const roleId = useId()
   /**
    * One draft per row, keyed by user id, so typing in one Email box never touches another. A row
    * with no draft yet shows whatever the server sent; `router.refresh()` after a save replaces
@@ -166,11 +173,11 @@ export function UsersPanel({ users, currentUserId }: { users: UserRow[]; current
               onChange={(e) => setEmail(e.target.value)}
             />
           </Field>
-          <Field label="Role">
-            {/* aria-label: the wrapping <label> would otherwise take its accessible name from
-                its whole text content, options included (the same fix ExportPanel needed). */}
+          {/* A `<label for>`: a label wrapped round a select holds every option in its text
+              (Phase 11, finding 4; the aria-label that stood in for it is gone). */}
+          <Field label="Role" htmlFor={roleId}>
             <Select
-              aria-label="Role"
+              id={roleId}
               value={role}
               disabled={busy}
               onChange={(e) => setRole(e.target.value as Role)}
@@ -188,10 +195,18 @@ export function UsersPanel({ users, currentUserId }: { users: UserRow[]; current
         </Button>
       </section>
 
-      <div className="overflow-x-auto rounded-card border border-line bg-panel">
-        <table className="w-full border-collapse text-body">
+      {/*
+        The accounts. From `md` the table it has always been; below it (Phase 11, finding 6) every
+        row is a card, because at 390 px the table ran off the right edge with the role, active and
+        reset controls out of reach. One markup for both shapes, with the table display switched on
+        from `md`: the same row, cells, `data-*` hooks and control names, rather than a second list
+        that would put two "Email for …" boxes in the page for every account. On the card the
+        column headings are gone, so the cells that need one carry their own, phone only.
+      */}
+      <div className="md:overflow-x-auto md:rounded-card md:border md:border-line md:bg-panel">
+        <table className="block w-full border-collapse text-body md:table">
           <caption className="sr-only">Every account, active first</caption>
-          <thead>
+          <thead className="hidden md:table-header-group">
             <tr className="border-b border-line text-left text-label text-muted">
               <th scope="col" className="p-3 font-medium">
                 Username
@@ -216,16 +231,23 @@ export function UsersPanel({ users, currentUserId }: { users: UserRow[]; current
               </th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="block md:table-row-group">
             {users.map((row) => {
               const self = row.id === currentUserId
               const draft = emailDrafts[row.id] ?? row.email ?? ''
               const emailChanged = draft.trim() !== (row.email ?? '')
               return (
-                <tr key={row.id} data-user={row.username} className="border-b border-line-soft last:border-b-0">
-                  <td className="num p-3 font-semibold">{row.username}</td>
-                  <td className="p-3">{row.displayName}</td>
-                  <td className="p-3" data-email={row.email ?? ''}>
+                /* The card: username and active on the first line, the name under them, then the
+                   email box across the card, the role beside the last login, and the actions. */
+                <tr
+                  key={row.id}
+                  data-user={row.username}
+                  className="mb-2.5 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 rounded-card border border-line bg-panel p-3.5 shadow-card md:mb-0 md:table-row md:rounded-none md:border-0 md:border-b md:border-line-soft md:bg-transparent md:p-0 md:shadow-none md:last:border-b-0"
+                >
+                  <td className="num col-start-1 row-start-1 font-semibold md:table-cell md:p-3">{row.username}</td>
+                  <td className="col-span-2 row-start-2 md:table-cell md:p-3">{row.displayName}</td>
+                  <td className="col-span-2 row-start-3 md:table-cell md:p-3" data-email={row.email ?? ''}>
+                    <span className={PHONE_HEADING}>Email</span>
                     {row.isSystem ? (
                       <span className="text-ink-2">–</span>
                     ) : (
@@ -235,7 +257,7 @@ export function UsersPanel({ users, currentUserId }: { users: UserRow[]; current
                           inputMode="email"
                           autoComplete="off"
                           aria-label={`Email for ${row.username}`}
-                          className="min-w-[13rem]"
+                          className="min-w-0 md:min-w-[13rem]"
                           value={draft}
                           disabled={busy}
                           onChange={(e) =>
@@ -255,7 +277,8 @@ export function UsersPanel({ users, currentUserId }: { users: UserRow[]; current
                       </div>
                     )}
                   </td>
-                  <td className="p-3">
+                  <td className="col-start-1 row-start-4 md:table-cell md:p-3">
+                    <span className={PHONE_HEADING}>Role</span>
                     {row.isSystem || self ? (
                       <span className="text-ink-2">{ROLE_LABELS[row.role]}</span>
                     ) : (
@@ -273,13 +296,18 @@ export function UsersPanel({ users, currentUserId }: { users: UserRow[]; current
                       </Select>
                     )}
                   </td>
-                  <td className="p-3" data-active={row.active ? 'yes' : 'no'}>
+                  <td
+                    className="col-start-2 row-start-1 text-label text-muted md:table-cell md:p-3 md:text-body md:text-ink"
+                    data-active={row.active ? 'yes' : 'no'}
+                  >
+                    <span className="md:hidden">Active: </span>
                     {row.active ? 'Yes' : 'No'}
                   </td>
-                  <td className="num p-3 text-ink-2">
+                  <td className="num col-start-2 row-start-4 text-right text-ink-2 md:table-cell md:p-3 md:text-left">
+                    <span className={PHONE_HEADING}>Last login</span>
                     {row.lastLoginAt ? fmtStamp(row.lastLoginAt) : '–'}
                   </td>
-                  <td className="p-3">
+                  <td className="col-span-2 row-start-5 md:table-cell md:p-3">
                     {row.isSystem ? (
                       <span className="text-caption text-muted">
                         Automatic account. It never signs in and cannot be changed.

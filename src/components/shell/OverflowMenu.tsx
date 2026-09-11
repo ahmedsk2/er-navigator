@@ -9,6 +9,10 @@
  * "⋯", because the coloured header needed something of the person in it and the initials are the
  * one thing a nurse recognises at arm's length. They are `aria-hidden`; the button's accessible
  * name is still "Menu", and every item keeps its exact name.
+ *
+ * Phase 11 (finding 5): the account row says what it is. A new user is told to change the
+ * temporary password "at /account", and the only way there was a row showing their own name; a
+ * second line under the name and role now reads "Account and password".
  */
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
@@ -66,10 +70,13 @@ export function OverflowMenu({ displayName, roleLabel }: { displayName: string; 
           aria-label="Menu"
           className="absolute right-0 top-full z-20 mt-1 w-64 overflow-hidden rounded-card border border-line bg-panel py-1 shadow-float"
         >
-          <Link role="menuitem" href="/account" className={ITEM} onClick={() => setOpen(false)}>
+          <Link role="menuitem" href="/account" className={`${ITEM} py-2`} onClick={() => setOpen(false)}>
             <User size={18} className="shrink-0 text-muted" />
-            <span className="truncate">
-              {displayName} · {roleLabel}
+            <span className="min-w-0">
+              <span className="block truncate">
+                {displayName} · {roleLabel}
+              </span>
+              <span className="block text-caption text-muted">Account and password</span>
             </span>
           </Link>
           <button

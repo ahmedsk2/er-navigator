@@ -128,6 +128,30 @@ const BLANK_INVESTIGATION = {
   resultedAt: null,
 } as const
 
+/** The sections the case page's strip jumps to (Phase 11). One editor per page, so plain ids. */
+const JUMP = {
+  delay: 'case-delay',
+  teams: 'case-teams',
+  tests: 'case-tests',
+  times: 'case-times',
+  updates: 'case-updates',
+  resolve: 'case-resolve',
+} as const
+
+/**
+ * A jump, not a navigation. The chip is a link to `#id`, so it reads as one and still works
+ * before hydration; a click scrolls and focuses here instead, because a hash link pushes a
+ * history entry for every jump and the phone's Back would then walk back through the sections
+ * instead of returning to the board.
+ */
+function jumpTo(event: React.MouseEvent<HTMLAnchorElement>, id: string): void {
+  const target = document.getElementById(id)
+  if (!target) return
+  event.preventDefault()
+  target.scrollIntoView({ block: 'start' })
+  target.focus({ preventScroll: true })
+}
+
 export type CaseEditorProps = {
   reference: ReferenceData
   initial: CaseDraft
@@ -214,6 +238,13 @@ export function CaseEditor(props: CaseEditorProps) {
   /** The two labelled boxes that share their row with the microphone (`Field` with `htmlFor`). */
   const diagnosisId = useId()
   const noteId = useId()
+  /**
+   * The three selects, named by a `<label for>` too (Phase 11, finding 4): a label wrapped round a
+   * select holds every option in its text, so the select could not be found by its label alone.
+   */
+  const shiftId = useId()
+  const primaryReasonId = useId()
+  const dispositionId = useId()
 
   // The clock ticks only while the case is open; a resolved case is frozen at its departure time,
   // or at its resolution once that has been cleared. `now` starts at the server's instant so the
@@ -558,10 +589,82 @@ export function CaseEditor(props: CaseEditorProps) {
 
   const disabled = readOnly || busy
 
+  /**
+   * The strip's chips (Phase 11, finding 2): a worked case is seven phone screens long, and the
+   * Updates box — what a navigator does most — and Resolve are at the bottom of it. One chip per
+   * section a nurse goes looking for, in page order; Teams and Tests only while their sections
+   * are on the page. "Times" is the journey times, the one section of times every case has.
+   */
+  const jumps: ReadonlyArray<{ id: string; label: string }> = [
+    { id: JUMP.delay, label: 'Delay' },
+    ...(showDepartments ? [{ id: JUMP.teams, label: 'Teams' }] : []),
+    ...(showInvestigations ? [{ id: JUMP.tests, label: 'Tests' }] : []),
+    { id: JUMP.times, label: 'Times' },
+    { id: JUMP.updates, label: 'Updates' },
+    { id: JUMP.resolve, label: 'Resolve' },
+  ]
+
+  /** Why "Open case" or "Save changes" is dead, under the button. */
+  const saveHint = !mrnOk
+    ? 'Enter the MRN as digits only.'
+    : draft.reasons.length === 0
+      ? 'Select at least one delay reason.'
+      : ''
+
+  /**
+   * What the last action said: a conflict, a refusal, an unreachable server, a save, or the
+   * validation issues. One fragment in two places since Phase 11 — under the sections on a case,
+   * in the bar over "Open case" on a new one — so the two can never say different things.
+   */
+  const feedback = (
+    <>
+      {conflict ? (
+        <div className="mb-2.5 rounded-card border border-band-h4 bg-panel p-3" role="alert">
+          <p className="text-body text-band-h4-ink">
+            {conflictMessage(conflict.changedBy, conflict.changedAt ? fmtStamp(conflict.changedAt) : '')}
+          </p>
+          <Button className="mt-2" onClick={() => window.location.reload()}>
+            Reload
+          </Button>
+        </div>
+      ) : null}
+      {forbidden ? (
+        <p className="mb-2.5 rounded-card border border-line bg-panel p-3 text-body text-danger" role="alert">
+          Your role cannot do that.
+        </p>
+      ) : null}
+      {unreachable ? (
+        <p
+          data-unreachable
+          className="mb-2.5 rounded-card border border-danger bg-panel p-3 text-body text-danger"
+          role="alert"
+        >
+          {UNREACHABLE_MESSAGE}
+        </p>
+      ) : null}
+      {saved ? (
+        <p className="mb-2.5 text-caption text-band-ok" role="status">
+          Saved.
+        </p>
+      ) : null}
+      {issues.length > 0 ? (
+        <div className="mb-2.5 rounded-card border border-danger bg-panel p-3" role="alert">
+          {issues.map((issue) => (
+            <p key={`${issue.path}:${issue.message}`} className="text-body text-danger">
+              {issue.message}
+            </p>
+          ))}
+        </div>
+      ) : null}
+    </>
+  )
+
   return (
     // A <main> landmark: /cases/* sits outside the (app) shell, which has its own, and a page
-    // with none is what Lighthouse flagged on the case editor (Phase 7).
-    <main className="mx-auto max-w-[720px] pb-16">
+    // with none is what Lighthouse flagged on the case editor (Phase 7). A new case ends on its
+    // Open case bar (Phase 11), which comes to rest on the foot of the page rather than above a
+    // strip of padding.
+    <main className={`mx-auto max-w-[720px] ${isNew ? '' : 'pb-16'}`}>
       <div className="flex items-baseline justify-between px-4 pt-3.5 pb-1.5">
         <Link
           href="/"
@@ -585,6 +688,35 @@ export function CaseEditor(props: CaseEditorProps) {
           <span aria-hidden="true">{fmtHours(elapsed)}</span>
         </div>
       </div>
+
+      {/* Phase 11: the jump strip, under the header, which keeps its place. It sticks to the top
+          of the screen below `lg`; on a laptop the page is one column in a wide screen, so the
+          strip stays where it is and scrolls away with the header. A new case has no Updates or
+          Resolve to jump to and gets none. "Jump to", not "… sections": the suites find the
+          shell's tab bar as the navigation named "Sections", and a name holding that word would
+          be found with it. */}
+      {isNew ? null : (
+        <nav
+          aria-label="Jump to"
+          className="no-print sticky top-0 z-10 mb-2.5 border-b border-line bg-bg px-4 py-1.5 lg:static lg:border-b-0 lg:py-0"
+        >
+          {/* Six equal chips across a 390 px screen, so each label gets its whole width: no
+              side padding to speak of, and a 4 px gap. */}
+          <ul className="flex gap-1 lg:gap-1.5">
+            {jumps.map((jump) => (
+              <li key={jump.id} className="min-w-0 flex-1 lg:flex-none">
+                <a
+                  href={`#${jump.id}`}
+                  onClick={(event) => jumpTo(event, jump.id)}
+                  className="flex min-h-11 items-center justify-center rounded-chip border border-line bg-panel px-0.5 text-label font-semibold text-ink-2 hover:bg-accent-soft lg:px-3.5"
+                >
+                  {jump.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
 
       {alert ? (
         <div
@@ -664,8 +796,9 @@ export function CaseEditor(props: CaseEditorProps) {
             </Field>
           </div>
           <div className="flex-1">
-            <Field label="Shift">
+            <Field label="Shift" htmlFor={shiftId}>
               <Select
+                id={shiftId}
                 disabled={disabled}
                 value={draft.shift ?? ''}
                 onChange={(e) => set({ shift: (e.target.value || null) as CaseDraft['shift'] })}
@@ -740,7 +873,7 @@ export function CaseEditor(props: CaseEditorProps) {
       </Section>
 
       {/* 3. Where is the delay */}
-      <Section title="Where is the delay?" icon={<TriangleAlert size={18} />}>
+      <Section id={JUMP.delay} title="Where is the delay?" icon={<TriangleAlert size={18} />}>
         <p className="mb-2.5 text-caption text-muted">
           Tap every stage that applies, then the reasons under each. If you pick more than one reason, choose the
           primary one below.
@@ -800,8 +933,9 @@ export function CaseEditor(props: CaseEditorProps) {
         })}
         {draft.reasons.length > 1 ? (
           <div className="mt-3.5">
-            <Field label="Primary reason (the biggest contributor)">
+            <Field label="Primary reason (the biggest contributor)" htmlFor={primaryReasonId}>
               <Select
+                id={primaryReasonId}
                 disabled={disabled}
                 value={draft.primaryReasonId ?? ''}
                 onChange={(e) => set({ primaryReasonId: e.target.value || null })}
@@ -819,7 +953,7 @@ export function CaseEditor(props: CaseEditorProps) {
 
       {/* 4. Department / consulted team */}
       {showDepartments ? (
-        <Section title="Department / consulted team involved" icon={<Users size={18} />}>
+        <Section id={JUMP.teams} title="Department / consulted team involved" icon={<Users size={18} />}>
           <Chips
             groupLabel="Departments"
             options={reference.departments.map((d) => d.id)}
@@ -845,7 +979,7 @@ export function CaseEditor(props: CaseEditorProps) {
 
       {/* 5. Investigation times */}
       {showInvestigations ? (
-        <Section title="Investigation times" icon={<Activity size={18} />}>
+        <Section id={JUMP.tests} title="Investigation times" icon={<Activity size={18} />}>
           <Chips
             groupLabel="Investigation types"
             options={INVESTIGATION_TYPES}
@@ -985,26 +1119,23 @@ export function CaseEditor(props: CaseEditorProps) {
       ) : null}
 
       {/* 8. Journey times */}
-      <Section>
+      <Section id={JUMP.times}>
         <Button className="w-full text-left" onClick={() => setShowJourney(!showJourney)}>
           {showJourney ? 'Hide' : 'Add'} journey times (optional)
         </Button>
         {showJourney ? (
           <div className="mt-3">
+            {/* The milestone number is the row's own `step` since Phase 11: on a phone it sits on
+                the label's line, so the time box below it keeps the whole width. */}
             {MILESTONES.map(([key, label], index) => (
-              <div key={key} className="flex items-center gap-2">
-                <span className="num w-4 text-caption text-muted" aria-hidden>
-                  {index + 1}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <TimeRow
-                    label={label}
-                    value={draft[key]}
-                    onChange={(next) => set({ [key]: next } as Partial<CaseDraft>)}
-                    disabled={disabled}
-                  />
-                </div>
-              </div>
+              <TimeRow
+                key={key}
+                step={index + 1}
+                label={label}
+                value={draft[key]}
+                onChange={(next) => set({ [key]: next } as Partial<CaseDraft>)}
+                disabled={disabled}
+              />
             ))}
             <div className="mt-2">
               <TimeRow
@@ -1020,7 +1151,7 @@ export function CaseEditor(props: CaseEditorProps) {
 
       {/* 9. Updates */}
       {!isNew ? (
-        <Section title="Updates" icon={<History size={18} />}>
+        <Section id={JUMP.updates} title="Updates" icon={<History size={18} />}>
           {updates.length === 0 ? (
             <p className="mb-2 text-caption text-muted">No updates yet. Add one when something changes.</p>
           ) : null}
@@ -1096,9 +1227,14 @@ export function CaseEditor(props: CaseEditorProps) {
 
       {/* 10. Resolve */}
       {!isNew ? (
-        <Section title={status === 'RESOLVED' ? 'Resolved' : 'Resolve case'} icon={<Check size={18} />}>
-          <Field label="Final disposition">
+        <Section
+          id={JUMP.resolve}
+          title={status === 'RESOLVED' ? 'Resolved' : 'Resolve case'}
+          icon={<Check size={18} />}
+        >
+          <Field label="Final disposition" htmlFor={dispositionId}>
             <Select
+              id={dispositionId}
               disabled={disabled}
               value={draft.disposition ?? ''}
               onChange={(e) =>
@@ -1229,54 +1365,33 @@ export function CaseEditor(props: CaseEditorProps) {
         </Section>
       ) : null}
 
-      {/* feedback */}
-      {conflict ? (
-        <div className="mx-4 mb-2.5 rounded-card border border-band-h4 bg-panel p-3" role="alert">
-          <p className="text-body text-band-h4-ink">
-            {conflictMessage(conflict.changedBy, conflict.changedAt ? fmtStamp(conflict.changedAt) : '')}
-          </p>
-          <Button className="mt-2" onClick={() => window.location.reload()}>
-            Reload
-          </Button>
-        </div>
-      ) : null}
-      {forbidden ? (
-        <p className="mx-4 mb-2.5 rounded-card border border-line bg-panel p-3 text-body text-danger" role="alert">
-          Your role cannot do that.
-        </p>
-      ) : null}
-      {unreachable ? (
-        <p
-          data-unreachable
-          className="mx-4 mb-2.5 rounded-card border border-danger bg-panel p-3 text-body text-danger"
-          role="alert"
-        >
-          {UNREACHABLE_MESSAGE}
-        </p>
-      ) : null}
-      {saved ? (
-        <p className="mx-4 mb-2.5 text-caption text-band-ok" role="status">
-          Saved.
-        </p>
-      ) : null}
-      {issues.length > 0 ? (
-        <div className="mx-4 mb-2.5 rounded-card border border-danger bg-panel p-3" role="alert">
-          {issues.map((issue) => (
-            <p key={`${issue.path}:${issue.message}`} className="text-body text-danger">
-              {issue.message}
-            </p>
-          ))}
-        </div>
-      ) : null}
+      {/* feedback: under the sections on a case, in the bar over "Open case" on a new one */}
+      {isNew ? null : <div className="mx-4">{feedback}</div>}
 
       {/* 12. Save */}
-      {readOnly ? null : (
+      {readOnly ? null : isNew ? (
+        /* Phase 11, finding 3: on a new case the bar sticks to the foot of the screen, above the
+           home indicator, so the case opens the moment the MRN, the stage and the reason are in;
+           it used to wait under every section the form grows, most of which mean nothing before
+           the case exists. The sections stay where they were: the bar is still last in the page
+           and settles into its place at the end. What a refused create says is in the bar too,
+           over the button, because a message at the foot of the form is off screen from the top. */
+        <div className="sticky bottom-0 z-10 border-t border-line bg-panel px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] lg:mx-4 lg:rounded-t-card lg:border-x">
+          {/* Edge to edge on a phone, like the tab bar; on a laptop, where the column sits in open
+              ground, a tray lined up with the cards above it. */}
+          {feedback}
+          <Button tone="main" className="w-full" disabled={!canSave || busy} onClick={() => void onSave()}>
+            Open case
+          </Button>
+          {!canSave ? <p className="mt-1.5 text-caption text-muted">{saveHint}</p> : null}
+        </div>
+      ) : (
         <>
           <div className="flex gap-2.5 p-4">
             <Button tone="main" className="flex-1" disabled={!canSave || busy} onClick={() => void onSave()}>
-              {isNew ? 'Open case' : 'Save changes'}
+              Save changes
             </Button>
-            {!isNew && canVoid ? (
+            {canVoid ? (
               <Button tone="danger" disabled={busy} onClick={() => setVoidOpen(!voidOpen)}>
                 Void
               </Button>
@@ -1303,15 +1418,7 @@ export function CaseEditor(props: CaseEditorProps) {
               />
             </div>
           ) : null}
-          {!canSave ? (
-            <p className="mx-4 mb-4 text-caption text-muted">
-              {!mrnOk
-                ? 'Enter the MRN as digits only.'
-                : draft.reasons.length === 0
-                  ? 'Select at least one delay reason.'
-                  : ''}
-            </p>
-          ) : null}
+          {!canSave ? <p className="mx-4 mb-4 text-caption text-muted">{saveHint}</p> : null}
         </>
       )}
     </main>

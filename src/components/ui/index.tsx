@@ -26,6 +26,11 @@ export const UNREACHABLE_MESSAGE =
  * sections became cards: an editor that is fourteen strips between hairlines reads as one form,
  * and the nurse's question is which block she is in. `icon` goes inside the heading and is
  * `aria-hidden`, so every section title is still selected by its exact name.
+ *
+ * An `id` makes the section a place the case page's strip jumps to (Phase 11): focusable from a
+ * script, so the keyboard lands where the eye does, but never a Tab stop; and a top scroll margin
+ * the height of the strip and a little more, so a jump stops below the strip rather than under it.
+ * From `lg` the strip does not stick, and the margin is only breathing room.
  */
 export function Section({
   title,
@@ -43,9 +48,10 @@ export function Section({
   return (
     <section
       id={id}
+      tabIndex={id ? -1 : undefined}
       className={`mx-4 mb-2.5 rounded-card border bg-panel p-4 shadow-card ${
         tone === 'warn' ? 'border-band-h4 border-l-4 border-l-band-h4' : 'border-line'
-      }`}
+      } ${id ? 'scroll-mt-18 focus:outline-none lg:scroll-mt-4' : ''}`}
     >
       {title ? (
         <h2 className={`mb-2.5 flex items-center gap-2 text-section ${tone === 'warn' ? 'text-band-h4-ink' : ''}`}>
@@ -66,6 +72,10 @@ export function Section({
  * the button too made it part of the input's name — "Working diagnosis (optional) Dictate". With
  * `htmlFor` the label names the control by its id and the row sits beside the label, not inside
  * it; the look is the same.
+ *
+ * Every `<select>` takes `htmlFor` too (Phase 11, finding 4): a wrapping label's text is its
+ * caption followed by every option, so the select could not be found by its label alone, and the
+ * aria-labels that stood in for the label on some of them are gone with it.
  */
 export function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: ReactNode }) {
   if (htmlFor) {
@@ -307,37 +317,63 @@ export function LocalTimeInput({
   )
 }
 
-/** One labelled timestamp with a Now button — the prototype's `TimeRow`. */
+/**
+ * One labelled timestamp with a Now button — the prototype's `TimeRow`.
+ *
+ * Phase 11, finding 1: the prototype's row put a 178 px box beside its label, and Chromium draws a
+ * datetime-local value in about 176 px of its own plus the picker, so it had 132 and cut the day
+ * off the front — "0/2026 10:44 PM", on every time of the case page. Below `sm` the label now takes
+ * its own line, in the look every other label above a control has (`Field`), and the box fills the
+ * line under it beside Now; from `sm` the three share one row again with a box that holds the
+ * whole value. `step` is the journey's milestone number: it rides on the label's line, so the box
+ * keeps the full width on a phone rather than giving 24 px of it to a number column.
+ */
 export function TimeRow({
   label,
   value,
   onChange,
   disabled,
+  step,
 }: {
   label: string
   value: string | null
   onChange: (next: string | null) => void
   disabled?: boolean
+  step?: number
 }) {
   const id = useId()
   return (
-    <div className="mb-2 flex items-center gap-2">
-      <label htmlFor={id} className="min-w-0 flex-1 text-body text-ink-2">
-        {label}
-      </label>
-      {/* A wrapper, not a width class on the input: the shared input style is `w-full`, and
-          overriding it from a className string would depend on Tailwind's utility order. */}
-      <div className="w-[178px] shrink-0">
-        <LocalTimeInput id={id} value={value} onChange={onChange} disabled={disabled} />
+    <div className="mb-3 sm:mb-2 sm:flex sm:items-center sm:gap-2">
+      <div className="mb-1 flex items-baseline gap-2 sm:mb-0 sm:min-w-0 sm:flex-1 sm:items-center">
+        {step === undefined ? null : (
+          <span className="num w-4 shrink-0 text-caption text-muted" aria-hidden>
+            {step}
+          </span>
+        )}
+        <label
+          htmlFor={id}
+          className="min-w-0 flex-1 text-label font-medium text-muted sm:text-body sm:font-normal sm:text-ink-2"
+        >
+          {label}
+        </label>
       </div>
-      <Button
-        aria-label={`Now — ${label}`}
-        disabled={disabled}
-        className="shrink-0 px-2.5 text-caption font-semibold"
-        onClick={() => onChange(new Date().toISOString())}
-      >
-        Now
-      </Button>
+      <div className="flex items-center gap-2">
+        {/* A wrapper, not a width class on the input: the shared input style is `w-full`, and
+            overriding it from a className string would depend on Tailwind's utility order. From
+            `sm` it is 240 px: the 176 px value, the 20 px picker and the input's own 26 px of
+            padding and border, with room to spare. */}
+        <div className="min-w-0 flex-1 sm:w-60 sm:flex-none">
+          <LocalTimeInput id={id} value={value} onChange={onChange} disabled={disabled} />
+        </div>
+        <Button
+          aria-label={`Now — ${label}`}
+          disabled={disabled}
+          className="shrink-0 px-2.5 text-caption font-semibold"
+          onClick={() => onChange(new Date().toISOString())}
+        >
+          Now
+        </Button>
+      </div>
     </div>
   )
 }

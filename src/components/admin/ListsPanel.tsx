@@ -10,7 +10,7 @@
  * Stages themselves are fixed (Phase 6 spec, "Do not": no editing of stages).
  */
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import {
   addListItem as addListItemAction,
   moveListItem as moveListItemAction,
@@ -28,6 +28,8 @@ export function ListsPanel({ lists }: { lists: ReferenceLists }) {
   const [message, setMessage] = useState<string | null>(null)
   const [editing, setEditing] = useState<Editing | null>(null)
   const [stageId, setStageId] = useState(lists.stages[0]?.id ?? '')
+  /** The Reasons card's "Stage" select, named by a `<label for>` (Phase 11). */
+  const stageSelectId = useId()
   const [newName, setNewName] = useState<Record<ListKind, string>>({
     department: '',
     ward: '',
@@ -240,11 +242,11 @@ export function ListsPanel({ lists }: { lists: ReferenceLists }) {
 
       <section className="mt-2.5 rounded-card border border-line bg-panel p-4">
         <h3 className="mb-2.5 text-section">Reasons</h3>
-        <Field label="Stage">
-          {/* aria-label: see ExportPanel — a wrapping <label> around a <select> otherwise takes
-              its accessible name from the option text too. */}
+        {/* A `<label for>`: a label wrapped round a select holds every option in its text (Phase
+            11, finding 4; the aria-label that stood in for it is gone). */}
+        <Field label="Stage" htmlFor={stageSelectId}>
           <Select
-            aria-label="Stage"
+            id={stageSelectId}
             value={stageId}
             disabled={busy}
             onChange={(e) => setStageId(e.target.value)}

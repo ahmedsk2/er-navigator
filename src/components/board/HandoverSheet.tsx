@@ -10,10 +10,9 @@ import { Fragment } from 'react'
 import {
   elapsedOf,
   identityChips,
-  idleHours,
+  lastActivityAt,
   normalizeMrnQuery,
   resolvedText,
-  stalenessText,
 } from '@/src/lib/board/rows'
 import type { BoardRow } from '@/src/lib/board/types'
 import { fmtClock, fmtSheetStamp, fmtStamp } from '@/src/lib/cases/local-time'
@@ -53,10 +52,15 @@ export function narrowingLine(
   return parts.length > 0 ? parts.join(' · ') : null
 }
 
-/** Open rows carry their staleness line; a resolved row's outcome is in its own column. */
-function lastUpdateText(row: BoardRow, now: Date): string {
-  const staleness = stalenessText(idleHours(row, now))
-  if (staleness) return staleness
+/**
+ * The Last update column: a clock time, dd/mm HH:mm in Asia/Riyadh, never a relative one (Phase
+ * 11, finding 8). The sheet used to print the screen's "Updated 0h 12m ago" / "No update for
+ * 3h 10m", which was true when it was printed and wrong by the time it was read at the handover.
+ * An open case prints the moment its screen line counts from — its newest update, or when it was
+ * opened if nobody has written one (`lastActivityAt`); a resolved case its last update, or a dash.
+ */
+export function lastUpdateText(row: BoardRow): string {
+  if (row.status === 'OPEN') return fmtStamp(lastActivityAt(row).toISOString())
   return row.lastUpdateAt ? fmtStamp(row.lastUpdateAt) : '–'
 }
 
@@ -153,7 +157,7 @@ export function HandoverSheet({
               <td className={`num ${CELL}`}>{fmtHours(elapsedOf(row, now))}</td>
               <td className={CELL}>{row.primaryReason ?? 'No reason set'}</td>
               <td className={CELL}>{row.departments.join(', ')}</td>
-              <td className={`num ${CELL}`}>{lastUpdateText(row, now)}</td>
+              <td className={`num ${CELL}`}>{lastUpdateText(row)}</td>
               <td className={CELL}>{resolvedText(row)}</td>
             </tr>
             <TimelineRow row={row} />

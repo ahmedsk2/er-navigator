@@ -14,7 +14,7 @@
  * Both dates are Asia/Riyadh calendar days — see src/lib/export/range.ts.
  */
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { FilterBar } from '@/src/components/filter/FilterBar'
 import { PageHeader } from '@/src/components/shell/PageHeader'
 import { Download, Printer } from '@/src/components/icons'
@@ -51,6 +51,8 @@ export function ExportPanel({
   initialCount: number
   filterOptions: FilterOptions
 }) {
+  const formatId = useId()
+  const statusId = useId()
   const initialQuery = exportRangeQuery(initialRange)
   const [range, setRange] = useState<ExportRange>(initialRange)
   /**
@@ -101,9 +103,9 @@ export function ExportPanel({
           three different files. The one-line help under it is the whole of the choice — the
           columns themselves are documented on each workbook's own "Read me" sheet.
         */}
-        <Field label="Format">
+        <Field label="Format" htmlFor={formatId}>
           <Select
-            aria-label="Format"
+            id={formatId}
             value={range.format}
             onChange={(e) => setRange((r) => ({ ...r, format: e.target.value as ExportFormat }))}
           >
@@ -141,14 +143,11 @@ export function ExportPanel({
           </div>
         </div>
 
-        <Field label="Status">
-          {/*
-            The wrapping <label> would otherwise take its accessible name from its whole text
-            content — which, for a <select>, includes every option — so the name is stated once
-            here, identically to the visible label.
-          */}
+        {/* A `<label for>`, not one wrapped round the select: a wrapping label's text includes
+            every option (Phase 11, finding 4; the aria-label that stood in for it is gone). */}
+        <Field label="Status" htmlFor={statusId}>
           <Select
-            aria-label="Status"
+            id={statusId}
             value={range.status}
             onChange={(e) => setRange((r) => ({ ...r, status: e.target.value as ExportStatus }))}
           >
