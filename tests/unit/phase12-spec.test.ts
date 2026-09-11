@@ -86,4 +86,15 @@ describe('item 5: must change the first password', () => {
     expect(rule).toContain('/api/export.xlsx')
     expect(rule, 'an api caller must be refused, not skipped').toContain('UnauthorizedError')
   })
+
+  it('accounts for the two suites that mint an account through the Admin UI', () => {
+    const rule = item(5)
+    // "The existing suite must stay green unchanged, because every fixture account has the column
+    // defaulted to false" is true of the seeded fixtures and false of the two files that create
+    // an account at run time through Admin -> Users and then sign in as it:
+    // tests/e2e/admin.spec.ts:92 asserts toHaveURL('/') after that sign-in, and
+    // tests/demo/demo.spec.ts:79-86 does the same in its signIn helper for all four staff.
+    expect(rule).toContain('tests/e2e/admin.spec.ts')
+    expect(rule).toContain('tests/demo/demo.spec.ts')
+  })
 })

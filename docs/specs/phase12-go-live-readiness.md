@@ -608,8 +608,32 @@ life:
    first draft of this item, it is 200 with the whole MRN workbook. Added in the Phase 12 review
    round; use a SUPERVISOR-role account, since `export.xlsx` is a SUPERVISOR/ADMIN/VIEWER action.
 
-**Regression:** the existing suite must stay green unchanged, because every fixture account has
-the column defaulted to `false`.
+**Regression:** every *seeded fixture* account has the column defaulted to `false`
+(`tests/e2e/fixtures/seed-users.ts` upserts a `passwordHash` directly), so every suite that signs
+in as `e2e_navigator`, `e2e_supervisor`, `e2e_admin` or `e2e_viewer` is untouched. **Two files
+mint an account at run time through Admin → Users instead, and both must be updated in this same
+commit** — they go through `createUser`, which this item changes. (Corrected in the Phase 12
+review round: the first draft said the existing suite stays green *unchanged*, which is false for
+these two.)
+
+- **`tests/e2e/admin.spec.ts`**, "an admin creates a user, that user signs in, and deactivating
+  them locks them out". Line 92 is `await expect(their).toHaveURL('/')` right after the new
+  account signs in with its one-shot temporary password; under this item it lands on `/account`.
+  Change that assertion to `/account`, assert `[data-must-change]` is visible there, and leave the
+  deactivation lock-out steps that follow (`:96-110`) as they are — `their.goto('/')` already
+  expects `/login` once the account is deactivated, and that is unaffected. This is a CI file: it
+  runs in the desktop project on every push, so leaving it is a red gate, not a latent problem.
+- **`tests/demo/demo.spec.ts`**, the Phase 11 demo kit. Its `signIn` helper (`:79-86`) ends with
+  `await expect(page).toHaveURL('/')`, and all four staff accounts — Nadia, Omar, Sara, Huda — are
+  created through the Admin UI at run time (`:398-411`) and signed in with the temporary password.
+  Only Nadia ever changes hers, and only after her first sign-in has already asserted `/`. The
+  file is `mode: 'serial'`, so test 2 fails and tests 3–7 skip: the whole kit collapses. Give
+  `signIn` a third argument, `expect: '/' | '/account'` defaulting to `'/'`, pass `'/account'` for
+  each first sign-in with a temporary password, and have Omar, Sara and Huda change their password
+  at `/account` the way Nadia already does before the script continues. Same builder, same commit
+  as the MRN-prefix move of item 3. The kit is not in CI, but Slice 12C item 3 grounds
+  `docs/guide/demo-script.md` in this file's sequence, so a kit that cannot run is a document that
+  cannot be written.
 
 ## 6. An alert email that fails twice is not lost silently (C1)
 
