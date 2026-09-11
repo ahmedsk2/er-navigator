@@ -11,11 +11,14 @@ and no alert push URL. Production is not touched by any of it.
 
 This spec is the build. Item ids in brackets are the audit's.
 
-**Status (11 September 2026): reviewed, corrected, being built.** The six corrections of the
-review round [P12.4a to g] are folded into the text below, so this document is what the slices
-build from. 12C, the documents, is done. 12A is in progress; 12B follows once 12A is live, and
-`demo-nav.towardpcc.com` does not exist until it runs. The gate report records what each slice
-shipped.
+**Status (11 September 2026): delivered.** All three slices are built, merged and live: 12A the
+code [ERN-P12.10 to 20, merged as ERN-P12.30], 12C the documents [ERN-P12.20 to 24, merged as
+ERN-P12.31] and 12B the demo instance at `https://demo-nav.towardpcc.com` [ERN-P12.50]. The six
+corrections of the review round [P12.4a to g] are folded into the text below, and the one place
+where the build knowingly departs from this document, the `x-pathname` redirect replaced by
+`requireUser({ allowMustChange })`, is recorded beside the specified design [ERN-P12.41]. A
+four-lens review of the merged code raised thirteen findings and confirmed seven, all fixed with
+a test that failed first [ERN-P12.40 to 46]. `docs/CHANGELOG.md` [ERN-P12.60] is the close.
 
 ## What the audit found that this phase answers
 
