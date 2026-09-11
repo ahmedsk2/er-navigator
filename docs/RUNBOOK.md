@@ -14,7 +14,7 @@ The host also runs other live clinical applications. Every command below is scop
 | Application | `er-navigator`, uuid `jqcjqhmcmizxs1u51wnqlfwv` |
 | Build | `dockercompose`, `/docker-compose.production.yml`, base directory `/` |
 | Domain binding | `docker_compose_domains = {"app":{"domain":"https://nav.towardpcc.com:3000"}}` |
-| Repository | `git@github.com:ahmedsk2/er-navigator.git`, branch `main`, private |
+| Repository | `git@github.com:ahmedsk2/er-navigator.git`, branch `main`, **public** (corrected 11 September 2026: this row said private and never was. Ahmed's Gate 0 answer was public during the build, private at the end, and the flip has not happened yet). Making it private is Ahmed's step in GitHub Settings, not Claude's, and nothing on this host changes when he takes it: Coolify clones over SSH with the read-only deploy key below, and the push webhook keeps delivering (checked 11 September 2026: the last 30 deliveries all returned 200). Until then, nothing hospital-specific, no secret and no real MRN may enter this repository |
 | Deploy key | GitHub deploy key id `162688479` (read-only) = Coolify private key `er-navigator-deploy` (`l48u5xcuzddx3vr1hb4zsqlb`) |
 | DNS | Cloudflare A `nav.towardpcc.com` → `145.241.105.239`, proxied, record id `3d0956409a57ac5f069bbc9736969e61` |
 | TLS | Let's Encrypt via Traefik HTTP-01 through Cloudflare; zone SSL mode Full (strict) |
@@ -106,11 +106,15 @@ Every key the compose file passes through. Secrets are 48-character alphanumeric
 | `APP_DB_USER`, `APP_DB_PASSWORD` | limited runtime role, created on first boot and re-applied on every deploy by `prisma/sync-app-role.ts`. Rotate by redeploy |
 | `APP_URL` | `https://nav.towardpcc.com`; the case links in alert emails. The display timezone is not a variable: `Asia/Riyadh` is fixed in `src/lib/domain/time.ts` |
 | `ADMIN_USERNAME`, `ADMIN_DISPLAY_NAME`, `ADMIN_PASSWORD` | first ADMIN, created by the seed only if the username does not exist yet |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | threshold alert email (Phase 6): the `navigator@towardpcc.com` mailbox's own SMTP settings, as in a mail client (no relay). `SMTP_FROM` is set; Ahmed enters the other four in Coolify (both copies) and redeploys. Empty host = log only. Deliverability needs the provider's DKIM selector record in Cloudflare; SPF and DMARC stay unchanged |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | threshold alert email (Phase 6): the sending mailbox's own SMTP settings, as in a mail client (no relay). Corrected 11 September 2026: all five are set in both Coolify copies and the worker is in **send** mode (its start line reads `smtp <mailhost>:465`), not log-only. The mailbox is on the secondary domain (`towardpicu.com`), which publishes its own SPF, DKIM selector and DMARC; `towardpcc.com` stays locked for sending (SPF `-all`, DMARC `p=reject`) and needs no record for this app. Nothing has been sent yet because no user has an email address; the test send is Ahmed's step (readiness audit P8). Empty host = log only, which is what the demo instance uses |
 | `ALERT_INTERVAL_MINUTES` | how often the `worker` scans the open cases. Default 5. The healthcheck allows 15 minutes between cycles, so anything above ~7 needs the healthcheck widened too |
 | *(no recipient variable)* | who the 6 h+ alerts go to is **not** an environment variable. It is the active SUPERVISOR and ADMIN users that have an email address in **Admin → Users**, read from the database on every cycle — so adding or removing someone takes effect within one interval, with no redeploy. Someone on those roles with no address is skipped and logged at warn level, never guessed at; nobody with an address = alerts are still recorded, just not emailed. Phase 7 removed `ALERT_EMAIL_MAP`; delete it from both Coolify copies if it is still set |
 | `ALERT_HEARTBEAT_FILE` | the file the worker touches after every SUCCESSFUL cycle. Default and healthcheck path: `/tmp/heartbeat`. Leave unset |
 | `ALERT_PUSH_URL` | the Uptime Kuma push monitor's URL (Monitoring, below). The worker GETs it after every successful cycle; empty = no external monitor, the worker logs `pushMonitor: none` at start |
+| `REPORT_HEADER` | the line at the top of the printed report (`/report`) and of the exported workbook. Added to this table 11 September 2026 (readiness audit P14); it was missing, and `docs/PLAN.md` Section 9 item 5 wrongly called it an Admin-editable settings row. There is no `Setting` model in the schema: this is an environment variable, on the entrypoint allowlist and defaulted in `docker-compose.production.yml`. Unset falls back to `DEFAULT_REPORT_HEADER` in `src/lib/export/report-header.ts`, `Qatif Central Hospital, Emergency Department. ER Navigator`, which is exactly what production carries today. The handover sheet's own title line is hard-coded in `HandoverSheet.tsx` and does not follow this variable |
+| `INSTANCE_LABEL` | Phase 12. Unset or blank in production, and production behaves exactly as before. Set to a short label on a non-production copy (`DEMO` on the demo instance) and every page carries an undismissable banner reading `<LABEL>: invented patients only`, on screen and on paper. It is also what the demo tooling and the demo seed check before they will touch a database. On the entrypoint allowlist; not passed to the `worker` service, which renders nothing |
+| `LOGIN_RATE_LIMIT_PER_MINUTE` | Phase 12. Unset in production, where the login limit stays 5 attempts per rolling 60 s per client IP. The demo instance sets 60, because fifteen staff behind one hospital NAT address would otherwise turn the sixth person away. A blank, non-integer, zero, negative or above-1000 value falls back to 5 rather than failing the login page. Raising it raises the brute-force ceiling in the same proportion; the 10-failure / 15-minute account lockout does not move. On the entrypoint allowlist |
+| *(not an application variable)* | `DEMO_USER_PASSWORD` is **not** set in Coolify's variable list for production and is never read by the app process. On the demo instance it is stored in that application's own Coolify environment, and the demo seed receives it on a `docker exec -e` line (Demo instance, below), which bypasses the entrypoint allowlist because `docker exec` does not run the image's `ENTRYPOINT` |
 
 Removed on 2026-09-09 after the final review because no code read them: `AUTH_SECRET`, `AUTH_TRUST_HOST` (Auth.js leftovers; sessions are opaque database tokens), `APP_TIMEZONE`, `LOG_LEVEL`. They may still exist in Coolify's variable list; deleting them there is harmless, leaving them is too, since the entrypoint strips them.
 
@@ -147,9 +151,11 @@ sudo docker exec "$DB" psql -U ernav_owner -d ernav -tAc \
 
 ## Backup and restore (installed 2026-09-09)
 
-Installed on the host: `/opt/ernav-backup/backup.sh` (a copy of `scripts/backup.sh`; re-copy after changing it), `ernav-backup.service` and `ernav-backup.timer` (daily 02:30 UTC, persistent, 5 min jitter). Dumps land in `/home/ubuntu/backups/ernav/` as root-owned, mode 600 files. First run 2026-09-09 06:38 UTC (37826 bytes); restore drill the same morning into a scratch database: 10 stages, 48 reasons, 16 departments, 8 wards, 1 user, 2 migrations. Off-host copy (2026-09-09 11:15 UTC): `/opt/ernav-backup/upload.sh` runs `rclone copy` to the OCI bucket `coolify-backups/ernav/` (S3-compatible endpoint; the rclone remote `oci` is configured in `/root/.config/rclone/rclone.conf`, mode 600, using the same S3 keys as Coolify's own backups). The unit passes it as `UPLOAD_CMD`. Verified the same day: the dump `ernav-2026-09-09-1115.dump` uploaded, was pulled back from the bucket and restored into a scratch database (10 stages, 1 user, 3 migrations, 1 session), then dropped. The laptop task `OracleBackupSync` mirrors the bucket daily, which is the third copy.
+Installed on the host: `/opt/ernav-backup/backup.sh` (a copy of `scripts/backup.sh`; re-copy after changing it), `ernav-backup.service` and `ernav-backup.timer` (daily 02:30 UTC, persistent, 5 min jitter). Dumps land in `/home/ubuntu/backups/ernav/` as root-owned, mode 600 files. First run 2026-09-09 06:38 UTC (37826 bytes); restore drill the same morning into a scratch database: 10 stages, 48 reasons, 16 departments, 8 wards, 1 user, 2 migrations. Off-host copy (2026-09-09 11:15 UTC): `/opt/ernav-backup/upload.sh` runs `rclone copy` to the OCI bucket `coolify-backups/ernav/` (S3-compatible endpoint; the rclone remote `oci` is configured in `/root/.config/rclone/rclone.conf`, mode 600, using the same S3 keys as Coolify's own backups). The unit passes it as `UPLOAD_CMD`. Verified the same day: the dump `ernav-2026-09-09-1115.dump` uploaded, was pulled back from the bucket and restored into a scratch database (10 stages, 1 user, 3 migrations, 1 session), then dropped.
 
-`scripts/backup.sh` (in the repository) runs `pg_dump` in custom format from the `db` container to `/home/ubuntu/backups/ernav/ernav-YYYY-MM-DD-HHMM.dump`, keeps 30 days locally, and uploads through `UPLOAD_CMD` when one is configured (target: the OCI bucket `coolify-backups`, 14-day WORM, mirrored by the laptop task `OracleBackupSync`). It is installed as `ernav-backup.timer` (above); every drill is recorded in History.
+**The third copy does not exist (corrected 11 September 2026, readiness audit P15).** This paragraph used to say the laptop task `OracleBackupSync` mirrors the bucket daily. It does not: its sync log holds 55 consecutive "bucket download FAILED" lines and no successful one, the download directory has no ER Navigator folder in it, and `sync.sh` swallows the failure so the scheduled task still reports success. There are two copies of an ER Navigator dump today, the host and the OCI bucket, and both are healthy. Repairing the laptop mirror is Ahmed's and Claude's shared item; whether MRN dumps should sit on a personal laptop at all is part of the hospital authorisation conversation.
+
+`scripts/backup.sh` (in the repository) runs `pg_dump` in custom format from the `db` container to `/home/ubuntu/backups/ernav/ernav-YYYY-MM-DD-HHMM.dump`, keeps 30 days locally, and uploads through `UPLOAD_CMD` when one is configured (target: the OCI bucket `coolify-backups`, 14-day WORM). It is installed as `ernav-backup.timer` (above); every drill is recorded in History. The laptop mirror that was meant to be the third copy has never worked (above).
 
 Data-volume guard rails: the Coolify server setting "Delete unused volumes" must stay OFF (it is), and deleting the application in Coolify deletes `jqcjqhmcmizxs1u51wnqlfwv_ernav-db` unless the volumes box is unticked. Every deploy removes and recreates the db container; the volume persists.
 
@@ -235,7 +241,7 @@ COMMIT;
 SQL
 ```
 
-Then take a fresh backup, and remember the previous dumps (local, bucket, laptop mirror) still hold the text until they age out.
+Then take a fresh backup, and remember the previous dumps (local and bucket) still hold the text until they age out.
 
 ## The alerts worker
 
@@ -377,6 +383,98 @@ be permanent). The same script produced the before-and-after screens of the Phas
    per-step log of actions and seconds (`log.json`) land in `test-results/demo-shots`, or in
    `DEMO_SHOTS`.
 4. `docker compose -p ernav-demo -f docker-compose.dev.yml down -v` when done.
+
+## Demo instance (Phase 12)
+
+**Written 11 September 2026 from `docs/specs/phase12-go-live-readiness.md`, before the instance
+exists. Slice 12B corrects this section with the real uuids and record ids once it is provisioned;
+until then, read it as the specification of what is to be built, not as a description of what is
+running.**
+
+A second, hosted copy of the same application, for putting the app in staff hands without any risk
+to production. Ahmed chose a hosted copy over a local one so fifteen people can use their own
+phones.
+
+| Setting | Value |
+| --- | --- |
+| Coolify project | a new project `demo`, not `clinical` |
+| Application | `er-navigator-demo` |
+| Repository | the same one, `git@github.com:ahmedsk2/er-navigator.git`, branch `main`, with the same read-only private key `er-navigator-deploy` (`l48u5xcuzddx3vr1hb4zsqlb`) |
+| Build | the same, `dockercompose`, `/docker-compose.production.yml`, base directory `/` |
+| Domain | `https://demo-nav.towardpcc.com`, bound as `docker_compose_domains` with the `app` service on port 3000 |
+| DNS | Cloudflare A record for `demo-nav.towardpcc.com` to the host, **proxied**, like every other subdomain here. Grey cloud takes it offline and breaks certificate renewal |
+| Database | its own `db` container and its own volume inside its own compose project. Nothing is shared with production: not the volume, not the network, not one secret value |
+
+**Nothing is shared with production.** Every key is copied by *name* from the production
+environment table above, and every secret gets a **new random value** (`openssl rand -hex 24` on
+the host), set in both the production and the preview copy. No production password is reused.
+
+**What is set there**
+
+| Key | Value |
+| --- | --- |
+| `APP_URL` | `https://demo-nav.towardpcc.com` |
+| `INSTANCE_LABEL` | `DEMO`. Every page then carries the undismissable banner `DEMO: invented patients only`, on screen and on paper, and the demo tooling and the demo seed will refuse to run without it |
+| `LOGIN_RATE_LIMIT_PER_MINUTE` | `60`. Fifteen staff behind one hospital NAT address would otherwise hit the production limit of 5 per minute per IP and the sixth person would be turned away |
+| `REPORT_HEADER` | `DEMO. Qatif Central Hospital, Emergency Department. ER Navigator` |
+| `ADMIN_USERNAME`, `ADMIN_DISPLAY_NAME`, `ADMIN_PASSWORD` | the seeded first admin, with a **random** password |
+| `DEMO_USER_PASSWORD` | random, the one shared password for the four demo staff accounts |
+
+Ahmed reads the demo admin password and `DEMO_USER_PASSWORD` off the demo application's Coolify
+environment page himself. Neither is ever printed into a session, a log or this repository.
+
+**What is blank there, and what that means**
+
+`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` and `ALERT_PUSH_URL` are all
+empty. Read from the code, not assumed: with an empty `SMTP_HOST` the worker builds no mailer, logs
+`email: 'log only (SMTP_HOST empty)'` at start, and each cycle writes "SMTP_HOST is empty; would
+have emailed …" instead of sending. Alert rows are still recorded, so the demo shows real 6-hour
+alerts on Admin → Alerts with **Emailed: –**, which is correct and not a fault. An empty
+`ALERT_PUSH_URL` gives `pushMonitor: none`: no Uptime Kuma monitor watches the demo, deliberately,
+because a demo that is switched off must not page anyone.
+
+**Seed it** (on the host, after the deploy is verified). `$OWNER_URL` and `$DEMO_PW` are read from
+the demo application's Coolify environment page into shell variables and **never echoed**;
+`OWNER_URL` is the URL the `migrate` service uses. `docker exec` does not run the image's
+`ENTRYPOINT`, so the entrypoint allowlist does not strip what is passed on the exec line, and
+neither value has to live in the container's own environment.
+
+```bash
+APPC=$(sudo docker ps --format '{{.Names}}' | grep '^app-<demo-app-uuid>')
+sudo docker exec \
+  -e DATABASE_URL="$OWNER_URL" \
+  -e INSTANCE_LABEL=DEMO \
+  -e DEMO_USER_PASSWORD="$DEMO_PW" \
+  "$APPC" node demo-seed.js
+```
+
+It creates four demo accounts (`demo.nav.a`, `demo.nav.b`, `demo.charge`, `demo.lead`) and about
+ten invented patients backdated so the board shows every elapsed band, some resolved, one with a
+referral. Every MRN is `999999` plus a two-digit ordinal, eight digits, which cannot collide with a
+hospital record number. The script refuses to run unless `INSTANCE_LABEL` is set, refuses without a
+`DEMO_USER_PASSWORD`, and refuses if the database already holds a case opened by anyone who is not
+a demo user. It is idempotent: a second run adds nothing and prints a count summary.
+
+**Reset it between sessions.** Re-running the seed adds nothing, so a reset means clearing first.
+Either redeploy the application with a fresh volume (delete the demo application's volume in
+Coolify, then Deploy: `migrate` recreates the schema and seeds the reference lists, then run the
+command above), or drop and recreate the demo database as its owner in the demo `db` container and
+redeploy. Never point a reset at production: the seed's own guards are the backstop, not the plan.
+
+**Delete it** when the demos are over, in this order: the Coolify application `er-navigator-demo`
+with its volumes box **ticked** (which removes the demo database volume), then the Coolify project
+`demo` if nothing else is in it, then the Cloudflare A record for `demo-nav.towardpcc.com`. Nothing
+in production references any of it.
+
+**`scripts/backup.sh` does not back the demo up, and that is intended.** It selects the database
+container by production's application uuid (`APP_UUID` defaults to `jqcjqhmcmizxs1u51wnqlfwv`), so
+it never sees the demo's. Everything in the demo database is invented and is meant to be
+disposable.
+
+**On the day of a demo** (readiness audit C11): turn **auto-deploy off** on the demo application,
+and push nothing to `main` from the start of the session until it ends. A push redeploys both
+applications, and a compose deploy is stop-then-start: about a minute of 404 in the middle of a
+room full of people trying the app, or longer if a migration fails.
 
 ## Security headers
 
