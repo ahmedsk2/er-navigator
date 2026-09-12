@@ -197,8 +197,8 @@ Sign in as `demo.lead`, the read-only account. Show that there is no **+ New cas
 ## The handoff: the rest of the session is theirs
 
 > Everyone please sign in now. Pick one of these four accounts, the password is the same for all
-> of them. Open a case, invent a patient, put a delay on it, add an update. You cannot break
-> anything and you cannot reach the real system from here.
+> of them. Open a case, invent a patient, put a delay on it, and record what was done about it in
+> the Resolve section. You cannot break anything and you cannot reach the real system from here.
 
 While they do it:
 

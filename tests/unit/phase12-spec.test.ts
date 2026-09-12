@@ -292,14 +292,19 @@ describe('the guides name the controls the app actually renders', () => {
    * case nobody has tapped a chip on, and that is every case at the moment it is opened.
    */
   it('sends a nurse to the box the screen has, and keeps the stage rule the trajectory did not replace', () => {
-    const { nurse, editor } = guides()
+    const { nurse, script, editor } = guides()
     const journeySrc = readFileSync(path.join(ROOT, 'src/lib/domain/journey.ts'), 'utf8')
     const taxonomy = readFileSync(path.join(ROOT, 'src/lib/domain/taxonomy.ts'), 'utf8')
     const text = nurse.replace(/\s+/g, ' ')
 
-    // The composer is gone, so no guide may send anybody to it under any capitalisation.
+    // The composer is gone, so neither guide may send anybody to it under any capitalisation.
+    // P15.43: the demo script told the room to add an update in the handoff paragraph, which is
+    // the one instruction fifteen people follow at once with the app in their hands. "Updates"
+    // still names a sheet in the exported workbook there, and that is not this.
     expect(editor, 'the Updates composer is back').not.toMatch(/What changed\?/)
-    expect(text, 'the nurse guide still says to add an update').not.toMatch(/add an update/i)
+    for (const [name, raw] of [['nurse guide', nurse], ['demo script', script]] as const) {
+      expect(raw.replace(/\s+/g, ' '), `${name} still says to add an update`).not.toMatch(/add an update/i)
+    }
     // What the screen offers instead, by the label the editor renders and the button that saves.
     expect(editor).toMatch(/label="What was done to solve the delay"/)
     expect(editor).toMatch(/Save changes/)
