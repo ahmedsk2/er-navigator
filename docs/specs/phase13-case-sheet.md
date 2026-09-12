@@ -18,6 +18,16 @@ This phase is the one place where the locked plan's "do not redesign the workflo
 untouched: no stage, reason, department, ward, ED area or disposition is renamed, added or
 removed, and every step label below is the string `src/lib/domain/taxonomy.ts` already holds.
 
+**Status (12 September 2026): delivered.** Every item below is built, reviewed and live: this
+spec [ERN-P13.1], the build [ERN-P13.10 to 32], then a four-lens review of the whole diff with
+three refuters per finding, fourteen findings raised and five confirmed plus one cheap print
+note, all fixed with a test that failed first [ERN-P13.40 to 45], recorded in [ERN-P13.46],
+with the gate captures re-taken in [ERN-P13.47]. One thing this document specified was
+changed by that review and is recorded in place, in item 7: the shift was to sit behind
+"More to record", and [ERN-P13.40] put it back in the identity block as a Morning / Evening
+/ Night chip row, because the form fills it from the navigator's last shift and a wrong one
+behind a closed section perpetuates itself unseen. The phase closes at [ERN-P13.60].
+
 ## Ahmed's decisions of 12 September 2026
 
 | # | Decision |
