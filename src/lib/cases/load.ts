@@ -89,6 +89,8 @@ export function blankDraft(input: { now: Date; shift: CaseDraft['shift'] }): Cas
     caseMgmtAction: null,
     caseMgmtCalledAt: null,
     caseMgmtRepliedAt: null,
+    delayActionTaken: '',
+    escalatedToMedicalDirector: null,
     disposition: null,
     wardId: null,
     isolation: false,
@@ -136,6 +138,9 @@ type CaseRow = {
   caseMgmtAction: CaseDraft['caseMgmtAction']
   caseMgmtCalledAt: Date | null
   caseMgmtRepliedAt: Date | null
+  // Phase 14: free text, so a NULL column becomes the empty string the controlled input needs.
+  delayActionTaken: string | null
+  escalatedToMedicalDirector: boolean | null
   disposition: CaseDraft['disposition']
   wardId: string | null
   isolation: boolean
@@ -220,6 +225,8 @@ export function draftFromCase(row: CaseRow, reference: ReferenceData): CaseDraft
     caseMgmtAction: row.caseMgmtAction,
     caseMgmtCalledAt: iso(row.caseMgmtCalledAt),
     caseMgmtRepliedAt: iso(row.caseMgmtRepliedAt),
+    delayActionTaken: row.delayActionTaken ?? '',
+    escalatedToMedicalDirector: row.escalatedToMedicalDirector,
     disposition: row.disposition,
     wardId: row.wardId,
     isolation: row.isolation,

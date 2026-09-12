@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildCaseSchemas,
+  DELAY_ACTION_MAX,
   DIAGNOSIS_MAX,
   mrnSchema,
   NOTE_MAX,
@@ -589,5 +590,70 @@ describe('required by outcome (Phase 13)', () => {
       expect(issues(draft.safeParse({ ...base(), disposition })), disposition).toEqual([])
     }
     expect(issues(draft.safeParse(base()))).toEqual([])
+  })
+})
+
+/**
+ * Phase 14 (Ahmed, 12 September 2026, decision C). The two answers that replaced the Updates
+ * composer on the case page: what was done about the delay, and whether it went to the medical
+ * director. Neither is ever required, at "Open case" or at "Mark resolved"; the box is capped at
+ * the same number an update's text is, so a value it accepts can never be a row the mirroring
+ * rule's append would refuse.
+ */
+describe('the delay action and the escalation (Phase 14)', () => {
+  it('caps the box at exactly the update text cap', () => {
+    expect(DELAY_ACTION_MAX).toBe(UPDATE_TEXT_MAX)
+  })
+
+  it('takes a text and a Yes, a No, and an unanswered pair', () => {
+    const filled = draft.safeParse({
+      ...base(),
+      delayActionTaken: 'Bed manager called twice; ICU holding a bed for 14:00',
+      escalatedToMedicalDirector: true,
+    })
+    expect(issues(filled)).toEqual([])
+    expect(filled.data!.delayActionTaken).toBe('Bed manager called twice; ICU holding a bed for 14:00')
+    expect(filled.data!.escalatedToMedicalDirector).toBe(true)
+
+    const no = draft.safeParse({ ...base(), escalatedToMedicalDirector: false })
+    expect(issues(no)).toEqual([])
+    expect(no.data!.escalatedToMedicalDirector).toBe(false)
+
+    // Unset is a third state and is what a case carries until somebody taps a chip.
+    const unset = draft.safeParse({ ...base(), delayActionTaken: null, escalatedToMedicalDirector: null })
+    expect(issues(unset)).toEqual([])
+    expect(unset.data!.escalatedToMedicalDirector).toBeNull()
+    expect(issues(draft.safeParse(base()))).toEqual([])
+  })
+
+  it('trims the box and refuses one character past its cap, on its own path', () => {
+    expect(draft.safeParse({ ...base(), delayActionTaken: '  chased radiology  ' }).data!.delayActionTaken).toBe(
+      'chased radiology',
+    )
+    expect(issues(draft.safeParse({ ...base(), delayActionTaken: 'x'.repeat(DELAY_ACTION_MAX) }))).toEqual([])
+    const over = issues(draft.safeParse({ ...base(), delayActionTaken: 'x'.repeat(DELAY_ACTION_MAX + 1) }))
+    expect(over).toHaveLength(1)
+    expect(over[0]).toMatch(/^delayActionTaken: /)
+  })
+
+  it('refuses an escalation that is not a boolean', () => {
+    expect(draft.safeParse({ ...base(), escalatedToMedicalDirector: 'YES' }).success).toBe(false)
+    expect(draft.safeParse({ ...base(), escalatedToMedicalDirector: 1 }).success).toBe(false)
+  })
+
+  /** Neither joins the resolve rules: an outcome owes its times, its ward and its referral, not this. */
+  it('is never required by a resolve', () => {
+    const admitted = {
+      ...base(),
+      disposition: 'ADMITTED',
+      wardId: 'w-mmw',
+      triageAt: new Date('2026-09-08T06:10:00Z'),
+      physicianAt: new Date('2026-09-08T06:40:00Z'),
+      decisionAt: new Date('2026-09-08T08:00:00Z'),
+      admOrderAt: new Date('2026-09-08T08:10:00Z'),
+      bedAssignedAt: new Date('2026-09-08T09:00:00Z'),
+      departedAt: new Date('2026-09-08T09:30:00Z'),
+    }
+    expect(issues(resolve.safeParse(admitted))).toEqual([])
   })
 })

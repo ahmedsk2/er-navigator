@@ -243,6 +243,15 @@ model Case {
   reviewedAt   DateTime?
   reviewedById String?
 
+  // Phase 14 (docs/specs/phase14-actions-and-escalation.md; Ahmed, 12 September 2026, decision C).
+  // The two answers that took the place of the Updates composer on the case page. Both nullable
+  // and both unset by default, and neither is ever required. `delayActionTaken` is free text a
+  // navigator typed, capped at 1000 characters by zod (DELAY_ACTION_MAX, the same cap an update's
+  // text has, because a change to it is mirrored into one append-only CaseUpdate);
+  // `escalatedToMedicalDirector` is a three-state answer, where NULL means nobody has said.
+  delayActionTaken           String?
+  escalatedToMedicalDirector Boolean?
+
   // resolution
   disposition    Disposition?
   wardId         String?

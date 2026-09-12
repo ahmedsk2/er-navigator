@@ -44,7 +44,16 @@ export const OTHER_TEXT_MAX = 300
 export const NOTE_MAX = 1000
 export const UPDATE_TEXT_MAX = 1000
 
+/**
+ * "What was done to solve the delay" (Phase 14, decision C). The number is `UPDATE_TEXT_MAX` on
+ * purpose and not by coincidence: a change to this box appends one `CaseUpdate` carrying the same
+ * text (`mirrorDelayAction` in src/lib/cases/service.ts), and that row is parsed by
+ * `updateTextSchema`, so a value this box accepts can never be a row the append refuses.
+ */
+export const DELAY_ACTION_MAX = UPDATE_TEXT_MAX
+
 export const updateTextSchema = freeText(UPDATE_TEXT_MAX).min(1, 'Type what changed.')
+export const delayActionSchema = freeText(DELAY_ACTION_MAX)
 export const noteSchema = freeText(NOTE_MAX)
 export const otherTextSchema = freeText(OTHER_TEXT_MAX)
 
@@ -207,6 +216,10 @@ export function buildCaseSchemas(
     caseMgmtAction: caseManagementActionSchema.nullable().optional(),
     caseMgmtCalledAt: timeSchema,
     caseMgmtRepliedAt: timeSchema,
+    // Phase 14, decision C. Neither is ever required — not at "Open case" and not at "Mark
+    // resolved" — so both live on `base` and neither is named in the resolve refinement below.
+    delayActionTaken: delayActionSchema.nullable().optional(),
+    escalatedToMedicalDirector: z.boolean().nullable().optional(),
     disposition: dispositionSchema.nullable().optional(),
     wardId: z.string().nullable().optional(),
     isolation: z.boolean().default(false),

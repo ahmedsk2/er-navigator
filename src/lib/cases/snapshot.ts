@@ -88,6 +88,9 @@ export type SnapshotSource = {
   caseMgmtRepliedAt: Time
   reviewedAt: Time
   reviewedById: string | null
+  /** Phase 14: the delay action and the escalation, audited like every other column. */
+  delayActionTaken: string | null
+  escalatedToMedicalDirector: boolean | null
   disposition: Disposition | null
   wardId: string | null
   isolation: boolean
@@ -147,6 +150,8 @@ export function caseSnapshot(c: SnapshotSource): Record<string, unknown> {
     caseMgmtRepliedAt: iso(c.caseMgmtRepliedAt),
     reviewedAt: iso(c.reviewedAt),
     reviewedById: c.reviewedById,
+    delayActionTaken: c.delayActionTaken,
+    escalatedToMedicalDirector: c.escalatedToMedicalDirector,
     disposition: c.disposition,
     wardId: c.wardId,
     isolation: c.isolation,

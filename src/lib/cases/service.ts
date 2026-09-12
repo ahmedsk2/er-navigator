@@ -177,6 +177,10 @@ function caseScalarData(d: ValidatedDraft) {
     caseMgmtAction: d.caseMgmtAction ?? null,
     caseMgmtCalledAt: d.caseMgmtCalledAt ?? null,
     caseMgmtRepliedAt: d.caseMgmtRepliedAt ?? null,
+    // Phase 14 (decision C). A blank box is a NULL column, as the diagnosis and the note are; the
+    // escalation is a three-state answer and an untouched chip row clears it, like every other.
+    delayActionTaken: blankToNull(d.delayActionTaken),
+    escalatedToMedicalDirector: d.escalatedToMedicalDirector ?? null,
     disposition: d.disposition ?? null,
     wardId: blankToNull(d.wardId),
     isolation: d.isolation,

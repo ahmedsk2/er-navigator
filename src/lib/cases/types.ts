@@ -99,6 +99,14 @@ export type CaseDraft = {
   caseMgmtAction: CaseManagementAction | null
   caseMgmtCalledAt: TimeString
   caseMgmtRepliedAt: TimeString
+  /**
+   * Phase 14, decision C: what was done about the delay, and whether it went to the medical
+   * director. The text is a string like every other controlled box — blank is `''`, and
+   * `caseScalarData` is what turns a blank back into a NULL column — and the escalation has three
+   * states, where null is "nobody has answered".
+   */
+  delayActionTaken: string
+  escalatedToMedicalDirector: boolean | null
   disposition: Disposition | null
   wardId: string | null
   isolation: boolean
