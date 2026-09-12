@@ -281,6 +281,53 @@ describe('the guides name the controls the app actually renders', () => {
     }
   })
 
+  /**
+   * P15.42, the review round's third finding. Two sentences in the nurse guide were left behind
+   * by other phases and nothing was watching them.
+   *
+   * The colour table still told a navigator to "add an update" on a red case: Phase 14 took the
+   * Updates composer off the case page, so that is a control the screen has not had since. And
+   * the Phase 15 rewrite of section 3, correcting the guide to the trajectory, deleted the Phase
+   * 13 stage rule with it — which still governs, because it is what decides the block for every
+   * case nobody has tapped a chip on, and that is every case at the moment it is opened.
+   */
+  it('sends a nurse to the box the screen has, and keeps the stage rule the trajectory did not replace', () => {
+    const { nurse, editor } = guides()
+    const journeySrc = readFileSync(path.join(ROOT, 'src/lib/domain/journey.ts'), 'utf8')
+    const taxonomy = readFileSync(path.join(ROOT, 'src/lib/domain/taxonomy.ts'), 'utf8')
+    const text = nurse.replace(/\s+/g, ' ')
+
+    // The composer is gone, so no guide may send anybody to it under any capitalisation.
+    expect(editor, 'the Updates composer is back').not.toMatch(/What changed\?/)
+    expect(text, 'the nurse guide still says to add an update').not.toMatch(/add an update/i)
+    // What the screen offers instead, by the label the editor renders and the button that saves.
+    expect(editor).toMatch(/label="What was done to solve the delay"/)
+    expect(editor).toMatch(/Save changes/)
+    expect(text, 'the red band does not say where to write what was done').toMatch(
+      /Write what you did in \*\*What was done to solve the delay\*\*, in the Resolve section, and tap \*\*Save changes\*\*\./,
+    )
+
+    // The stage rule, read off the two codes `visibleJourneyFields` actually branches on and the
+    // taxonomy names they belong to, so a rename cannot leave the sentence behind.
+    expect(journeySrc).toMatch(/ADMISSION_STAGE = 'adm'/)
+    expect(journeySrc).toMatch(/TRANSFER_STAGE = 'ref'/)
+    expect(journeySrc).toMatch(/stages\.has\(TRANSFER_STAGE\) \|\| context\.requiresReferralNo/)
+    expect(taxonomy).toContain("name: 'Admission process'")
+    expect(taxonomy).toContain("name: 'Referral / consulted team'")
+    expect(text, 'the Not decided yet bullet drops the admission stage').toMatch(
+      /Not decided yet\.\*\* [^|]*?plus the admission steps if you tap the \*\*Admission process\*\* stage/,
+    )
+    expect(text, 'the Not decided yet bullet drops the referral stage').toMatch(
+      /the transfer steps if you tap \*\*Referral \/ consulted team\*\* or a reason that needs a referral number/,
+    )
+
+    // And the sentence that says which of the three rules is in charge, in the order the function
+    // reads them.
+    expect(text, 'the guide does not say what decides what the block hides').toMatch(
+      /the delay stages decide it until you set a trajectory, the trajectory decides it after that, and once you choose a final disposition the outcome decides it instead/,
+    )
+  })
+
   it('lists the five jump chips the editor actually renders', () => {
     const { nurse, script, editor } = guides()
     // The strip's labels, in the order the array builds them (Teams and Tests are conditional).

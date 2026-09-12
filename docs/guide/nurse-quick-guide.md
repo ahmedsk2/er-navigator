@@ -65,8 +65,12 @@ opens with one question and then lists the stay in the order it happens.
 starts on the first one:
 
 - **Not decided yet.** The block shows the steps every patient has: Triage, Resus / exam room,
-  First physician contact, Disposition decided, Left ED, and Medical admin on-call informed at.
-- **Discharge.** The same steps and nothing more.
+  First physician contact, Disposition decided, Left ED, and Medical admin on-call informed at,
+  plus the admission steps if you tap the **Admission process** stage below, and the transfer
+  steps if you tap **Referral / consulted team** or a reason that needs a referral number. That is
+  the app reading the delay you flagged; the moment you tap a chip below, what you said wins.
+- **Discharge.** The steps every patient has, and nothing more: a trajectory stands the stage rule
+  down, so an Admission process stage no longer adds its steps.
 - **Admission.** Those, plus Admission order written, Bed requested (fax sent) and Bed assigned,
   and the **Ward** chips appear in the Resolve section so you can record the bed as soon as it is
   given.
@@ -84,8 +88,9 @@ one is tinted, so the step the case is waiting for is the one your thumb lands o
 
 - A step you fill collapses to one line, "Triage · 12/09 10:42", with an **Edit** button that
   puts the box back. Nothing is lost by collapsing it.
-- The block hides what the case cannot have: the trajectory decides that while the case is open,
-  and once you choose a final disposition the outcome decides it instead.
+- The block hides what the case cannot have, and three things decide that in turn: the delay
+  stages decide it until you set a trajectory, the trajectory decides it after that, and once you
+  choose a final disposition the outcome decides it instead.
 - Nothing you already recorded is ever hidden without being said. A time on a step the case has
   stopped showing is listed on an **Also recorded** line at the foot of the block. So if you
   record a fax and then move the case to Admission, the fax time is still there, on that line, and
@@ -210,7 +215,7 @@ The pill beside each case is the time that patient has been in the ED.
 | --- | --- | --- |
 | Green | under 4 hours | Nothing yet. It is on the board because a delay was flagged. |
 | Amber | 4 hours and over | First threshold. Make sure the delay reason on the case is still the real one. |
-| Red | 6 hours and over | The charge nurse and the medical admin on-call are emailed from here. Add an update saying where it stands. |
+| Red | 6 hours and over | The charge nurse and the medical admin on-call are emailed from here. Write what you did in **What was done to solve the delay**, in the Resolve section, and tap **Save changes**. |
 | Purple | 12 hours and over | Escalate by voice as well. Half a day in the ED needs a name attached to the next step. |
 | Near-black | 24 hours and over | A full day. It belongs in the handover out loud, every shift, until it is resolved. |
 
