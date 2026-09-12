@@ -90,15 +90,16 @@ export function CaseJourney({
               <p className="min-w-0 flex-1 text-body text-ink-2">
                 {label} <span className="num text-muted">· {fmtStamp(value)}</span>
               </p>
-              {disabled ? null : (
-                <Button
-                  aria-label={`Edit — ${label}`}
-                  className="shrink-0 px-2.5 text-caption font-semibold"
-                  onClick={() => setReopened((open) => [...open, field])}
-                >
-                  Edit
-                </Button>
-              )}
+              {/* Always drawn, disabled with the rest of the sheet: a control that vanishes for
+                  the second a save takes moves every row under it. */}
+              <Button
+                aria-label={`Edit — ${label}`}
+                className="shrink-0 px-2.5 text-caption font-semibold"
+                disabled={disabled}
+                onClick={() => setReopened((open) => [...open, field])}
+              >
+                Edit
+              </Button>
             </div>
           )
         }

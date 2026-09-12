@@ -1180,7 +1180,7 @@ export function CaseEditor(props: CaseEditorProps) {
         ) : null}
       </Section>
 
-      {/* 9. Updates */}
+      {/* 8. Updates */}
       {!isNew ? (
         <Section id={JUMP.updates} title="Updates" icon={<History size={18} />}>
           {updates.length === 0 ? (
@@ -1253,10 +1253,10 @@ export function CaseEditor(props: CaseEditorProps) {
         </Section>
       ) : null}
 
-      {/* 9b. Timeline (Phase 8): server-rendered, read-only, after the updates. */}
+      {/* 8b. Timeline (Phase 8): server-rendered, read-only, after the updates. */}
       {props.timeline}
 
-      {/* 10. Resolve */}
+      {/* 9. Resolve */}
       {!isNew ? (
         <Section
           id={JUMP.resolve}
@@ -1408,7 +1408,7 @@ export function CaseEditor(props: CaseEditorProps) {
         </Section>
       ) : null}
 
-      {/* 11. Check these times */}
+      {/* 10. Check these times */}
       {warnings.length > 0 ? (
         <Section title="Check these times" tone="warn" icon={<TriangleAlert size={18} />}>
           {warnings.map((w) => (
@@ -1425,7 +1425,7 @@ export function CaseEditor(props: CaseEditorProps) {
       {/* feedback: under the sections on a case, in the bar over "Open case" on a new one */}
       {isNew ? null : <div className="mx-4">{feedback}</div>}
 
-      {/* 12. Save */}
+      {/* 11. Save */}
       {readOnly ? null : isNew ? (
         /* Phase 11, finding 3: on a new case the bar sticks to the foot of the screen, above the
            home indicator, so the case opens the moment the MRN, the stage and the reason are in;
