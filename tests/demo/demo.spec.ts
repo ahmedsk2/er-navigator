@@ -205,6 +205,12 @@ type Patient = {
   area: string
   payer: 'Government' | 'Insured' | 'Self-pay'
   shift: 'Morning' | 'Evening' | 'Night'
+  /**
+   * Phase 15 (docs/specs/phase15-trajectory.md): where this patient is going, tapped on the
+   * new-case form. From then on the Patient journey block asks for that pathway's steps and the
+   * Final disposition list is narrowed to the outcomes it can end in.
+   */
+  trajectory: 'Discharge' | 'Admission' | 'Transfer to another facility'
   delays: Array<{ stage: string; reason: string; other?: string }>
   primary: string
   dept?: string
@@ -227,6 +233,7 @@ const PATIENTS: Patient[] = [
     regH: 10,
     ctas: 2,
     dx: 'Chest pain, NSTEMI, for CCU',
+    trajectory: 'Admission',
     area: 'Acute area',
     payer: 'Government',
     shift: 'Evening',
@@ -263,6 +270,7 @@ const PATIENTS: Patient[] = [
     regH: 8,
     ctas: 3,
     dx: 'RIF pain, query appendicitis',
+    trajectory: 'Discharge',
     area: 'Rapid assessment zone',
     payer: 'Insured',
     shift: 'Evening',
@@ -302,6 +310,7 @@ const PATIENTS: Patient[] = [
     regH: 14,
     ctas: 4,
     dx: 'Distal radius fracture, displaced',
+    trajectory: 'Transfer to another facility',
     area: 'Pooling area',
     payer: 'Self-pay',
     shift: 'Morning',
@@ -341,6 +350,7 @@ const PATIENTS: Patient[] = [
     regH: 27,
     ctas: 3,
     dx: 'Fever and confusion, query urosepsis',
+    trajectory: 'Admission',
     area: 'Pooling area',
     payer: 'Government',
     shift: 'Night',
@@ -391,6 +401,7 @@ const PATIENTS: Patient[] = [
     regH: 5,
     ctas: 5,
     dx: 'Hand laceration, needs sutures',
+    trajectory: 'Discharge',
     area: 'Rapid assessment zone',
     payer: 'Insured',
     shift: 'Evening',
@@ -508,6 +519,9 @@ async function openPatient(page: Page, p: Patient): Promise<void> {
   await tap(chip(page, 'ED area', p.area))
   // P13.40: the shift is a chip row in the identity block, not a select behind "More to record".
   await tap(chip(page, 'Shift', p.shift))
+  // Phase 15: one tap that says where this patient is going, at the top of the Patient journey
+  // block. The steps below it follow immediately, and so does the Final disposition list later.
+  await tap(chip(page, 'Patient trajectory', p.trajectory))
   await openMore(page)
   await fill(page.getByLabel('Working diagnosis (optional)', { exact: true }), p.dx)
   await tap(chip(page, 'Payer', p.payer))

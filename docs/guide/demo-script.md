@@ -90,6 +90,14 @@ Still as `demo.nav.a`. Tap **+ New case**.
 - **Patient journey**, the block under it, is the one to slow down on. Say: this is the stay in
   the order it happens, and it is the same block on a new case and on a worked one. Nothing in it
   is required to open the case.
+- Its first row is the one to demonstrate. **Patient trajectory**: Not decided yet, Discharge,
+  Admission, Transfer to another facility. Tap **Admission** and let the room watch three steps
+  appear in the block, then tap **Transfer to another facility** and watch those three go and the
+  fax, the acceptance and the RCC arrive in their place, with **Referral out** opening below for
+  the tracking number. Say: this is Ahmed's ask in one row. The department's own question is where
+  the patient is going, and the sheet stops asking a discharge when the fax went to the RCC. Then
+  say the two things that make it safe: it is never required, and nothing typed under one pathway
+  is lost by moving to another, which the next screen shows.
 - **Where is the delay?** Tap a stage, tap a reason under it. Tap a second reason and show that the
   app now asks which is the **primary** one. Say: that is the field the reports count.
 - Open **More to record** and show what is behind it: the working diagnosis, the payer, pain
@@ -130,9 +138,16 @@ Open one of the seeded open cases.
 - In **Patient journey**, tap **Now** on Triage. Watch the row collapse to one line with an
   **Edit** button while the tint moves to the next empty step. Say: the sheet is always pointing
   at the one thing the case is waiting for, and nothing recorded is ever lost by collapsing.
+- The promise from the new-case screen, kept. With the trajectory on **Transfer to another
+  facility**, tap **Now** on **Transfer requested**, then move the trajectory to **Admission**.
+  The step goes and the time reappears on the **Also recorded** line at the foot of the block. Say:
+  the app hides a step, it never drops a time, and that line is saved and exported like any other.
 - Show **Check these times** if you can make it appear by putting a result before its order. Say:
   it warns, it does not block, and the pair is left out of the averages.
-- Now the part worth the room's attention. Choose a **Final disposition** and show that **Mark
+- Now the part worth the room's attention. Open the **Final disposition** list and point at how
+  short it is: on an admission it offers Admitted, Other and Deceased, because those are the ways
+  an admission ends. Tap **Show all outcomes** underneath and show that all eight come back, so
+  nothing is ever unreachable. Choose one and show that **Mark
   resolved** is dead, with the grey line under it naming what is missing: "Before resolving,
   enter: ...". Show the **needed to resolve** tags that appear on those steps up in the journey
   block, fill them, and watch the button come alive. Say: the app asks for the times that outcome

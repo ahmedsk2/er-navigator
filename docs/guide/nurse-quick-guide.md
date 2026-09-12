@@ -59,18 +59,37 @@ Then the chips. Tap to choose, tap the chosen chip again to clear it:
   the export writes in the Shift column, and a wrong one carries itself forward to your next case.
 
 **Patient journey** is the block under the identity block, and it is the spine of the sheet. It
-lists the stay in the order it happens: Triage, Resus / exam room, First physician contact,
-Disposition decided, Left ED, and Medical admin on-call informed at. Every empty step is a date
-box with a **Now** button beside it, and the next empty one is tinted, so the step the case is
-waiting for is the one your thumb lands on.
+opens with one question and then lists the stay in the order it happens.
+
+**Patient trajectory** is that question: where is this patient going? Four chips, and every case
+starts on the first one:
+
+- **Not decided yet.** The block shows the steps every patient has: Triage, Resus / exam room,
+  First physician contact, Disposition decided, Left ED, and Medical admin on-call informed at.
+- **Discharge.** The same steps and nothing more.
+- **Admission.** Those, plus Admission order written, Bed requested (fax sent) and Bed assigned,
+  and the **Ward** chips appear in the Resolve section so you can record the bed as soon as it is
+  given.
+- **Transfer to another facility.** Those, plus Transfer requested, Accepted by facility and
+  RCC / transport arrived, and the **Referral out** block appears for the tracking number and the
+  receiving facility.
+
+Tap the chip as soon as you know, and change it as often as the picture changes. Tapping the chip
+that is already on puts the case back to Not decided yet. It is never required, and it never makes
+a time required either: what a case must record before it can be closed is decided by the final
+disposition and by nothing else.
+
+Then the steps. Every empty one is a date box with a **Now** button beside it, and the next empty
+one is tinted, so the step the case is waiting for is the one your thumb lands on.
 
 - A step you fill collapses to one line, "Triage · 12/09 10:42", with an **Edit** button that
   puts the box back. Nothing is lost by collapsing it.
-- The block hides what the case cannot have: no admission times until an admission is in the
-  picture, no transfer times until a referral is, and once you choose a final disposition, only
-  the steps that outcome can have.
+- The block hides what the case cannot have: the trajectory decides that while the case is open,
+  and once you choose a final disposition the outcome decides it instead.
 - Nothing you already recorded is ever hidden without being said. A time on a step the case has
-  stopped showing is listed on an **Also recorded** line at the foot of the block.
+  stopped showing is listed on an **Also recorded** line at the foot of the block. So if you
+  record a fax and then move the case to Admission, the fax time is still there, on that line, and
+  it is still saved and still in the export.
 - None of these times is required to open the case. They are required to resolve it, and which
   ones depends on the outcome (section 5).
 
@@ -135,10 +154,15 @@ section and answerable at any time, before the patient leaves and after:
 - **Escalated to medical director:** **Yes** or **No**. Tap the answer; tap it again to clear it
   back to unanswered. A **Yes** the first time also tags that record as a leadership escalation.
 
-Then: choose the **Final disposition** (Admitted, Discharged home,
-Discharged DAMA, Transferred to another facility, Left without being seen, Deceased, Referred to
-UCC, or Other), the ward if the patient was admitted, and whether instructions were given and
-family engaged. Add a **Resolution note (optional)** if there is anything worth saying.
+Then choose the **Final disposition**. The list follows the trajectory you set at the top of the
+sheet: an Admission offers Admitted, Other and Deceased; a Transfer offers Transferred to another
+facility, Other and Deceased; a Discharge offers Discharged home, Discharged DAMA, Left without
+being seen, Other, Deceased and Referred to UCC. If the outcome is not on the list, tap
+**Show all outcomes** underneath and all eight are back. On a case with no trajectory the list is
+all eight to begin with.
+
+Then the ward if the patient was admitted, and whether instructions were given and family engaged.
+Add a **Resolution note (optional)** if there is anything worth saying.
 
 The disposition decides which times the case cannot be closed without, and **Mark resolved** stays
 dead until they are in. The grey line under the button says which, in these words: "Before

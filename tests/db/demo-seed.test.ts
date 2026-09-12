@@ -290,6 +290,33 @@ describeDb('the demo seed', () => {
   })
 
   /**
+   * Phase 15 (docs/specs/phase15-trajectory.md, item 7): every seeded case says where its patient
+   * is going, and it agrees with the outcome where there is one — so a presenter opening any case
+   * finds the chip row answered and the journey block already narrowed to that pathway.
+   */
+  it('gives every case a trajectory that agrees with its outcome', async () => {
+    const rows = await prisma.case.findMany({
+      select: { mrn: true, trajectory: true, disposition: true },
+      orderBy: { mrn: 'asc' },
+    })
+    expect(rows).toHaveLength(10)
+    /** The one outcome each pathway is the plan for. Deceased and Other fit any of them. */
+    const outcomeOf: Record<string, string> = {
+      ADMISSION: 'ADMITTED',
+      TRANSFER: 'TRANSFERRED',
+    }
+    const discharges = new Set(['DISCHARGED_HOME', 'DISCHARGED_DAMA', 'REFERRED_UCC', 'LEFT_WITHOUT_BEING_SEEN'])
+    for (const row of rows) {
+      expect(row.trajectory, `case ${row.mrn} has no trajectory`).not.toBeNull()
+      if (!row.disposition) continue
+      if (row.trajectory === 'DISCHARGE') expect(discharges, row.mrn).toContain(row.disposition)
+      else expect(row.disposition, row.mrn).toBe(outcomeOf[row.trajectory!])
+    }
+    // All three pathways are on the board, so the presenter can show each one narrowing the sheet.
+    expect(new Set(rows.map((r) => r.trajectory))).toEqual(new Set(['DISCHARGE', 'ADMISSION', 'TRANSFER']))
+  })
+
+  /**
    * P13.42. The seed wrote triage, physician, decision and Left ED and stopped there, so its
    * ADMITTED case had no admission order and no bed assigned and its TRANSFERRED case had no
    * transfer requested, no acceptance and no named facility. Nothing on the board showed it —

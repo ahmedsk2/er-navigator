@@ -100,6 +100,12 @@ type CaseSeed = {
   areaCode: string
   payer: 'GOVERNMENT' | 'INSURED' | 'SELF_PAY'
   diagnosis: string
+  /**
+   * Phase 15 (docs/specs/phase15-trajectory.md, item 7): where this patient is going. Every
+   * seeded case carries one and it agrees with the outcome where there is one, so a presenter
+   * opening any case finds the chip row answered and the journey narrowed to that pathway.
+   */
+  trajectory: 'DISCHARGE' | 'ADMISSION' | 'TRANSFER'
   /** Stage code -> reason name. The first entry is the primary reason. */
   reasons: ReadonlyArray<{ stage: string; reason: string; otherText?: string }>
   department?: string
@@ -157,6 +163,7 @@ const CASES: ReadonlyArray<CaseSeed> = [
     areaCode: 'RAZ',
     payer: 'GOVERNMENT',
     diagnosis: 'abdominal pain, for review',
+    trajectory: 'DISCHARGE',
     reasons: [{ stage: 'inv', reason: 'Lab: delay in sample collection' }],
   },
   {
@@ -168,6 +175,7 @@ const CASES: ReadonlyArray<CaseSeed> = [
     areaCode: 'ACUTE',
     payer: 'INSURED',
     diagnosis: 'ankle injury, awaiting X-ray',
+    trajectory: 'DISCHARGE',
     reasons: [{ stage: 'inv', reason: 'Imaging: acquisition delay (X-ray/KUB)' }],
     updates: [{ hoursAgo: 1, text: 'Chased radiology; slot promised within the hour.' }],
   },
@@ -180,6 +188,7 @@ const CASES: ReadonlyArray<CaseSeed> = [
     areaCode: 'ACUTE',
     payer: 'GOVERNMENT',
     diagnosis: 'chest pain, cardiology asked to see',
+    trajectory: 'ADMISSION',
     reasons: [{ stage: 'ref', reason: 'Awaiting consulted team response/callback' }],
     department: 'Internal Medicine',
     updates: [{ hoursAgo: 2, text: 'Consult call placed, no callback yet.' }],
@@ -193,6 +202,7 @@ const CASES: ReadonlyArray<CaseSeed> = [
     areaCode: 'POOL',
     payer: 'GOVERNMENT',
     diagnosis: 'pneumonia, for admission',
+    trajectory: 'ADMISSION',
     reasons: [
       { stage: 'adm', reason: 'No bed available on accepting ward' },
       { stage: 'dispo', reason: 'Plan made, awaiting written admission order' },
@@ -211,6 +221,7 @@ const CASES: ReadonlyArray<CaseSeed> = [
     areaCode: 'ISO',
     payer: 'SELF_PAY',
     diagnosis: 'fever, isolation required',
+    trajectory: 'ADMISSION',
     reasons: [
       { stage: 'exam', reason: 'Waiting for isolation/negative pressure room' },
       { stage: 'adm', reason: 'Other', otherText: 'Cleaning team short-staffed overnight; room not turned around.' },
@@ -226,6 +237,7 @@ const CASES: ReadonlyArray<CaseSeed> = [
     areaCode: 'ACUTE',
     payer: 'INSURED',
     diagnosis: 'sepsis, ICU bed requested',
+    trajectory: 'ADMISSION',
     reasons: [
       { stage: 'adm', reason: 'No bed available on accepting ward' },
       { stage: 'ref', reason: 'Disagreement between teams on ownership' },
@@ -246,6 +258,7 @@ const CASES: ReadonlyArray<CaseSeed> = [
     areaCode: 'ACUTE',
     payer: 'GOVERNMENT',
     diagnosis: 'cellulitis, admitted',
+    trajectory: 'ADMISSION',
     reasons: [{ stage: 'adm', reason: 'Bed available, awaiting transport/porter' }],
     updates: [{ hoursAgo: 2 * 24 - 4, text: 'Porter booked.' }],
     delayAction: { text: 'Porter service called twice; ward agreed to collect the patient themselves.' },
@@ -260,6 +273,7 @@ const CASES: ReadonlyArray<CaseSeed> = [
     areaCode: 'RAZ',
     payer: 'INSURED',
     diagnosis: 'migraine, treated and discharged',
+    trajectory: 'DISCHARGE',
     reasons: [{ stage: 'inv', reason: 'Lab: delay in processing' }],
     delayAction: { text: 'Lab asked to prioritise the sample; results released within the hour.' },
     resolve: { departedAfterHours: 5, disposition: 'DISCHARGED_HOME', note: 'Discharged with instructions.' },
@@ -273,6 +287,7 @@ const CASES: ReadonlyArray<CaseSeed> = [
     areaCode: 'RESUS',
     payer: 'GOVERNMENT',
     diagnosis: 'head injury, transferred out',
+    trajectory: 'TRANSFER',
     reasons: [{ stage: 'adm', reason: 'Referred out: no bed in accepting department' }],
     referralNo: 'DEMO-REF-0091',
     updates: [{ hoursAgo: 7 * 24 - 6, text: 'Referral accepted by the receiving hospital.' }],
@@ -296,6 +311,7 @@ const CASES: ReadonlyArray<CaseSeed> = [
     areaCode: 'POOL',
     payer: 'SELF_PAY',
     diagnosis: 'minor complaint, sent to urgent care',
+    trajectory: 'DISCHARGE',
     reasons: [{ stage: 'reg', reason: 'Registration desk/system delay' }],
     delayAction: { text: 'Registration re-entered by hand; patient walked to the urgent care centre.' },
     resolve: { departedAfterHours: 3, disposition: 'REFERRED_UCC', note: 'Redirected to the urgent care centre.' },
@@ -493,6 +509,8 @@ async function createDemoCase(
       areaId: need(reference.areaIds, seed.areaCode, 'ED area'),
       payer: seed.payer,
       diagnosis: seed.diagnosis,
+      // Phase 15: the pathway, chosen at the desk in the first hour.
+      trajectory: seed.trajectory,
       primaryReasonId,
       triageAt: new Date(registrationAt.getTime() + 15 * 60_000),
       physicianAt: new Date(registrationAt.getTime() + 55 * 60_000),

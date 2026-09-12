@@ -253,6 +253,34 @@ describe('the guides name the controls the app actually renders', () => {
     }
   })
 
+  /**
+   * Phase 15 (docs/specs/phase15-trajectory.md). The chip row that decides what the rest of the
+   * sheet asks for, and the control that puts every outcome back. Each sentence is read off the
+   * component that renders it, not off the prose, so a rename cannot leave a guide behind.
+   */
+  it('names the trajectory chips the journey component renders, and the way back to every outcome', () => {
+    const { nurse, script, journey, editor } = guides()
+    const taxonomy = readFileSync(path.join(ROOT, 'src/lib/domain/taxonomy.ts'), 'utf8')
+    // The group label, the chip that stands for NULL, and the three stored values' labels.
+    expect(journey).toMatch(/groupLabel="Patient trajectory"/)
+    expect(taxonomy).toMatch(/TRAJECTORY_NOT_DECIDED = 'Not decided yet'/)
+    const labels = ['Discharge', 'Admission', 'Transfer to another facility']
+    for (const label of labels) expect(taxonomy, label).toContain(`'${label}'`)
+    // The narrowed list's escape hatch, by the name the button carries.
+    expect(editor).toMatch(/>\s*Show all outcomes\s*</)
+
+    for (const [name, raw] of [['nurse guide', nurse], ['demo script', script]] as const) {
+      const text = raw.replace(/\s+/g, ' ')
+      expect(text, `${name} names the trajectory row`).toMatch(/\*\*Patient trajectory\*\*/)
+      expect(text, `${name} names Not decided yet`).toMatch(/\*\*Not decided yet\.?\*\*|Not decided yet/)
+      for (const label of labels) {
+        expect(text, `${name} names the ${label} chip`).toContain(label)
+      }
+      expect(text, `${name} names Show all outcomes`).toMatch(/\*\*Show all outcomes\*\*/)
+      expect(text, `${name} says a hidden time is still recorded`).toMatch(/\*\*Also recorded\*\*/)
+    }
+  })
+
   it('lists the five jump chips the editor actually renders', () => {
     const { nurse, script, editor } = guides()
     // The strip's labels, in the order the array builds them (Teams and Tests are conditional).
