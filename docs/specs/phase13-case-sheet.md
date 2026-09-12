@@ -247,7 +247,10 @@ Triage · 12/09 10:42        [Edit]
 ```
 
 `[data-journey-step="triageAt"]`, the stamp is `fmtStamp` (Asia/Riyadh, `dd/mm HH:mm`), and the
-button carries `aria-label="Edit — Triage"` over the visible word "Edit". Pressing it reopens
+button carries `aria-label="Edit — Triage"` over the visible word "Edit". The day is kept rather
+than showing "10:42" alone, which is what the proposal drew: a stay that runs to 27 hours is
+exactly the case this app is for, and a bare clock time on it is ambiguous — the same reason
+Phase 11 widened every time box until the date fitted. Pressing it reopens
 that step's `TimeRow` for the rest of the session; the value is unchanged until it is edited.
 
 The **first empty visible step** carries `[data-next-step]` and a soft accent tint, so the thumb
@@ -297,7 +300,8 @@ being shown.
 - `resolveCase` keeps its default: a resolve that reaches the server with `departedAt` empty is
   written with the current instant, as it does today. `Left ED` is required for every outcome, so
   the editor never sends that draft; the default stays as the server's own guard for any other
-  caller.
+  caller. The server's own floor under it is the resolve schema, where `departedAt` is
+  non-nullable and has been since Phase 2.
 
 ---
 
@@ -315,10 +319,15 @@ One `Section`, `[data-more]`, whose whole visible content when closed is a butto
   once the section is open.
 
 It opens **closed on a new case**, and **open on an existing case where any of its fields has a
-value**: a non-null shift, diagnosis, payer, `painkillerPrescribed`, `pethidinePrescribed`,
-`pethidineDoseMg`, `painkillerAt`, `sickleCellTreatment`, `caseMgmtReferral`, `caseMgmtCriteria`,
-`caseMgmtAction`, `caseMgmtCalledAt` or `caseMgmtRepliedAt`. Computed once, from the initial
-draft, so opening and closing it by hand is never undone by a re-render.
+value**: a non-blank diagnosis, or a non-null payer, `painkillerPrescribed`,
+`pethidinePrescribed`, `pethidineDoseMg`, `painkillerAt`, `sickleCellTreatment`,
+`caseMgmtReferral`, `caseMgmtCriteria`, `caseMgmtAction`, `caseMgmtCalledAt` or
+`caseMgmtRepliedAt`. Computed once, from the initial draft, so opening and closing it by hand is
+never undone by a re-render.
+
+**The shift is deliberately not one of those fields.** `blankDraft` fills it from the navigator's
+last shift, so every case carries one from the moment it is opened; counting it would mean the
+section is open on every case there is, which is the state this item exists to avoid.
 
 ---
 
