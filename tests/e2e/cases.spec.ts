@@ -1143,10 +1143,10 @@ test('a save that escalates writes a tagged update, and the summary names the ca
   await page.goto(url)
   await page.getByRole('button', { name: 'Summary', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Case summary' })
-  // "×2" is the panel's own rule since Phase 10 — the count is the evidence behind the category,
-  // and here that is the tagged row the save mirrored plus the chip on the case itself. The deck's
-  // own figure counts a case once per category (`actionsDocumented`), which is what is reported.
-  await expect(summaryRow(dialog, 'Documented actions')).toContainText('Leadership escalation ×2')
+  // Phase 15, item 8: one escalation, counted once. The tagged row the save mirrored and the chip
+  // it was mirrored from are the same escalation, and the panel used to count both and read "×2".
+  // The deck's own figure counts a case once per category (`actionsDocumented`) and is unchanged.
+  await expect(summaryRow(dialog, 'Documented actions')).toContainText('Leadership escalation ×1')
   await expect(summaryRow(dialog, 'What was done')).toContainText('Escalated to the on-call director')
   await expect(summaryRow(dialog, 'Escalated to medical director')).toContainText('Yes')
   await expect(summaryRow(dialog, 'Updates').getByRole('cell')).toHaveText(/^1, last \d\d\/\d\d \d\d:\d\d$/)
@@ -1160,7 +1160,8 @@ test('a save that escalates writes a tagged update, and the summary names the ca
   await page.goto(url)
   await page.getByRole('button', { name: 'Summary', exact: true }).click()
   await expect(summaryRow(dialog, 'Updates').getByRole('cell')).toHaveText(/^2, last \d\d\/\d\d \d\d:\d\d$/)
-  await expect(summaryRow(dialog, 'Documented actions')).toContainText('Leadership escalation ×2')
+  // Still one: the second save appends an untagged note, so the tagged evidence has not grown.
+  await expect(summaryRow(dialog, 'Documented actions')).toContainText('Leadership escalation ×1')
 })
 
 /**
