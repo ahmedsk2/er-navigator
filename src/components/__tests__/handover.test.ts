@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BoardRow } from '@/src/lib/board/types'
 import { EMPTY_FILTER, type CaseFilter } from '@/src/lib/domain/case-filter'
-import { actionLine, lastUpdateText, narrowingLine } from '../board/HandoverSheet'
+import { actionLine, lastUpdateText, narrowingLine, SHEET_ACTION_MAX } from '../board/HandoverSheet'
 
 /**
  * The line a handover sheet prints under its stamp when the board it was printed from was
@@ -174,5 +174,39 @@ describe('actionLine', () => {
         row({ trajectory: 'DISCHARGE', delayActionTaken: 'Pharmacy chased', escalatedToMedicalDirector: false }),
       ),
     ).toBe('Trajectory: Discharge · Action: Pharmacy chased · Escalated to medical director: No')
+  })
+
+  /**
+   * Phase 15, item 9 — the second of the two questions the Phase 14 close left with Ahmed. The
+   * box holds up to a thousand characters and the sheet is an 11 px table read standing up at a
+   * shift change, so the sheet cuts the action at 200 characters. The case keeps the whole text.
+   */
+  describe('the action is cut at 200 characters on the sheet (Phase 15, item 9)', () => {
+    it('prints a short action whole, and a long one cut with an ellipsis', () => {
+      const short = 'x'.repeat(SHEET_ACTION_MAX)
+      expect(actionLine(row({ delayActionTaken: short }))).toBe(`Action: ${short}`)
+
+      const long = 'y'.repeat(SHEET_ACTION_MAX + 1)
+      const line = actionLine(row({ delayActionTaken: long }))!
+      expect(line).toBe(`Action: ${'y'.repeat(SHEET_ACTION_MAX)}…`)
+      expect(line).not.toContain('y'.repeat(SHEET_ACTION_MAX + 1))
+    })
+
+    it('cuts nothing else on the line: the trajectory and the escalation are printed whole', () => {
+      const line = actionLine(
+        row({
+          trajectory: 'ADMISSION',
+          delayActionTaken: 'z'.repeat(400),
+          escalatedToMedicalDirector: true,
+        }),
+      )!
+      expect(line.startsWith('Trajectory: Admission · Action: ')).toBe(true)
+      expect(line.endsWith('… · Escalated to medical director: Yes')).toBe(true)
+    })
+
+    it('does not print a space before the ellipsis when the cut lands on one', () => {
+      const wordy = `${'a'.repeat(SHEET_ACTION_MAX - 1)} then the ward called back`
+      expect(actionLine(row({ delayActionTaken: wordy }))).toBe(`Action: ${'a'.repeat(SHEET_ACTION_MAX - 1)}…`)
+    })
   })
 })

@@ -70,6 +70,26 @@ export function lastUpdateText(row: BoardRow): string {
 }
 
 /**
+ * How much of "What was done to solve the delay" the sheet prints (Phase 15, item 9 — the second
+ * question the Phase 14 close left with Ahmed).
+ *
+ * `DELAY_ACTION_MAX` is 1000 characters and this is an 11 px table a charge nurse reads standing
+ * up at a shift change, so a paragraph in one case's line pushes the next case onto a second
+ * page. 200 characters is about two printed lines at this size.
+ *
+ * ON THE SHEET ONLY. The case keeps the whole text: the box, the column, the mirrored
+ * `CaseUpdate`, the case summary sheet, the workbook's Cases and Updates sheets and the QCH
+ * Comments column are all untouched, and nothing else on this line is ever cut.
+ */
+export const SHEET_ACTION_MAX = 200
+
+function cutForSheet(text: string): string {
+  if (text.length <= SHEET_ACTION_MAX) return text
+  // trimEnd so a cut that lands on a word break does not print "word …".
+  return `${text.slice(0, SHEET_ACTION_MAX).trimEnd()}…`
+}
+
+/**
  * Where the patient is going (Phase 15), what was done about the delay, and whether it went to
  * the medical director (Phase 14), as one line — or null when the case carries none of the three,
  * so a sheet of cases nobody has answered is the sheet it always was.
@@ -83,7 +103,7 @@ export function actionLine(row: BoardRow): string | null {
   const parts: string[] = []
   if (row.trajectory) parts.push(`Trajectory: ${TRAJECTORY_LABELS[row.trajectory]}`)
   const action = row.delayActionTaken?.trim()
-  if (action) parts.push(`Action: ${action}`)
+  if (action) parts.push(`Action: ${cutForSheet(action)}`)
   if (row.escalatedToMedicalDirector != null) {
     parts.push(`Escalated to medical director: ${row.escalatedToMedicalDirector ? 'Yes' : 'No'}`)
   }
