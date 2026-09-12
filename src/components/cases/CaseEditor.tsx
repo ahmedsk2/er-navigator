@@ -71,7 +71,12 @@ import {
   PETHIDINE_DOSES,
   SHIFT_LABELS,
 } from '@/src/lib/domain/taxonomy'
-import { missingJourneyTimes } from '@/src/lib/domain/journey'
+import {
+  ALL_DISPOSITIONS,
+  missingJourneyTimes,
+  offeredDispositions,
+  visibleJourneyFields,
+} from '@/src/lib/domain/journey'
 import { CaseJourney } from './CaseJourney'
 import { band, elapsedHours, fmtHours, spokenHours } from '@/src/lib/domain/time'
 import { BAND_TEXT } from '@/src/components/bands'
@@ -101,7 +106,6 @@ const CLOCK_TICK_MS = 30_000
 // `text-muted` on the board and the dashboard; the shared map settles on `text-muted`.
 
 const INVESTIGATION_TYPES = ['LAB', 'CT', 'US', 'XR', 'MRI'] as const
-const DISPOSITIONS = Object.keys(DISPOSITION_LABELS) as Array<keyof typeof DISPOSITION_LABELS>
 const SHIFTS = Object.keys(SHIFT_LABELS) as Array<keyof typeof SHIFT_LABELS>
 /** `Chips` is a string list, so the five CTAS levels travel as strings and come back as numbers. */
 const CTAS_OPTIONS = CTAS_LEVELS.map(String)
@@ -317,7 +321,39 @@ export function CaseEditor(props: CaseEditorProps) {
    * the other is the referral stage itself).
    */
   const requiresReferralNo = draft.reasons.some((r) => reasonById.get(r.reasonId)?.requiresReferralNo)
-  const showReferral = requiresReferralNo || draft.disposition === 'TRANSFERRED'
+  /**
+   * Phase 15, decision D: the trajectory joins the two triggers this block has had since Phase 2.
+   * A plain OR and not the journey block's "the disposition governs" precedence, because an OR can
+   * only ever show a control and never hide a recorded value — `caseScalarData` writes the
+   * referral number and the facility whether or not the block is on the screen.
+   */
+  const showReferral = requiresReferralNo || draft.disposition === 'TRANSFERRED' || draft.trajectory === 'TRANSFER'
+  /** The same rule for the Ward and the isolation checkbox, which live in the Resolve block. */
+  const showWard = draft.disposition === 'ADMITTED' || draft.trajectory === 'ADMISSION'
+  /**
+   * Phase 15, decision D. The Final disposition list is narrowed by the trajectory — an admission
+   * is not offered six ways to send the patient home — and "Show all outcomes" puts every one of
+   * the eight back for the rest of the session. The outcome the case already carries is always
+   * offered, so a narrowing can never leave the select with no option for its own value.
+   */
+  const [showAllOutcomes, setShowAllOutcomes] = useState(false)
+  const dispositionOptions = offeredDispositions({
+    trajectory: draft.trajectory,
+    disposition: draft.disposition,
+    showAll: showAllOutcomes,
+  })
+  const outcomesNarrowed = dispositionOptions.length < ALL_DISPOSITIONS.length
+  /**
+   * Whether the journey block is drawing the `Left ED` row, so the read-only row in Resolve can
+   * point at it honestly. It is in the core steps, so this is true for every trajectory and for
+   * none; only `LEFT_WITHOUT_BEING_SEEN`-style outcome rules could ever drop it, and none does.
+   */
+  const leftEdInJourney = visibleJourneyFields({
+    disposition: draft.disposition,
+    trajectory: draft.trajectory,
+    stageCodes,
+    requiresReferralNo,
+  }).includes('departedAt')
 
   const otherTexts = draft.reasons
     .filter((r) => reasonById.get(r.reasonId)?.isOther && r.otherText)
@@ -868,6 +904,8 @@ export function CaseEditor(props: CaseEditorProps) {
         onChange={(patch) => set(patch as Partial<CaseDraft>)}
         disabled={disabled}
         disposition={draft.disposition}
+        trajectory={draft.trajectory}
+        onTrajectory={(next) => set({ trajectory: next })}
         stageCodes={stageCodes}
         requiresReferralNo={requiresReferralNo}
       />
@@ -1216,6 +1254,10 @@ export function CaseEditor(props: CaseEditorProps) {
             onChange={(v) => set({ escalatedToMedicalDirector: v === null ? null : v === 'YES' })}
             disabled={disabled}
           />
+          {/* Phase 15, decision D: the list follows the trajectory, and "Show all outcomes" is
+              the way back to all eight, so no outcome is ever unreachable — a patient on an
+              admission pathway who dies in the department, or one whose story is none of the
+              three. Once an outcome is chosen the Phase 13 rules govern the sheet again. */}
           <Field label="Final disposition" htmlFor={dispositionId}>
             <Select
               id={dispositionId}
@@ -1226,12 +1268,22 @@ export function CaseEditor(props: CaseEditorProps) {
               }
             >
               <option value="">Select</option>
-              {DISPOSITIONS.map((d) => (
+              {dispositionOptions.map((d) => (
                 <option key={d} value={d}>
                   {DISPOSITION_LABELS[d]}
                 </option>
               ))}
             </Select>
+            {outcomesNarrowed && !readOnly ? (
+              <Button
+                data-show-all-outcomes
+                className="mt-1.5"
+                disabled={disabled}
+                onClick={() => setShowAllOutcomes(true)}
+              >
+                Show all outcomes
+              </Button>
+            ) : null}
           </Field>
           {/* Phase 8b, decision D. Three answers, not two: a navigator writing the case up after
               the shift may genuinely not know whether the doctor gave instructions. */}
@@ -1251,7 +1303,10 @@ export function CaseEditor(props: CaseEditorProps) {
             onChange={(v) => set({ familyEngagement: v })}
             disabled={disabled}
           />
-          {draft.disposition === 'ADMITTED' ? (
+          {/* Phase 15: the ward and the isolation room are asked for on an admission pathway as
+              well as on the ADMITTED outcome, because a bed is requested hours before the case is
+              resolved. The ward is still only REQUIRED for ADMITTED (journey.ts / validation.ts). */}
+          {showWard ? (
             <div>
               <FieldGroup label="Ward">
                 <Chips
@@ -1297,7 +1352,15 @@ export function CaseEditor(props: CaseEditorProps) {
                 </Button>
               )}
             </div>
-            <p className="text-caption text-muted">Recorded in Patient journey, above.</p>
+            {/* Phase 15: the caption points at the row that holds the input, and the journey
+                block only draws that row when this outcome or this trajectory can have it. The
+                value is never lost either way — an unshown departure is on the "Also recorded"
+                line, and the stamp beside this caption is the value itself. */}
+            <p className="text-caption text-muted">
+              {leftEdInJourney
+                ? 'Recorded in Patient journey, above.'
+                : 'Recorded in Patient journey once this case shows the step.'}
+            </p>
           </div>
           <Field label="Resolution note (optional)" htmlFor={noteId}>
             <DictationRow

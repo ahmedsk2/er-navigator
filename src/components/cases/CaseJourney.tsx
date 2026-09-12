@@ -21,9 +21,16 @@
  *     "needed to resolve" tag until it is filled;
  *   - and nothing hidden is ever dropped: a hidden step that holds a time is listed on one line
  *     at the foot of the block, because the case still says so even when the screen does not.
+ *
+ * Phase 15 (`docs/specs/phase15-trajectory.md`; Ahmed, 12 September 2026) put the trajectory chip
+ * row at the top of it. Until this phase the block could only hide a chain once the OUTCOME was
+ * known, which is at the end of the stay; the trajectory is the nurse saying where the patient is
+ * going in the first hour, and from then on the block is about that pathway. The outcome still
+ * wins the moment it is chosen, and nothing entered under an earlier pathway is lost — it moves
+ * to the "Also recorded" line, which is the Phase 13 mechanism doing exactly what it was for.
  */
 import { useState } from 'react'
-import { Button, Section, TimeRow } from '@/src/components/ui'
+import { Button, FieldGroup, Chips, Section, TimeRow } from '@/src/components/ui'
 import { Clock } from '@/src/components/icons'
 import { fmtStamp } from '@/src/lib/cases/local-time'
 import {
@@ -33,9 +40,26 @@ import {
   visibleJourneyFields,
   type Disposition,
   type JourneyField,
+  type Trajectory,
 } from '@/src/lib/domain/journey'
+import { TRAJECTORIES, TRAJECTORY_LABELS, TRAJECTORY_NOT_DECIDED } from '@/src/lib/domain/taxonomy'
 
 export type JourneyValues = Partial<Record<JourneyField, string | null>>
+
+/**
+ * The chip row's own options: the three stored values, plus one chip for NULL.
+ *
+ * "Not decided yet" is a chip and not the absence of one because it is a state a nurse reads off
+ * the sheet — a row with nothing pressed cannot be told from a row nobody has looked at. It never
+ * leaves this module: `onTrajectory` maps it to null, `trajectorySchema` would refuse it, and the
+ * column only ever holds one of the three.
+ */
+const NOT_DECIDED = 'NOT_DECIDED'
+const TRAJECTORY_OPTIONS = [NOT_DECIDED, ...TRAJECTORIES] as const
+type TrajectoryOption = (typeof TRAJECTORY_OPTIONS)[number]
+
+const trajectoryLabel = (option: TrajectoryOption): string =>
+  option === NOT_DECIDED ? TRAJECTORY_NOT_DECIDED : TRAJECTORY_LABELS[option]
 
 export function CaseJourney({
   id,
@@ -43,6 +67,8 @@ export function CaseJourney({
   onChange,
   disabled = false,
   disposition,
+  trajectory,
+  onTrajectory,
   stageCodes,
   requiresReferralNo,
 }: {
@@ -52,6 +78,9 @@ export function CaseJourney({
   onChange: (patch: JourneyValues) => void
   disabled?: boolean
   disposition: Disposition | null
+  /** Phase 15: where the patient is going, or null for "not decided yet". */
+  trajectory: Trajectory | null
+  onTrajectory: (next: Trajectory | null) => void
   stageCodes: Iterable<string>
   requiresReferralNo: boolean
 }) {
@@ -61,7 +90,7 @@ export function CaseJourney({
    */
   const [reopened, setReopened] = useState<ReadonlyArray<JourneyField>>([])
 
-  const context = { disposition, stageCodes, requiresReferralNo }
+  const context = { disposition, trajectory, stageCodes, requiresReferralNo }
   const visible = visibleJourneyFields(context)
   const required = new Set(requiredJourneyFields(disposition))
   const alsoRecorded = hiddenRecordedJourneySteps({ ...context, values })
@@ -70,6 +99,23 @@ export function CaseJourney({
 
   return (
     <Section id={id} title="Patient journey" icon={<Clock size={18} />}>
+      {/* Phase 15, decision A. First in the block, because it decides what the rest of the block
+          is: one tap in the first hour and the sheet stops asking an admitted patient when the
+          fax went to the RCC. Tapping the pressed chip again clears it back to "Not decided yet",
+          the same gesture CTAS, ED area, Shift, Payer and the escalation already use. */}
+      <FieldGroup label="Patient trajectory">
+        <Chips
+          groupLabel="Patient trajectory"
+          options={TRAJECTORY_OPTIONS}
+          value={[trajectory ?? NOT_DECIDED]}
+          onChange={(next) => {
+            const last = next[next.length - 1]
+            onTrajectory(last === undefined || last === NOT_DECIDED ? null : last)
+          }}
+          labelOf={trajectoryLabel}
+          disabled={disabled}
+        />
+      </FieldGroup>
       <p className="mb-2.5 text-caption text-muted">
         Tap Now as each step happens, or type the time. Steps this case cannot have are not shown.
       </p>

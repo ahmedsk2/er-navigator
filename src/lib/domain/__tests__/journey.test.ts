@@ -6,12 +6,13 @@ import {
   JOURNEY_LABELS,
   JOURNEY_STEPS,
   missingJourneyTimes,
+  offeredDispositions,
   requiredJourneyFields,
   TRANSFER_JOURNEY_FIELDS,
   visibleJourneyFields,
   type JourneyField,
 } from '../journey'
-import { ADMISSION_STEPS, DISPOSITION_LABELS, MILESTONES, TRANSFER_STEPS } from '../taxonomy'
+import { ADMISSION_STEPS, DISPOSITION_LABELS, MILESTONES, TRAJECTORIES, TRANSFER_STEPS } from '../taxonomy'
 
 /**
  * Phase 13 (Ahmed, 12 September 2026, decisions B, C, E, F and G): the one "Patient journey"
@@ -66,9 +67,9 @@ describe('JOURNEY_STEPS', () => {
   })
 })
 
-describe('visibleJourneyFields before a disposition is chosen', () => {
+describe('visibleJourneyFields before a disposition or a trajectory is chosen', () => {
   const before = (stageCodes: string[], requiresReferralNo = false) =>
-    visibleJourneyFields({ disposition: null, stageCodes, requiresReferralNo })
+    visibleJourneyFields({ disposition: null, trajectory: null, stageCodes, requiresReferralNo })
 
   it('shows the core steps and nothing else', () => {
     expect(before([])).toEqual([
@@ -98,9 +99,125 @@ describe('visibleJourneyFields before a disposition is chosen', () => {
   })
 })
 
+/**
+ * Phase 15 (docs/specs/phase15-trajectory.md; Ahmed, 12 September 2026, decisions A and B): the
+ * trajectory is the nurse saying early where this patient is going, and while no outcome has been
+ * chosen the block is about that pathway.
+ */
+describe('visibleJourneyFields once a trajectory is chosen', () => {
+  const on = (
+    trajectory: (typeof TRAJECTORIES)[number],
+    stageCodes: string[] = [],
+    requiresReferralNo = false,
+  ) => visibleJourneyFields({ disposition: null, trajectory, stageCodes, requiresReferralNo })
+
+  it('shows the core steps alone for a discharge', () => {
+    expect(on('DISCHARGE')).toEqual(CORE_JOURNEY_FIELDS)
+  })
+
+  it('adds the admission chain for an admission and no transfer step', () => {
+    expect(on('ADMISSION')).toEqual([
+      'triageAt',
+      'roomAt',
+      'physicianAt',
+      'decisionAt',
+      'admOrderAt',
+      'bedRequestedAt',
+      'bedAssignedAt',
+      'departedAt',
+      'medAdminInformedAt',
+    ])
+  })
+
+  it('adds the transfer chain for a transfer — the fax, the acceptance and the RCC', () => {
+    expect(on('TRANSFER')).toEqual([
+      'triageAt',
+      'roomAt',
+      'physicianAt',
+      'decisionAt',
+      'transferRequestedAt',
+      'transferAcceptedAt',
+      'transportArrivedAt',
+      'departedAt',
+      'medAdminInformedAt',
+    ])
+  })
+
+  /**
+   * Decision B: the Phase 13 stage implications stay only while the trajectory is not decided.
+   * A nurse who says "this one is going home" has said more than the admission stage chip did.
+   */
+  it('governs over the stage implications', () => {
+    expect(on('DISCHARGE', ['adm', 'ref'], true)).toEqual(CORE_JOURNEY_FIELDS)
+    expect(on('ADMISSION', ['ref'], true)).not.toContain('transferRequestedAt')
+    expect(on('TRANSFER', ['adm'])).not.toContain('admOrderAt')
+  })
+
+  /** Decision C: the outcome is the better evidence, and it arrives last. */
+  it('gives way to the disposition once one is chosen', () => {
+    expect(
+      visibleJourneyFields({
+        disposition: 'ADMITTED',
+        trajectory: 'TRANSFER',
+        stageCodes: [],
+        requiresReferralNo: false,
+      }),
+    ).toContain('admOrderAt')
+    expect(
+      visibleJourneyFields({
+        disposition: 'ADMITTED',
+        trajectory: 'TRANSFER',
+        stageCodes: [],
+        requiresReferralNo: false,
+      }),
+    ).not.toContain('transferRequestedAt')
+    expect(
+      visibleJourneyFields({
+        disposition: 'DISCHARGED_HOME',
+        trajectory: 'ADMISSION',
+        stageCodes: ['adm'],
+        requiresReferralNo: false,
+      }),
+    ).toEqual(CORE_JOURNEY_FIELDS)
+  })
+
+  /**
+   * The recorded deviation in item 3 of the spec: two of the eight outcomes have no trajectory,
+   * and a patient who walked out has left the ED and nothing else. The departure is shown for
+   * every trajectory and for none.
+   */
+  it('always shows Left ED, whatever the trajectory', () => {
+    for (const t of TRAJECTORIES) expect(on(t), t).toContain('departedAt')
+    expect(
+      visibleJourneyFields({ disposition: null, trajectory: null, stageCodes: [], requiresReferralNo: false }),
+    ).toContain('departedAt')
+  })
+
+  it('keeps the flow order however the steps were added', () => {
+    for (const t of TRAJECTORIES) {
+      const fields = on(t, ['adm', 'ref'], true)
+      const order = fieldsOf(JOURNEY_STEPS)
+      expect([...fields].sort((a, b) => order.indexOf(a) - order.indexOf(b)), t).toEqual(fields)
+    }
+  })
+
+  /** Decision E: switching pathway hides a step, and a hide never drops what was recorded. */
+  it('lists a time recorded under another pathway as also recorded', () => {
+    expect(
+      hiddenRecordedJourneySteps({
+        disposition: null,
+        trajectory: 'DISCHARGE',
+        stageCodes: [],
+        requiresReferralNo: false,
+        values: { transferRequestedAt: '2026-09-12T09:10:00.000Z', triageAt: '2026-09-12T08:00:00.000Z' },
+      }),
+    ).toEqual([['transferRequestedAt', 'Transfer requested']])
+  })
+})
+
 describe('visibleJourneyFields once a disposition is chosen', () => {
   const after = (disposition: keyof typeof DISPOSITION_LABELS, stageCodes: string[] = ['adm', 'ref']) =>
-    visibleJourneyFields({ disposition, stageCodes, requiresReferralNo: true })
+    visibleJourneyFields({ disposition, trajectory: null, stageCodes, requiresReferralNo: true })
 
   it('shows the admission steps for an admitted patient and hides the transfer ones', () => {
     expect(after('ADMITTED')).toContain('admOrderAt')
@@ -137,9 +254,14 @@ describe('visibleJourneyFields once a disposition is chosen', () => {
   /** OTHER is the catch-all, so it hides only what the stages had not implied in the first place. */
   it('hides nothing extra for OTHER', () => {
     expect(after('OTHER')).toEqual(fieldsOf(JOURNEY_STEPS))
-    expect(visibleJourneyFields({ disposition: 'OTHER', stageCodes: [], requiresReferralNo: false })).toEqual(
-      CORE_JOURNEY_FIELDS,
-    )
+    expect(
+      visibleJourneyFields({
+        disposition: 'OTHER',
+        trajectory: null,
+        stageCodes: [],
+        requiresReferralNo: false,
+      }),
+    ).toEqual(CORE_JOURNEY_FIELDS)
   })
 
   it('always shows Left ED, whatever the outcome', () => {
@@ -187,8 +309,96 @@ describe('requiredJourneyFields', () => {
 
   it('never requires a step the same outcome hides', () => {
     for (const d of DISPOSITIONS) {
-      const visible = new Set(visibleJourneyFields({ disposition: d, stageCodes: [], requiresReferralNo: false }))
+      const visible = new Set(
+        visibleJourneyFields({ disposition: d, trajectory: null, stageCodes: [], requiresReferralNo: false }),
+      )
       for (const field of requiredJourneyFields(d)) expect(visible, `${d} / ${field}`).toContain(field)
+    }
+  })
+
+  /**
+   * Phase 15: what a case must record is decided by its outcome and by nothing else. No
+   * trajectory can make a time mandatory, and none can excuse one.
+   */
+  it('is unmoved by the trajectory, and never hides a step the outcome requires', () => {
+    for (const d of DISPOSITIONS) {
+      for (const t of [null, ...TRAJECTORIES] as const) {
+        const visible = new Set(
+          visibleJourneyFields({ disposition: d, trajectory: t, stageCodes: [], requiresReferralNo: false }),
+        )
+        for (const field of requiredJourneyFields(d)) expect(visible, `${d} / ${t} / ${field}`).toContain(field)
+      }
+    }
+  })
+})
+
+/**
+ * Phase 15, decision D: the Final disposition list is narrowed by the trajectory, and every
+ * outcome stays reachable behind "Show all outcomes".
+ */
+describe('offeredDispositions', () => {
+  const ALL = Object.keys(DISPOSITION_LABELS) as Array<keyof typeof DISPOSITION_LABELS>
+
+  it('offers every outcome while no trajectory is chosen', () => {
+    expect(offeredDispositions({ trajectory: null, disposition: null })).toEqual(ALL)
+  })
+
+  it('is the three lists Ahmed saw, in the order the full list has them', () => {
+    expect(offeredDispositions({ trajectory: 'DISCHARGE', disposition: null })).toEqual([
+      'DISCHARGED_HOME',
+      'DISCHARGED_DAMA',
+      'LEFT_WITHOUT_BEING_SEEN',
+      'OTHER',
+      'DECEASED',
+      'REFERRED_UCC',
+    ])
+    expect(offeredDispositions({ trajectory: 'ADMISSION', disposition: null })).toEqual([
+      'ADMITTED',
+      'OTHER',
+      'DECEASED',
+    ])
+    expect(offeredDispositions({ trajectory: 'TRANSFER', disposition: null })).toEqual([
+      'TRANSFERRED',
+      'OTHER',
+      'DECEASED',
+    ])
+  })
+
+  it('offers Deceased and Other on every pathway, because either can end any of them', () => {
+    for (const t of TRAJECTORIES) {
+      expect(offeredDispositions({ trajectory: t, disposition: null }), t).toContain('DECEASED')
+      expect(offeredDispositions({ trajectory: t, disposition: null }), t).toContain('OTHER')
+    }
+  })
+
+  /** A saved outcome can never be dropped by a narrowing, or the select would render a blank. */
+  it('always offers the outcome the case already carries', () => {
+    expect(offeredDispositions({ trajectory: 'ADMISSION', disposition: 'TRANSFERRED' })).toEqual([
+      'ADMITTED',
+      'TRANSFERRED',
+      'OTHER',
+      'DECEASED',
+    ])
+    expect(offeredDispositions({ trajectory: 'ADMISSION', disposition: 'ADMITTED' })).toEqual([
+      'ADMITTED',
+      'OTHER',
+      'DECEASED',
+    ])
+  })
+
+  it('shows all eight when asked, whatever the trajectory says', () => {
+    for (const t of TRAJECTORIES) {
+      expect(offeredDispositions({ trajectory: t, disposition: null, showAll: true }), t).toEqual(ALL)
+    }
+  })
+
+  it('never offers an outcome twice, and never one the app does not have', () => {
+    for (const t of [null, ...TRAJECTORIES] as const) {
+      for (const d of [null, ...ALL] as const) {
+        const offered = offeredDispositions({ trajectory: t, disposition: d })
+        expect(new Set(offered).size, `${t} / ${d}`).toBe(offered.length)
+        for (const value of offered) expect(ALL, `${t} / ${d}`).toContain(value)
+      }
     }
   })
 })
@@ -238,6 +448,7 @@ describe('hiddenRecordedJourneySteps', () => {
     expect(
       hiddenRecordedJourneySteps({
         disposition: 'ADMITTED',
+        trajectory: null,
         stageCodes: ['adm'],
         requiresReferralNo: false,
         values: { transferRequestedAt: at(3), transportArrivedAt: at(5), admOrderAt: at(6) },
@@ -252,6 +463,7 @@ describe('hiddenRecordedJourneySteps', () => {
     expect(
       hiddenRecordedJourneySteps({
         disposition: 'DISCHARGED_HOME',
+        trajectory: null,
         stageCodes: [],
         requiresReferralNo: false,
         values: { triageAt: at(1) },
