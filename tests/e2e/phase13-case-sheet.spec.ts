@@ -252,6 +252,11 @@ test('LWBS hides the physician and the decision, and still shows what was record
 /**
  * Decision E: "More to record" is closed on a case that carries none of its answers and open on
  * one that does, so nothing already recorded is ever behind a tap.
+ *
+ * The answer it records is the working diagnosis and not the payer, deliberately: the dashboard
+ * suite isolates its own figures with "every payer at once", on the grounds that nothing else
+ * resolves a case carrying one, and a resolved case with a payer here would land in the Adaa
+ * KPI 5 denominator.
  */
 test('More to record opens itself on a case that already carries one of its answers', async ({ page }, testInfo) => {
   const mobile = testInfo.project.name === 'mobile'
@@ -263,15 +268,15 @@ test('More to record opens itself on a case that already carries one of its answ
   await expect(more).toHaveAttribute('aria-expanded', 'false')
 
   await openMoreToRecord(page)
-  await page.getByRole('group', { name: 'Payer' }).getByRole('button', { name: 'Insured', exact: true }).click()
+  await page.getByLabel('Working diagnosis (optional)', { exact: true }).fill('Chest pain, for admission')
   await page.getByRole('button', { name: 'Save changes', exact: true }).click()
   await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
 
   await page.goto(url)
   await expect(more).toHaveAttribute('aria-expanded', 'true')
-  await expect(
-    page.getByRole('group', { name: 'Payer' }).getByRole('button', { name: 'Insured', exact: true }),
-  ).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByLabel('Working diagnosis (optional)', { exact: true })).toHaveValue(
+    'Chest pain, for admission',
+  )
 
   // A discharge home asks for its three times and the departure, and takes the case.
   await page.getByLabel('Final disposition').selectOption('DISCHARGED_HOME')
