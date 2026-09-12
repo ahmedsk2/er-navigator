@@ -20,7 +20,7 @@ written by it.
 
 | # | Decision |
 | --- | --- |
-| A | The server-rendered Timeline is off the case page. It stays in the case summary sheet, on the handover sheet and in the printed report. |
+| A | The server-rendered Timeline is off the case page. It stays in the case summary sheet and on the handover sheet. |
 | B | The Updates section — the composer with its action tag, and the list — is off the case page, and its chip leaves the "Jump to" strip. The model, the table and every writer stay. |
 | C | In its place, in the Resolve block above "Final disposition": a free-text box "What was done to solve the delay" and a Yes / No chip row "Escalated to medical director". Both editable on an open case, before and after resolving. |
 | D | Nothing recorded is lost. A change to that box appends one `CaseUpdate` written by the actor, so the deck's history, the board's staleness and the audit trail stay complete. |

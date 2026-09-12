@@ -355,6 +355,55 @@ describe('the guides name the controls the app actually renders', () => {
   })
 })
 
+/**
+ * P15.44, the review round's fifth finding. Phase 14 moved the case timeline off the case page
+ * and three documents recorded where it went as "the case summary sheet, the handover sheet and
+ * the printed report". The first two are true. The third never was: `/report` is the dashboard's
+ * figures over a date range, it has never held a per-case section of any kind, and a reader who
+ * went looking for a stay's sequence there found nothing and had no way to tell whether the
+ * document or the build was wrong.
+ *
+ * Read off the two surfaces that draw it and the one that does not, rather than off the prose.
+ */
+describe('the timeline is documented where it actually prints', () => {
+  const surfaces = () => ({
+    summary: readFileSync(path.join(ROOT, 'src/components/cases/CaseSummarySheet.tsx'), 'utf8'),
+    handover: readFileSync(path.join(ROOT, 'src/components/board/HandoverSheet.tsx'), 'utf8'),
+    report: [
+      readFileSync(path.join(ROOT, 'app/report/page.tsx'), 'utf8'),
+      readFileSync(path.join(ROOT, 'src/components/report/ReportView.tsx'), 'utf8'),
+    ].join('\n'),
+  })
+
+  it('draws it on the summary sheet and the handover sheet, and nowhere in the printed report', () => {
+    const { summary, handover, report } = surfaces()
+    expect(summary).toMatch(/data-summary-timeline/)
+    expect(handover).toMatch(/data-timeline-row/)
+    expect(report, 'the printed report grew a timeline').not.toMatch(/timeline/i)
+  })
+
+  it('is named as those two in the plan and in the Phase 14 spec, and not as the report', () => {
+    for (const file of ['docs/PLAN.md', 'docs/specs/phase14-actions-and-escalation.md']) {
+      const text = readFileSync(path.join(ROOT, file), 'utf8').replace(/\s+/g, ' ')
+      // The exact list all three lines carried, which the Phase 14 spec writes one sentence away
+      // from the word "Timeline" and the plan writes in the same clause as it.
+      expect(text, `${file} still lists the printed report`).not.toMatch(
+        /on the handover sheet and in the printed report/,
+      )
+      // And any other sentence that places the timeline in or on the report. Not merely the two
+      // words near each other: "`timeline()` is untouched, so the printed report changes only
+      // through the KPI" is a true sentence in the same spec.
+      expect(
+        [...text.matchAll(/[Tt]imeline[^.]{0,200}\b(?:in|on) the printed report/g)].map((m) => m[0]),
+        `${file} still puts the timeline in the printed report`,
+      ).toEqual([])
+      expect(text, `${file} no longer says where the timeline is`).toMatch(
+        /in the case summary sheet and on the handover sheet/,
+      )
+    }
+  })
+})
+
 describe('item 6: the alert email retry pass', () => {
   const compose = readFileSync(path.join(ROOT, 'docker-compose.production.yml'), 'utf8')
   const worker = readFileSync(path.join(ROOT, 'worker/alerts.ts'), 'utf8')
