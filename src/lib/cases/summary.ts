@@ -70,8 +70,12 @@ export type SummaryReason = {
 
 /**
  * One deck category. `count` is the evidence behind it: the tagged updates, plus one for the
- * timestamp that records it where there is one (the escalation, the bed request, the transfer
- * request). A kind is documented exactly when `count > 0`, which is `actionsDocumented`'s rule.
+ * timestamp that records it where there is one (the bed request, the transfer request). A kind is
+ * documented exactly when `count > 0`, which is `actionsDocumented`'s rule.
+ *
+ * The escalation is the one kind that folds (Phase 15, item 8): the chip, the medical-admin time
+ * and the row Phase 14's mirroring rule appended from the chip are one escalation, so they add
+ * one between them. `recordedStep` below is where that is decided.
  */
 export type SummaryAction = { kind: ActionKind; name: string; count: number }
 
@@ -169,9 +173,21 @@ export function caseClockOf(
  * What the case itself records that documents a kind, with no update at all (`actionKindsOf` in
  * kpi.ts). Phase 14 added the escalation chip beside the medical-admin timestamp there, so it is
  * added here too: the panel and the deck must never disagree about one case.
+ *
+ * Phase 15, item 8 (Ahmed, after working the Phase 14 sheet): the escalation is counted ONCE.
+ * Phase 14's mirroring rule appends a `CaseUpdate` tagged LEADERSHIP_ESCALATION when the chip
+ * goes to Yes with a text beside it, so the chip and that row are one escalation recorded twice,
+ * and the panel read "Leadership escalation ×2" for it. The case's own records of an escalation —
+ * the medical-admin time and the chip — therefore add one between them, and only when no tagged
+ * update already stands for it.
+ *
+ * `tagged` is that count, and it is passed rather than looked up so this stays a pure predicate.
+ * The other two kinds do not take it: a bed-request time and a note about bed management are two
+ * different pieces of evidence, and neither is ever mirrored from the other.
  */
-function recordedStep(draft: CaseDraft, kind: ActionKind): boolean {
+function recordedStep(draft: CaseDraft, kind: ActionKind, tagged: number): boolean {
   if (kind === 'LEADERSHIP_ESCALATION') {
+    if (tagged > 0) return false
     return draft.medAdminInformedAt !== null || draft.escalatedToMedicalDirector === true
   }
   if (kind === 'BED_MANAGEMENT') return draft.bedRequestedAt !== null
@@ -212,11 +228,10 @@ export function summaryOf(loaded: LoadedCase, reference: ReferenceData, now: Dat
   const end = endAt(clock)
 
   const tagged = taggedCounts(loaded.updates)
-  const actions: SummaryAction[] = SUMMARY_ACTION_KINDS.map(([kind, name]) => ({
-    kind,
-    name,
-    count: (tagged.get(kind) ?? 0) + (recordedStep(draft, kind) ? 1 : 0),
-  }))
+  const actions: SummaryAction[] = SUMMARY_ACTION_KINDS.map(([kind, name]) => {
+    const taggedCount = tagged.get(kind) ?? 0
+    return { kind, name, count: taggedCount + (recordedStep(draft, kind, taggedCount) ? 1 : 0) }
+  })
 
   const lastUpdate = loaded.updates.reduce<string | null>(
     (latest, u) => (latest === null || u.createdAt > latest ? u.createdAt : latest),

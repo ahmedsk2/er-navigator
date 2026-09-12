@@ -235,8 +235,9 @@ describe('summaryOf', () => {
   it('counts the six deck categories from the tags and from the times the case records', () => {
     const s = summaryOf(loaded(), REFERENCE, NOW)
     expect(s.actions.map((a) => [a.name, a.count])).toEqual([
-      // One tagged update plus the escalation time on the case.
-      ['Leadership escalation', 2],
+      // One tagged update. The escalation time on the case adds nothing beside it: Phase 15,
+      // item 8 — one escalation is counted once, however many ways it was recorded.
+      ['Leadership escalation', 1],
       // One tagged update plus the bed request time.
       ['Case / bed management', 2],
       ['External transfer / fax / RCC', 0],
@@ -316,15 +317,80 @@ describe('summaryOf', () => {
   })
 
   it('counts the escalation chip as a leadership escalation, as kpi.ts does', () => {
-    // No medAdminInformedAt on this one: the chip alone has to carry it, or the panel and the
-    // weekly deck would disagree about the same case.
+    // No medAdminInformedAt and no tagged update on this one: the chip alone has to carry it, or
+    // the panel and the weekly deck would disagree about the same case.
     const s = summaryOf(
-      loaded({}, { medAdminInformedAt: null, escalatedToMedicalDirector: true }),
+      loaded({ updates: [] }, { medAdminInformedAt: null, escalatedToMedicalDirector: true }),
       REFERENCE,
       NOW,
     )
     const escalation = s.actions.find((a) => a.kind === 'LEADERSHIP_ESCALATION')!
-    expect(escalation.count).toBeGreaterThan(0)
+    expect(escalation.count).toBe(1)
+  })
+
+  /**
+   * Phase 15, item 8 — the first of the two questions the Phase 14 close left with Ahmed.
+   *
+   * Phase 14's mirroring rule appends a `CaseUpdate` tagged LEADERSHIP_ESCALATION when the chip
+   * goes to Yes with a text beside it. That row and the chip are ONE escalation, and counting
+   * both read "Leadership escalation ×2" for it. The case's own records — the medical-admin time
+   * and the chip — now add one between them, and only when no tagged update already stands for
+   * the escalation.
+   */
+  const escalationCount = (over: Partial<LoadedCase>, draftOver: Partial<CaseDraft>): number =>
+    summaryOf(loaded(over, draftOver), REFERENCE, NOW).actions.find(
+      (a) => a.kind === 'LEADERSHIP_ESCALATION',
+    )!.count
+
+  describe('the escalation is counted once (Phase 15, item 8)', () => {
+    const mirrored = [
+      { id: 'm1', createdAt: T(4), text: 'Escalated to the medical director', author: 'Nadia', action: 'LEADERSHIP_ESCALATION' as const },
+    ]
+
+    it('reads one for a chip and the row the save mirrored from it', () => {
+      expect(
+        escalationCount(
+          { updates: mirrored },
+          { medAdminInformedAt: null, escalatedToMedicalDirector: true, delayActionTaken: 'Escalated to the medical director' },
+        ),
+      ).toBe(1)
+    })
+
+    it('reads one for the medical-admin time beside that same row', () => {
+      expect(escalationCount({ updates: mirrored }, { escalatedToMedicalDirector: true })).toBe(1)
+      expect(escalationCount({ updates: mirrored }, { escalatedToMedicalDirector: null })).toBe(1)
+    })
+
+    it('still reads one for the time alone, as it has since Phase 8b', () => {
+      expect(escalationCount({ updates: [] }, { escalatedToMedicalDirector: null })).toBe(1)
+    })
+
+    it('reads none when nothing records an escalation at all', () => {
+      expect(
+        escalationCount({ updates: [] }, { medAdminInformedAt: null, escalatedToMedicalDirector: false }),
+      ).toBe(0)
+    })
+
+    /** Two notes are two notes: only the case's own records are folded, never the updates. */
+    it('still counts two hand-tagged escalation updates as two', () => {
+      expect(
+        escalationCount(
+          {
+            updates: [
+              ...mirrored,
+              { id: 'm2', createdAt: T(3), text: 'Second escalation', author: 'Nadia', action: 'LEADERSHIP_ESCALATION' as const },
+            ],
+          },
+          { escalatedToMedicalDirector: true },
+        ),
+      ).toBe(2)
+    })
+
+    /** The other two kinds are untouched: a bed-request time and a note about it are two things. */
+    it('leaves bed management and the transfer pathway counting both', () => {
+      const s = summaryOf(loaded(), REFERENCE, NOW)
+      expect(s.actions.find((a) => a.kind === 'BED_MANAGEMENT')!.count).toBe(2)
+    })
   })
 
   it('reads a blank working diagnosis as nothing recorded, not as an empty line', () => {
@@ -374,7 +440,9 @@ describe('summaryText', () => {
 
   it('names the teams, the documented actions and the update count', () => {
     expect(text).toContain('Teams: Internal Medicine, General Surgery')
-    expect(text).toContain('Documented actions: Leadership escalation ×2, Case / bed management ×2')
+    // Phase 15, item 8: the escalation is counted once — the tagged update and the case's own
+    // records of it are the same escalation. Bed management is two: a request time and a note.
+    expect(text).toContain('Documented actions: Leadership escalation ×1, Case / bed management ×2')
     expect(text).toContain('Updates: 3, last ')
   })
 
