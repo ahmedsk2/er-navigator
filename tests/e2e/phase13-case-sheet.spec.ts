@@ -269,6 +269,30 @@ test('LWBS hides the physician and the decision, and still shows what was record
 })
 
 /**
+ * P13.45. Closed, "More to record" is a button and nothing else, and a button that reveals
+ * nothing recorded is a line on a printed sheet that says only that a screen has a control. It is
+ * `.no-print` while it is closed; open, it prints as the heading of what follows.
+ */
+test('the More to record toggle prints only when it is open', async ({ page }, testInfo) => {
+  const mobile = testInfo.project.name === 'mobile'
+  await fromClientIp(page, mobile ? '203.0.113.23' : '203.0.113.24')
+  await signIn(page, E2E_USERS.navigator)
+  await page.goto('/cases/new')
+
+  const more = page.getByRole('button', { name: 'More to record', exact: true })
+  await expect(more).toHaveAttribute('aria-expanded', 'false')
+  await page.emulateMedia({ media: 'print' })
+  await expect(more).toBeHidden()
+
+  await page.emulateMedia({ media: 'screen' })
+  await openMoreToRecord(page)
+  await page.emulateMedia({ media: 'print' })
+  await expect(more).toBeVisible()
+  await expect(page.getByLabel('Working diagnosis (optional)', { exact: true })).toBeVisible()
+  await page.emulateMedia({ media: null })
+})
+
+/**
  * P13.41, the reopen trap. Decision C is enforced at "Mark resolved" and there is no migration, so
  * a case resolved before the rule — or seeded without the times its outcome needs — reopened in
  * one tap and then could not be closed again until they were entered, with nothing on the screen

@@ -1065,8 +1065,11 @@ export function CaseEditor(props: CaseEditorProps) {
           Everything inside keeps the label, the group name and the per-field condition it had as
           a section of its own. */}
       <Section>
+        {/* P13.45: closed, this button is the whole of the section and it reveals nothing that was
+            recorded, so on paper it is a line that says only that a screen has a control. Open, it
+            prints with what it holds — the heading of what follows. */}
         <Button
-          className="w-full text-left"
+          className={`w-full text-left${moreOpen ? '' : ' no-print'}`}
           aria-expanded={moreOpen}
           disabled={busy}
           onClick={() => setMoreOpen(!moreOpen)}
