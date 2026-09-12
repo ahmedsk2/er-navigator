@@ -69,6 +69,24 @@ export function lastUpdateText(row: BoardRow): string {
 }
 
 /**
+ * What was done about the delay, and whether it went to the medical director (Phase 14), as one
+ * line — or null when the case carries neither, so a sheet of cases nobody has answered is the
+ * sheet it always was.
+ *
+ * A line and not an eighth column: the table's seven headers are pinned and a ward printer's page
+ * is already full, and this is prose of up to a thousand characters, which no column would hold.
+ */
+export function actionLine(row: BoardRow): string | null {
+  const parts: string[] = []
+  const action = row.delayActionTaken?.trim()
+  if (action) parts.push(`Action: ${action}`)
+  if (row.escalatedToMedicalDirector != null) {
+    parts.push(`Escalated to medical director: ${row.escalatedToMedicalDirector ? 'Yes' : 'No'}`)
+  }
+  return parts.length > 0 ? parts.join(' · ') : null
+}
+
+/**
  * The case's time sequence in one line under its row (Phase 8): "08:12 Registration · +0h 14m
  * Triage · …", the same `timeline()` steps the case page lists, printed compactly because the
  * sheet's job is to be read at a shift handover, not to be a per-case slide.
@@ -88,6 +106,19 @@ function TimelineRow({ row }: { row: BoardRow }) {
             {step.fromPrevious == null ? null : <span className="num"> (+{fmtHours(step.fromPrevious)})</span>}
           </span>
         ))}
+      </td>
+    </tr>
+  )
+}
+
+/** `actionLine` under the case, when there is one (Phase 14). */
+function ActionRow({ row }: { row: BoardRow }) {
+  const line = actionLine(row)
+  if (!line) return null
+  return (
+    <tr className="break-inside-avoid" data-action-row={row.mrn}>
+      <td className={`${CELL} text-[10px] leading-tight`} colSpan={7}>
+        {line}
       </td>
     </tr>
   )
@@ -176,6 +207,7 @@ export function HandoverSheet({
               <td className={CELL}>{resolvedText(row)}</td>
             </tr>
             <TimelineRow row={row} />
+            <ActionRow row={row} />
             </Fragment>
           ))}
         </tbody>

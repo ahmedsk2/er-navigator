@@ -200,6 +200,19 @@ export function CaseSummaryDialog({ summary, onClose }: { summary: CaseSummary; 
                 }
               />
               <Row label="Teams" value={summary.departments.join(', ') || 'none'} />
+              {/* Phase 14: the two answers the Resolve block carries, when the case carries them.
+                  `Row` draws nothing for a null, so a case nobody has answered reads as it did. */}
+              <Row label="What was done" value={summary.delayActionTaken} />
+              <Row
+                label="Escalated to medical director"
+                value={
+                  summary.escalatedToMedicalDirector == null
+                    ? null
+                    : summary.escalatedToMedicalDirector
+                      ? 'Yes'
+                      : 'No'
+                }
+              />
               <Row
                 label="Documented actions"
                 value={
@@ -238,7 +251,13 @@ export function CaseSummaryDialog({ summary, onClose }: { summary: CaseSummary; 
           <h3 className="mt-3.5 mb-1 text-label font-medium text-muted">Time sequence</h3>
           <ol className="m-0 list-none p-0" data-summary-timeline>
             {summary.timeline.map((step) => (
-              <li key={step.key} className="flex items-baseline gap-2 border-b border-line-soft py-1 last:border-b-0">
+              /* Phase 14: `data-timeline-step` moved here with the timeline itself, off the case
+                 page — the suites read the sequence where it is now shown. */
+              <li
+                key={step.key}
+                data-timeline-step={step.key}
+                className="flex items-baseline gap-2 border-b border-line-soft py-1 last:border-b-0"
+              >
                 <span className="num w-[86px] shrink-0 text-caption text-muted">{fmtStamp(step.at)}</span>
                 <span className="min-w-0 flex-1 text-body text-ink">{step.label}</span>
                 {step.fromPrevious == null ? null : (

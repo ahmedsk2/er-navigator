@@ -47,6 +47,9 @@ const BOARD_ROW_SELECT = {
   diagnosis: true,
   // Phase 8b, decision H: the row's "Reviewed" chip.
   reviewedAt: true,
+  // Phase 14: the line the handover sheet prints under the case.
+  delayActionTaken: true,
+  escalatedToMedicalDirector: true,
   triageAt: true,
   roomAt: true,
   physicianAt: true,
@@ -122,6 +125,8 @@ type SelectedRow = Milestones & {
   payer: BoardRow['payer']
   diagnosis: string | null
   reviewedAt: Date | null
+  delayActionTaken: string | null
+  escalatedToMedicalDirector: boolean | null
   primaryReason: { name: string } | null
   ward: { code: string } | null
   area: { code: string } | null
@@ -168,6 +173,8 @@ function toBoardRow(row: SelectedRow): BoardRow {
     createdAt: row.createdAt.toISOString(),
     lastUpdateAt: iso(row.updates[0]?.createdAt ?? null),
     reviewedAt: iso(row.reviewedAt),
+    delayActionTaken: row.delayActionTaken,
+    escalatedToMedicalDirector: row.escalatedToMedicalDirector,
     timeline: timelineOf({
       status: row.status,
       registrationAt: row.registrationAt,

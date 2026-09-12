@@ -61,6 +61,14 @@ export type BoardRow = {
    */
   reviewedAt: string | null
   /**
+   * Phase 14: "What was done to solve the delay" and whether the case went to the medical
+   * director, for the line the handover sheet prints under the case (`actionLine`). Not drawn on
+   * the screen row, which has one line to say what happened to the patient; the sheet is the
+   * place a charge nurse reads at a shift change and asks "and what did we do about it?".
+   */
+  delayActionTaken: string | null
+  escalatedToMedicalDirector: boolean | null
+  /**
    * The case's recorded milestones in time order (Phase 8), for the compact timeline on the
    * handover sheet. It rides on the row rather than being fetched for the sheet alone because
    * the sheet prints whatever the board is currently showing — filtered and sorted in the

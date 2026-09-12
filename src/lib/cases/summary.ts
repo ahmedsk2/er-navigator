@@ -12,8 +12,9 @@
  *   - MRN only. No name, no national ID, no date of birth — the hard rule — and, beyond that,
  *     NO FREE TEXT A NAVIGATOR TYPED: not an update's text, not the resolution note. The summary
  *     is built to be shared, and free text is where a name gets typed by accident. The working
- *     diagnosis and an "Other" reason box are the two exceptions, and they are here because they
- *     are the clinical line the summary is about; both are identifier-warned in the editor.
+ *     diagnosis, an "Other" reason box and, from Phase 14, "What was done to solve the delay" are
+ *     the three exceptions, and they are here because they are the clinical or operational line
+ *     the summary is about; all three are identifier-warned in the editor.
  *   - Nothing is computed twice. The elapsed clock is `elapsedHours` over `caseClockOf` (the
  *     board's formula, and the clock the editor's header reads), the time sequence is
  *     `timeline()`'s (already on the loaded case), and the documented actions follow
@@ -104,6 +105,12 @@ export type CaseSummary = {
   /** The teams consulted, by name. */
   departments: string[]
   actions: SummaryAction[]
+  /**
+   * Phase 14: what was done about the delay, and whether it went to the medical director. Null
+   * for either when nothing was recorded, so the row and the line are simply not drawn.
+   */
+  delayActionTaken: string | null
+  escalatedToMedicalDirector: boolean | null
   updates: { count: number; lastAt: string | null }
   outcome: SummaryOutcome
   timeline: TimelineStepView[]
@@ -232,6 +239,8 @@ export function summaryOf(loaded: LoadedCase, reference: ReferenceData, now: Dat
       .map((c) => departmentById.get(c.departmentId))
       .filter((name): name is string => !!name),
     actions,
+    delayActionTaken: draft.delayActionTaken.trim() === '' ? null : draft.delayActionTaken,
+    escalatedToMedicalDirector: draft.escalatedToMedicalDirector,
     updates: { count: loaded.updates.length, lastAt: lastUpdate },
     outcome: {
       dispositionLabel: draft.disposition ? DISPOSITION_LABELS[draft.disposition] : null,
@@ -284,6 +293,11 @@ export function summaryText(summary: CaseSummary): string {
     'Waiting on:',
     ...(summary.reasons.length > 0 ? summary.reasons.map(reasonLine) : ['  - no reason recorded']),
     line('Teams', summary.departments.join(', ') || 'none'),
+    line('What was done', summary.delayActionTaken),
+    line(
+      'Escalated to medical director',
+      summary.escalatedToMedicalDirector == null ? null : summary.escalatedToMedicalDirector ? 'Yes' : 'No',
+    ),
     line(
       'Documented actions',
       documented.length > 0 ? documented.map((a) => `${a.name} ×${a.count}`).join(', ') : 'none',

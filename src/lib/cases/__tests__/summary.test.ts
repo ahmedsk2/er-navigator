@@ -283,6 +283,50 @@ describe('summaryOf', () => {
     expect(summaryOf(loaded(), REFERENCE, NOW).timeline.map((s) => s.label)).toEqual(['Registration', 'Triage'])
   })
 
+  /**
+   * Phase 14 (docs/specs/phase14-actions-and-escalation.md, item 7). The two answers the Resolve
+   * block now carries, and the recorded exception this file's rule gains for the first of them:
+   * the text a navigator typed into "What was done to solve the delay" IS shown, because it is
+   * the operational line the summary is about and it is identifier-warned in the editor. The
+   * resolution note and an update's text are still never quoted.
+   */
+  it('carries the delay action and the escalation, and shows them in the text', () => {
+    const s = summaryOf(
+      loaded({}, { delayActionTaken: 'Bed manager called twice; ICU holding a bed', escalatedToMedicalDirector: true }),
+      REFERENCE,
+      NOW,
+    )
+    expect(s.delayActionTaken).toBe('Bed manager called twice; ICU holding a bed')
+    expect(s.escalatedToMedicalDirector).toBe(true)
+    const text = summaryText(s)
+    expect(text).toContain('What was done: Bed manager called twice; ICU holding a bed')
+    expect(text).toContain('Escalated to medical director: Yes')
+  })
+
+  it('says No when the answer was No, and neither line when nothing was recorded', () => {
+    const no = summaryText(summaryOf(loaded({}, { escalatedToMedicalDirector: false }), REFERENCE, NOW))
+    expect(no).toContain('Escalated to medical director: No')
+
+    const silent = summaryOf(loaded({}, { delayActionTaken: '   ' }), REFERENCE, NOW)
+    expect(silent.delayActionTaken).toBeNull()
+    expect(silent.escalatedToMedicalDirector).toBeNull()
+    const text = summaryText(silent)
+    expect(text).not.toContain('What was done')
+    expect(text).not.toContain('Escalated to medical director')
+  })
+
+  it('counts the escalation chip as a leadership escalation, as kpi.ts does', () => {
+    // No medAdminInformedAt on this one: the chip alone has to carry it, or the panel and the
+    // weekly deck would disagree about the same case.
+    const s = summaryOf(
+      loaded({}, { medAdminInformedAt: null, escalatedToMedicalDirector: true }),
+      REFERENCE,
+      NOW,
+    )
+    const escalation = s.actions.find((a) => a.kind === 'LEADERSHIP_ESCALATION')!
+    expect(escalation.count).toBeGreaterThan(0)
+  })
+
   it('reads a blank working diagnosis as nothing recorded, not as an empty line', () => {
     expect(summaryOf(loaded({}, { diagnosis: '   ' }), REFERENCE, NOW).diagnosis).toBeNull()
   })

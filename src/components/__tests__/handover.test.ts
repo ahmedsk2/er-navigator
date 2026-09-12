@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BoardRow } from '@/src/lib/board/types'
 import { EMPTY_FILTER, type CaseFilter } from '@/src/lib/domain/case-filter'
-import { lastUpdateText, narrowingLine } from '../board/HandoverSheet'
+import { actionLine, lastUpdateText, narrowingLine } from '../board/HandoverSheet'
 
 /**
  * The line a handover sheet prints under its stamp when the board it was printed from was
@@ -81,6 +81,8 @@ describe('lastUpdateText', () => {
     createdAt: '2026-09-09T03:00:00.000Z',
     lastUpdateAt: null,
     reviewedAt: null,
+    delayActionTaken: null,
+    escalatedToMedicalDirector: null,
     timeline: [],
     ...over,
   })
@@ -106,5 +108,53 @@ describe('lastUpdateText', () => {
 
   it('never prints a relative time', () => {
     expect(lastUpdateText(row({ lastUpdateAt: new Date().toISOString() }))).toMatch(/^\d\d\/\d\d \d\d:\d\d$/)
+  })
+})
+
+/**
+ * Phase 14 (docs/specs/phase14-actions-and-escalation.md, item 7): the line the sheet prints under
+ * a case that carries what was done about its delay, or an answer about the medical director.
+ */
+describe('actionLine', () => {
+  const row = (over: Partial<BoardRow>): BoardRow => ({
+    id: 'c1',
+    mrn: '100001',
+    status: 'OPEN',
+    registrationAt: '2026-09-09T02:00:00.000Z',
+    departedAt: null,
+    resolvedAt: null,
+    ctas: null,
+    area: null,
+    payer: null,
+    diagnosis: null,
+    primaryReason: null,
+    stageCodes: [],
+    reasonNames: [],
+    departments: [],
+    disposition: null,
+    ward: null,
+    createdAt: '2026-09-09T03:00:00.000Z',
+    lastUpdateAt: null,
+    reviewedAt: null,
+    delayActionTaken: null,
+    escalatedToMedicalDirector: null,
+    timeline: [],
+    ...over,
+  })
+
+  it('prints nothing for a case nobody has answered, so an old sheet is unchanged', () => {
+    expect(actionLine(row({}))).toBeNull()
+    expect(actionLine(row({ delayActionTaken: '   ' }))).toBeNull()
+  })
+
+  it('prints the action, the escalation, or both on the one line', () => {
+    expect(actionLine(row({ delayActionTaken: 'Bed manager called twice' }))).toBe(
+      'Action: Bed manager called twice',
+    )
+    expect(actionLine(row({ escalatedToMedicalDirector: true }))).toBe('Escalated to medical director: Yes')
+    expect(actionLine(row({ escalatedToMedicalDirector: false }))).toBe('Escalated to medical director: No')
+    expect(
+      actionLine(row({ delayActionTaken: '  ICU holding a bed  ', escalatedToMedicalDirector: true })),
+    ).toBe('Action: ICU holding a bed · Escalated to medical director: Yes')
   })
 })
