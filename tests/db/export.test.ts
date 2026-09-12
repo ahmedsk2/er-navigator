@@ -256,6 +256,9 @@ beforeAll(async () => {
       departedAt: at(DAY_TWO, 14).toISOString(),
       instructionsGiven: 'YES',
       familyEngagement: 'NOT_SURE',
+      // Phase 14: the two columns the Cases sheet ends with, and the update the resolve mirrors.
+      delayActionTaken: 'Called the on-call director; family kept informed',
+      escalatedToMedicalDirector: true,
       version: 1,
     },
     ctxFor(navigator.id),
@@ -530,6 +533,31 @@ describe('GET /api/export.xlsx as a SUPERVISOR', () => {
     )
   })
 
+  /**
+   * Phase 14 (docs/specs/phase14-actions-and-escalation.md, item 6). The two columns on the real
+   * workbook, and the mirrored row on the Updates sheet beside them: the text a navigator typed
+   * into the Resolve block reaches both, through one save.
+   */
+  it('ends the Cases sheet with the delay action and the escalation, and mirrors the text into Updates', async () => {
+    const workbook = await workbookOf(
+      await exportWorkbookResponse(supervisor, RANGE, ctxFor(supervisor.id), new Date()),
+    )
+    const cases = workbook.getWorksheet('Cases')!
+    const header = cases.getRow(1).values as ExcelJS.CellValue[]
+    expect(header.slice(-2)).toEqual(['What was done to solve the delay', 'Escalated to medical director'])
+
+    const mrns = columnValues(cases, 'MRN')
+    const index = mrns.indexOf(seeded.resolved)
+    expect(index).toBeGreaterThanOrEqual(0)
+    expect(columnValues(cases, 'What was done to solve the delay')[index]).toBe(
+      'Called the on-call director; family kept informed',
+    )
+    expect(columnValues(cases, 'Escalated to medical director')[index]).toBe('Yes')
+
+    const updates = workbook.getWorksheet('Updates')!
+    expect(columnValues(updates, 'Update')).toContain('Called the on-call director; family kept informed')
+  })
+
   it('gives every sheet a bold, frozen header row', async () => {
     const workbook = await workbookOf(
       await exportWorkbookResponse(supervisor, RANGE, ctxFor(supervisor.id), new Date()),
@@ -586,10 +614,11 @@ describe('GET /api/export.xlsx as a SUPERVISOR', () => {
     const one = loaded.find((c) => c.mrn === seeded.open1)!
     expect(one.updateActions).toEqual(['BED_MANAGEMENT'])
     expect(one.untaggedUpdatesCount).toBe(1) // "Chased the lab", written with no category
-    // The resolved case's only update is the one the resolve appended: a system row, so neither
-    // a tag nor an untagged update (Phase 8b review C2).
+    // The resolved case has two rows: the one the resolve mirrored from its delay action, tagged
+    // by the escalation chip (Phase 14), and the app's own "Resolved: …" note, which is a system
+    // row and is therefore neither a tag nor an untagged update (Phase 8b review C2).
     const three = loaded.find((c) => c.mrn === seeded.resolved)!
-    expect(three.updateActions).toEqual([])
+    expect(three.updateActions).toEqual(['LEADERSHIP_ESCALATION'])
     expect(three.untaggedUpdatesCount).toBe(0)
   })
 

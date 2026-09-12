@@ -74,3 +74,12 @@ export function fmtHours2(hours: number | null | undefined): number | null {
 export function yesOrBlank(value: boolean): string {
   return value ? 'Yes' : ''
 }
+
+/**
+ * A three-state answer: "Yes", "No", or blank for one nobody was asked (Phase 14). Unlike
+ * `yesOrBlank` above, a No is written out, because "we did not escalate this case" is an answer
+ * the weekly deck reads and "nobody recorded whether we did" is not.
+ */
+export function yesNoOrBlank(value: boolean | null | undefined): string {
+  return value == null ? '' : value ? 'Yes' : 'No'
+}

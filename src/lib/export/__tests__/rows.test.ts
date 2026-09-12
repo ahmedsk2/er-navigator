@@ -56,7 +56,13 @@ const asExport = (c: CaseForStats, extra: Partial<CaseForExport> = {}): CaseForE
 
 const CASES: CaseForExport[] = FIXTURE.map((c) => {
   // Phase 10: C1 is already the CTAS / ED area case, so it carries the two new fields too.
-  if (c.id === 'C1') return asExport(c, { diagnosis: 'Chest pain, for admission', payer: 'INSURED' })
+  if (c.id === 'C1')
+    return asExport(c, {
+      diagnosis: 'Chest pain, for admission',
+      payer: 'INSURED',
+      // Phase 14: asked and answered No, which is not the same as never asked (C3, below).
+      escalatedToMedicalDirector: false,
+    })
   if (c.id === 'C5')
     return asExport(c, {
       wardCode: 'ICU',
@@ -64,6 +70,8 @@ const CASES: CaseForExport[] = FIXTURE.map((c) => {
       medAdminInformedAt: c.admOrderAt,
       triageAt: c.registrationAt,
       resolutionNote: 'Admitted to ICU',
+      delayActionTaken: 'Bed manager called twice; ICU holding a bed for 14:00',
+      escalatedToMedicalDirector: true,
       updates: [
         { at: c.registrationAt, text: 'Bed requested', authorName: 'Nadia Navigator' },
         { at: c.departedAt!, text: 'Resolved: Admitted', authorName: 'Sami Supervisor' },
@@ -189,6 +197,36 @@ describe('casesSheet', () => {
     // admOrderAt is 27 h before NOW, bedAssignedAt 23 h: four hours.
     expect(row[column(CASES_HEADER, 'Order to bed (h)')]).toBe(4)
     expect(row[column(CASES_HEADER, 'Note')]).toBe('Admitted to ICU')
+  })
+
+  /**
+   * Phase 14 (docs/specs/phase14-actions-and-escalation.md, item 6). The two answers that replaced
+   * the Updates composer, on the per-case sheet, after the resolution note. The Updates sheet is
+   * one row per update and stays exactly as it was: the text reaches it through the mirrored row.
+   */
+  it('ends the Cases sheet with the delay action and the escalation', () => {
+    expect(CASES_HEADER.slice(-3)).toEqual([
+      'Note',
+      'What was done to solve the delay',
+      'Escalated to medical director',
+    ])
+    const row = rowFor(sheet.rows, '100005')
+    expect(row[column(CASES_HEADER, 'What was done to solve the delay')]).toBe(
+      'Bed manager called twice; ICU holding a bed for 14:00',
+    )
+    expect(row[column(CASES_HEADER, 'Escalated to medical director')]).toBe('Yes')
+
+    // "No" is an answer and is written as one; unset is blank, the way isolation's blank works.
+    const c1 = rowFor(sheet.rows, '100001')
+    expect(c1[column(CASES_HEADER, 'What was done to solve the delay')]).toBe('')
+    expect(c1[column(CASES_HEADER, 'Escalated to medical director')]).toBe('No')
+    const c3 = rowFor(sheet.rows, '100003')
+    expect(c3[column(CASES_HEADER, 'Escalated to medical director')]).toBe('')
+  })
+
+  /** The external forms are fixed column lists the receiving side matches on: neither is widened. */
+  it('leaves the Updates sheet at its four columns', () => {
+    expect(UPDATES_HEADER).toEqual(['MRN', 'Time', 'Update', 'By'])
   })
 
   it('carries the CTAS and the ED area, right after the shift, and blanks them when unrecorded', () => {

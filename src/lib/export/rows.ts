@@ -28,7 +28,7 @@ import {
   TRANSFER_STEPS,
 } from '@/src/lib/domain/taxonomy'
 import { MIN_N, duration, elapsedHours } from '@/src/lib/domain/time'
-import { fmtAt, fmtHours2, yesOrBlank } from './format'
+import { fmtAt, fmtHours2, yesNoOrBlank, yesOrBlank } from './format'
 import { riyadhWeekday, type ExportRange, EXPORT_STATUS_LABELS } from './range'
 
 /** One appended note. `CaseUpdate` is append-only, so this is the whole of its history. */
@@ -127,6 +127,12 @@ export const CASES_HEADER: string[] = [
   'Order to bed (h)',
   ...TRANSFER_STEPS.map(([, label]) => label),
   'Note',
+  // Phase 14 (docs/specs/phase14-actions-and-escalation.md, item 6). Two per-case answers, after
+  // the resolution note they sit beside on the sheet. Not on the Updates sheet, which is one row
+  // per update: the text reaches that sheet, and the QCH sheet's Comments column, as the mirrored
+  // `CaseUpdate` the save appended.
+  'What was done to solve the delay',
+  'Escalated to medical director',
 ]
 
 export function casesRow(c: CaseForExport, now: Date): Cell[] {
@@ -161,6 +167,8 @@ export function casesRow(c: CaseForExport, now: Date): Cell[] {
     fmtHours2(duration(c.admOrderAt, c.bedAssignedAt)),
     ...TRANSFER_STEPS.map(([field]) => fmtAt(c[field])),
     c.resolutionNote ?? '',
+    c.delayActionTaken ?? '',
+    yesNoOrBlank(c.escalatedToMedicalDirector),
   ]
 }
 
