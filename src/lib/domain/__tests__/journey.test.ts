@@ -264,6 +264,44 @@ describe('visibleJourneyFields once a disposition is chosen', () => {
     ).toEqual(CORE_JOURNEY_FIELDS)
   })
 
+  /**
+   * P15.40, spec row 1: once a disposition is set the outcome table governs, and the trajectory
+   * is not consulted again. OTHER is the only outcome that can prove it. Every other row carries
+   * a `hides` list, so `visibleJourneyFields` returns from the first rule and never reaches the
+   * trajectory one; OTHER's `hides` is null, so an OTHER case falls through to it and is the one
+   * case the `!context.disposition` guard on that rule actually decides. Without the guard an
+   * OTHER case would take its steps from the plan the nurse made hours earlier instead of from
+   * the outcome that overtook it — and the rest of this file would stay green.
+   */
+  it('reads the outcome and not the trajectory once OTHER is chosen', () => {
+    for (const trajectory of ['ADMISSION', 'TRANSFER'] as const) {
+      expect(
+        visibleJourneyFields({ disposition: 'OTHER', trajectory, stageCodes: [], requiresReferralNo: false }),
+        trajectory,
+      ).toEqual(CORE_JOURNEY_FIELDS)
+    }
+    // The other half of the same rule: with an outcome set, the stage implications are what they
+    // were, and a trajectory that contradicts them changes nothing.
+    expect(
+      visibleJourneyFields({
+        disposition: 'OTHER',
+        trajectory: 'DISCHARGE',
+        stageCodes: ['adm'],
+        requiresReferralNo: false,
+      }),
+    ).toEqual([
+      'triageAt',
+      'roomAt',
+      'physicianAt',
+      'decisionAt',
+      'admOrderAt',
+      'bedRequestedAt',
+      'bedAssignedAt',
+      'departedAt',
+      'medAdminInformedAt',
+    ])
+  })
+
   it('always shows Left ED, whatever the outcome', () => {
     for (const d of DISPOSITIONS) expect(after(d), d).toContain('departedAt')
   })
