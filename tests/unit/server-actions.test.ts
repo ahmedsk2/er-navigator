@@ -160,6 +160,32 @@ describe('every server action checks the caller server-side', () => {
     },
   )
 
+  /**
+   * Phase 15, item 10. A server action is a POST endpoint Next generates an id for, so one with
+   * no screen behind it is reachable surface for nothing. `addCaseUpdate` lost its only caller
+   * when Phase 14 took the Updates composer off the case page, and it is retired here.
+   *
+   * The service function stays, with its `case.update.add` permission check, its zod parse and
+   * its audit row: `tests/db/cases.test.ts` drives it, `mirrorDelayAction` appends through the
+   * same table, and Ahmed asked for the section to be hidden, not for the ability to append to
+   * be removed. This asserts both halves, so neither can be undone by accident.
+   */
+  it('exports exactly the case mutations the case page calls, and no orphan endpoint', () => {
+    const actions = readFileSync(path.join(ROOT, 'app/cases/actions.ts'), 'utf8')
+    expect(functionsIn(actions).exported.map((fn) => fn.name).sort()).toEqual([
+      'acknowledgeAlert',
+      'createCase',
+      'reopenCase',
+      'resolveCase',
+      'reviewCase',
+      'saveCase',
+      'voidCase',
+    ])
+    const service = readFileSync(path.join(ROOT, 'src/lib/cases/service.ts'), 'utf8')
+    expect(service, 'the append-an-update writer must stay').toMatch(/^export async function addCaseUpdate\b/m)
+    expect(service).toMatch(/assertCan\(actor, 'case\.update\.add', ctx\)/)
+  })
+
   it('lists every session-only exemption with a reason', () => {
     for (const [key, reason] of SESSION_ACTIONS) {
       const [relative, name] = key.split(':') as [string, string]

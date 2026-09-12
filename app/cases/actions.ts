@@ -9,6 +9,13 @@
  * here, so that exactly one `auth.forbidden` audit row is written per refusal and so the
  * database-backed tests can drive the real check without a Next request. A refusal reaches the
  * client as `{ ok: false, error: 'forbidden' }`; validation errors are never thrown.
+ *
+ * Phase 15, item 10: `addCaseUpdate` is not here any more. It lost its only caller when Phase 14
+ * took the Updates composer off the case page, and a server action with no screen behind it is a
+ * POST endpoint Next generates an id for and nothing calls. The SERVICE function stays, with its
+ * `case.update.add` check, its zod parse and its audit row — `tests/db/cases.test.ts` drives it,
+ * and `mirrorDelayAction` appends through the same table on every save that changes the delay
+ * action. Hiding the section was the request; removing the ability to append was not.
  */
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
@@ -17,7 +24,6 @@ import { auditContext, isForbiddenError, requireUser, type AuthUser } from '@/sr
 import * as service from '@/src/lib/cases/service'
 import type {
   ActionFailure,
-  AddUpdateResult,
   CreateCaseResult,
   ReopenCaseResult,
   ResolveCaseResult,
@@ -62,22 +68,6 @@ export async function saveCase(id: string, input: unknown): Promise<SaveCaseResu
   let result: SaveCaseResult
   try {
     result = await service.saveCase(user, id, input, ctx)
-  } catch (error) {
-    return asFailure(error)
-  }
-  if (result.ok) revalidateCase(id)
-  return result
-}
-
-/**
- * Phase 8b, decision C: `action` is the weekly deck's category for this update, or null when the
- * nurse tagged nothing. It is validated by the service (`updateActionSchema`), like the text.
- */
-export async function addCaseUpdate(id: string, text: string, action?: unknown): Promise<AddUpdateResult> {
-  const { user, ctx } = await currentActor()
-  let result: AddUpdateResult
-  try {
-    result = await service.addCaseUpdate(user, id, text, ctx, action)
   } catch (error) {
     return asFailure(error)
   }
