@@ -78,3 +78,44 @@ export async function openCase(
 export function uniqueMrn(): string {
   return String(700000 + Math.floor(Math.random() * 299999))
 }
+
+/**
+ * Phase 13. The five answers a navigator fills in when writing the case up — the shift, the
+ * working diagnosis, the payer, pain management and case management — are behind "More to
+ * record", closed on a case that carries none of them. Idempotent, so a spec can call it on a
+ * case that opened it by itself.
+ */
+export async function openMoreToRecord(page: Page): Promise<void> {
+  const button = page.getByRole('button', { name: 'More to record', exact: true })
+  if ((await button.getAttribute('aria-expanded')) !== 'true') await button.click()
+  await expect(button).toHaveAttribute('aria-expanded', 'true')
+}
+
+/**
+ * Phase 13, decision C: the journey times each outcome cannot be resolved without, by the label
+ * the "Patient journey" block shows. `recordJourney` taps each step's Now, which is what a nurse
+ * at the desk does; every step lands on the same instant, and equal times are in order.
+ */
+export const DISCHARGE_JOURNEY = ['Triage', 'First physician contact', 'Disposition decided', 'Left ED'] as const
+export const ADMISSION_JOURNEY = [
+  'Triage',
+  'First physician contact',
+  'Disposition decided',
+  'Admission order written',
+  'Bed assigned',
+  'Left ED',
+] as const
+export const TRANSFER_JOURNEY = [
+  'Triage',
+  'First physician contact',
+  'Disposition decided',
+  'Transfer requested',
+  'Accepted by facility',
+  'Left ED',
+] as const
+
+export async function recordJourney(page: Page, steps: ReadonlyArray<string>): Promise<void> {
+  for (const label of steps) {
+    await page.getByRole('button', { name: `Now — ${label}`, exact: true }).click()
+  }
+}

@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { statSync as fileStat } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 import { ALERT_MRN, ALERT_THRESHOLD_HOURS } from './fixtures/admin-cases'
-import { fromClientIp, openCase, signIn, Taps, uniqueMrn } from './fixtures/case-flow'
+import { fromClientIp, openCase, openMoreToRecord, signIn, Taps, uniqueMrn } from './fixtures/case-flow'
 import { E2E_TEMP_USER_PREFIX, E2E_USERS } from './fixtures/seed-users'
 
 /**
@@ -60,7 +60,9 @@ test('phase 12 the five MRN-only hints on a worked case', async ({ page }, testI
   await signIn(page, E2E_USERS.supervisor, taps)
   await openCase(page, uniqueMrn(), 'Admission process', 'No bed available on accepting ward', taps)
 
-  // Three by default; the "Other" chip opens a fourth and the void panel a fifth.
+  // Three with "More to record" open (Phase 13 put the working diagnosis inside it); the "Other"
+  // chip opens a fourth and the void panel a fifth.
+  await openMoreToRecord(page)
   await page
     .getByRole('group', { name: 'Admission process reasons' })
     .getByRole('button', { name: 'Other', exact: true })

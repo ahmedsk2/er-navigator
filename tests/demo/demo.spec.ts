@@ -152,9 +152,24 @@ async function update(page: Page, text: string, tag?: string): Promise<void> {
   act()
   await expect(page.getByRole('listitem').filter({ hasText: text }).first()).toBeVisible()
 }
-async function openJourney(page: Page): Promise<void> {
-  const add = page.getByRole('button', { name: 'Add journey times (optional)' })
-  if (await add.isVisible().catch(() => false)) await tap(add)
+/**
+ * Phase 13: the journey times are always on the sheet, and the shift, the working diagnosis, the
+ * payer, pain management and case management are behind "More to record", closed until a case
+ * carries one of them.
+ */
+async function openMore(page: Page): Promise<void> {
+  const more = page.getByRole('button', { name: 'More to record', exact: true })
+  if ((await more.getAttribute('aria-expanded')) !== 'true') await tap(more)
+  await expect(more).toHaveAttribute('aria-expanded', 'true')
+}
+
+/**
+ * Phase 13: a journey step with a time collapses to one line. Reopen every one of them before a
+ * screenshot of a worked case, so the sheet shows what was recorded rather than a list of lines.
+ */
+async function reopenJourney(page: Page): Promise<void> {
+  const edits = page.getByRole('button', { name: /^Edit — / })
+  for (let i = await edits.count(); i > 0; i -= 1) await edits.first().click()
 }
 async function choosePrimary(page: Page, reason: string): Promise<void> {
   const select = page.getByRole('combobox', { name: /^Primary reason/ })
@@ -484,11 +499,12 @@ async function openPatient(page: Page, p: Patient): Promise<void> {
   if (p === PATIENTS[0]!) await shot(page, 'new-case-blank')
   await fill(page.getByLabel('MRN (digits only)', { exact: true }), p.mrn)
   await fill(page.getByLabel('Registration time (clock starts here)', { exact: true }), at(p.regH))
+  await tap(chip(page, 'CTAS', String(p.ctas)))
+  await tap(chip(page, 'ED area', p.area))
+  await openMore(page)
   await page.getByRole('combobox', { name: /^Shift/ }).selectOption({ label: p.shift })
   act()
-  await tap(chip(page, 'CTAS', String(p.ctas)))
   await fill(page.getByLabel('Working diagnosis (optional)', { exact: true }), p.dx)
-  await tap(chip(page, 'ED area', p.area))
   await tap(chip(page, 'Payer', p.payer))
   const picked = new Set<string>()
   for (const d of p.delays) {
@@ -572,7 +588,6 @@ async function workPatient(page: Page, p: Patient): Promise<void> {
   await page.goto('/')
   await tap(page.locator(`a[data-mrn="${p.mrn}"]`))
   await expect(page.getByRole('heading', { name: `Case ${p.mrn}` })).toBeVisible()
-  await openJourney(page)
   for (const [label, h] of p.journey) await time(page, label, h)
   if (p.medAdminH != null) await time(page, 'Medical admin on-call informed at', p.medAdminH)
   if (p.inv) {
@@ -584,7 +599,10 @@ async function workPatient(page: Page, p: Patient): Promise<void> {
   if (p.transfer) for (const [label, h] of p.transfer.steps) await time(page, label, h)
   await save(page)
   for (const u of p.updates) await update(page, u.text, u.tag)
-  if (p === PATIENTS[0]!) await shot(page, 'case-worked')
+  if (p === PATIENTS[0]!) {
+    await reopenJourney(page)
+    await shot(page, 'case-worked')
+  }
   end(page)
 
   begin(`Summary of ${p.mrn} before resolving`, p.by)
@@ -604,7 +622,7 @@ async function workPatient(page: Page, p: Patient): Promise<void> {
   if (p.resolve.ward) await tap(chip(page, 'Ward', p.resolve.ward))
   if (p.resolve.instructions) await tap(chip(page, 'Instructions given by doctor', p.resolve.instructions))
   if (p.resolve.family) await tap(chip(page, 'Family engaged', p.resolve.family))
-  await fill(page.getByLabel('Left ED at (defaults to now)', { exact: true }), at(p.resolve.leftH))
+  await fill(page.getByLabel('Left ED', { exact: true }), at(p.resolve.leftH))
   await fill(page.getByLabel('Resolution note (optional)', { exact: true }), p.resolve.note)
   if (p === PATIENTS[0]!) await shot(page, 'resolve-filled')
   await tap(page.getByRole('button', { name: 'Mark resolved', exact: true }))

@@ -2,9 +2,18 @@
 
 /**
  * The case editor, ported section for section from the prototype's `CaseEditor`
- * (`docs/reference/ERNavigatorTracker.jsx`): identity and registration, where is the delay,
- * departments, investigations, admission, referral out, journey times, updates, resolve,
- * "Check these times", save.
+ * (`docs/reference/ERNavigatorTracker.jsx`) and reordered by patient flow in Phase 13
+ * (`docs/specs/phase13-case-sheet.md`; Ahmed, 12 September 2026): identity and registration, the
+ * patient journey, where is the delay, departments, investigations, referral out, more to
+ * record, updates, resolve, "Check these times", save.
+ *
+ * What Phase 13 moved, and why. The times used to be in four places — an optional "Add journey
+ * times" toggle near the foot of the page, an "Admission times" section, the transfer chain
+ * inside "Referral out", and "Left ED at" inside Resolve — so a nurse recording a stay walked the
+ * whole form twice. They are one block, `CaseJourney`, in flow order, second on the page. The
+ * fields nobody fills while the patient is in the department (shift, working diagnosis, payer,
+ * pain management, case management) are behind "More to record", which opens itself on a case
+ * that already carries one of them.
  *
  * The prototype wins on behaviour; the locked plan wins on permissions. A VIEWER and a voided
  * case both get exactly this screen with `readOnly` set: every control disabled, no Save, no Add,
@@ -51,7 +60,6 @@ import type {
 } from '@/src/lib/cases/types'
 import { conflictMessage } from '@/src/lib/cases/conflict'
 import {
-  ADMISSION_STEPS,
   ANSWER_LABELS,
   CASE_MANAGEMENT_LABELS,
   CONSULT_STEPS,
@@ -59,23 +67,22 @@ import {
   DISPOSITION_LABELS,
   INVESTIGATION_LABELS,
   INVESTIGATION_STEPS,
-  MILESTONES,
   PAYER_LABELS,
   PAYERS,
   PETHIDINE_DOSES,
   SHIFT_LABELS,
-  TRANSFER_STEPS,
   UPDATE_ACTION_LABELS,
 } from '@/src/lib/domain/taxonomy'
+import { missingJourneyTimes } from '@/src/lib/domain/journey'
+import { CaseJourney } from './CaseJourney'
 import { band, elapsedHours, fmtHours, spokenHours } from '@/src/lib/domain/time'
 import { BAND_TEXT } from '@/src/components/bands'
 import {
   Activity,
   Check,
-  ClipboardList,
+  Ellipsis,
   FileText,
   History,
-  ListChecks,
   TriangleAlert,
   Users,
 } from '@/src/components/icons'
@@ -215,7 +222,13 @@ export function CaseEditor(props: CaseEditorProps) {
   const [updateAction, setUpdateAction] = useState<(typeof UPDATE_ACTIONS)[number] | null>(null)
   const [updateWarnings, setUpdateWarnings] = useState<string[]>([])
   const [review, setReview] = useState(props.review ?? null)
-  const [showJourney, setShowJourney] = useState(!isNew)
+  /**
+   * "More to record" (Phase 13): closed on a new case, and open on an existing one that already
+   * carries one of its answers, so nothing already recorded is behind a tap. Computed once from
+   * the case as it loaded, not from the draft, so opening or closing it by hand survives every
+   * keystroke after it.
+   */
+  const [moreOpen, setMoreOpen] = useState(() => hasMoreToRecord(props.initial))
   const [issues, setIssues] = useState<ValidationIssue[]>([])
   const [conflict, setConflict] = useState<{ changedBy: string; changedAt: string } | null>(null)
   const [forbidden, setForbidden] = useState(false)
@@ -311,9 +324,13 @@ export function CaseEditor(props: CaseEditorProps) {
   const anyStageNeedsDepartment = selectedStages.some((s) => s.reasons.some((r) => r.requiresDepartment))
   const showDepartments = anyReasonNeedsDepartment || anyStageNeedsDepartment || stageCodes.has('adm') || stageCodes.has('dispo')
   const showInvestigations = stageCodes.has('inv')
-  const showAdmission = stageCodes.has('adm') || draft.disposition === 'ADMITTED'
-  const showReferral =
-    draft.reasons.some((r) => reasonById.get(r.reasonId)?.requiresReferralNo) || draft.disposition === 'TRANSFERRED'
+  /**
+   * A reason that needs a referral number. It is the trigger for "Referral out", which it always
+   * was, and one of the two triggers for the transfer steps inside the journey block (Phase 13;
+   * the other is the referral stage itself).
+   */
+  const requiresReferralNo = draft.reasons.some((r) => reasonById.get(r.reasonId)?.requiresReferralNo)
+  const showReferral = requiresReferralNo || draft.disposition === 'TRANSFERRED'
 
   const otherTexts = draft.reasons
     .filter((r) => reasonById.get(r.reasonId)?.isOther && r.otherText)
@@ -356,6 +373,23 @@ export function CaseEditor(props: CaseEditorProps) {
 
   const mrnOk = MRN_RE.test(draft.mrn)
   const canSave = mrnOk && Boolean(draft.registrationAt) && draft.reasons.length > 0
+
+  /**
+   * What this outcome still needs before it can be resolved (Phase 13, decision C), in the words
+   * the nurse reads on the sheet. The times come from `missingJourneyTimes`, which is the same
+   * table `buildCaseSchemas(...).resolve` refuses on, so the list under the button and the
+   * server's refusal are one rule. The other three are the ones the resolve schema already had.
+   */
+  const resolveMissing: string[] = draft.disposition
+    ? [
+        ...missingJourneyTimes(draft.disposition, draft).map(([, label]) => label),
+        ...(draft.disposition === 'ADMITTED' && !draft.wardId ? ['Ward'] : []),
+        ...((draft.disposition === 'TRANSFERRED' || requiresReferralNo) && !draft.referralTrackingNo.trim()
+          ? ['Referral tracking number']
+          : []),
+        ...(draft.disposition === 'TRANSFERRED' && !draft.transferFacility.trim() ? ['Receiving facility'] : []),
+      ]
+    : []
 
   // --- editing --------------------------------------------------------------------------------
 
@@ -590,10 +624,13 @@ export function CaseEditor(props: CaseEditorProps) {
   const disabled = readOnly || busy
 
   /**
-   * The strip's chips (Phase 11, finding 2): a worked case is seven phone screens long, and the
+   * The strip's chips (Phase 11, finding 2): a worked case is several phone screens long, and the
    * Updates box — what a navigator does most — and Resolve are at the bottom of it. One chip per
-   * section a nurse goes looking for, in page order; Teams and Tests only while their sections
-   * are on the page. "Times" is the journey times, the one section of times every case has.
+   * section a nurse goes looking for; Teams and Tests only while their sections are on the page.
+   * "Times" is the journey block.
+   *
+   * Phase 13 moved that block to the top of the page and left this order alone: the strip is a
+   * set of destinations a nurse has learned, and reshuffling it costs more than it explains.
    */
   const jumps: ReadonlyArray<{ id: string; label: string }> = [
     { id: JUMP.delay, label: 'Delay' },
@@ -789,30 +826,11 @@ export function CaseEditor(props: CaseEditorProps) {
           </ActionChip>
         </div>
         <p className="num mb-3.5 text-caption text-muted">Waiting {fmtHours(elapsed)} so far</p>
-        <div className="flex gap-2.5">
-          <div className="flex-1">
-            <Field label="Navigator">
-              <Input value={navigatorName} readOnly disabled />
-            </Field>
-          </div>
-          <div className="flex-1">
-            <Field label="Shift" htmlFor={shiftId}>
-              <Select
-                id={shiftId}
-                disabled={disabled}
-                value={draft.shift ?? ''}
-                onChange={(e) => set({ shift: (e.target.value || null) as CaseDraft['shift'] })}
-              >
-                <option value="">Select</option>
-                {SHIFTS.map((s) => (
-                  <option key={s} value={s}>
-                    {SHIFT_LABELS[s]}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
-        </div>
+        {/* Phase 13: the Shift select that shared this row moved to "More to record" with the
+            other two answers a navigator fills in when writing the case up. */}
+        <Field label="Navigator">
+          <Input value={navigatorName} readOnly disabled />
+        </Field>
 
         {/* Phase 8. Both optional: every KPI in the ED decks and the Adaa form is reported per
             CTAS and the March deck splits everything by area, but a navigator who does not know
@@ -830,26 +848,6 @@ export function CaseEditor(props: CaseEditorProps) {
             disabled={disabled}
           />
         </FieldGroup>
-        {/* Phase 10, Ahmed's second request of 10 September: one line, beside CTAS, so the board
-            row and the weekly deck can say what the patient came in with. It is a clinical line
-            and not an identifier — but it is free text, so `phiWarnings` reads it like every
-            other box and the 10-digit warning applies. */}
-        <Field label="Working diagnosis (optional)" htmlFor={diagnosisId}>
-          <DictationRow
-            disabled={disabled}
-            onText={(text) => set({ diagnosis: appendDictated(draft.diagnosis, text, DIAGNOSIS_MAX) })}
-          >
-            <Input
-              id={diagnosisId}
-              maxLength={DIAGNOSIS_MAX}
-              placeholder="one line, e.g. chest pain, for admission"
-              disabled={disabled}
-              value={draft.diagnosis}
-              onChange={(e) => set({ diagnosis: e.target.value })}
-            />
-          </DictationRow>
-          <MrnOnlyHint />
-        </Field>
         <FieldGroup label="ED area">
           <Chips
             groupLabel="ED area"
@@ -861,17 +859,19 @@ export function CaseEditor(props: CaseEditorProps) {
             disabled={disabled}
           />
         </FieldGroup>
-        {/* Phase 10, Ahmed's sixth request: who pays for the visit. Single-select with the same
-            gesture as every other chip row — tap again to clear. */}
-        <ChoiceRow
-          label="Payer"
-          options={PAYERS}
-          labelOf={(p) => PAYER_LABELS[p]}
-          value={draft.payer}
-          onChange={(v) => set({ payer: v })}
-          disabled={disabled}
-        />
       </Section>
+
+      {/* 2b. Patient journey (Phase 13): the one block of times, in flow order, second on the
+          page and on the new-case form alike. */}
+      <CaseJourney
+        id={JUMP.times}
+        values={draft}
+        onChange={(patch) => set(patch as Partial<CaseDraft>)}
+        disabled={disabled}
+        disposition={draft.disposition}
+        stageCodes={stageCodes}
+        requiresReferralNo={requiresReferralNo}
+      />
 
       {/* 3. Where is the delay */}
       <Section id={JUMP.delay} title="Where is the delay?" icon={<TriangleAlert size={18} />}>
@@ -1006,100 +1006,8 @@ export function CaseEditor(props: CaseEditorProps) {
         </Section>
       ) : null}
 
-      {/* 5b. Pain management (Phase 8b, decision F). Unconditional: Adaa KPI 8 is reported for
-          every case, not only for the ones with an investigation. Nothing here is required. */}
-      <Section title="Pain management (Adaa KPI 8)" icon={<ListChecks size={18} />}>
-        <ChoiceRow
-          label="Painkiller prescribed"
-          options={YES_NO}
-          labelOf={(v) => ANSWER_LABELS[v]}
-          value={draft.painkillerPrescribed}
-          onChange={setPainkillerPrescribed}
-          disabled={disabled}
-        />
-        {draft.painkillerPrescribed === 'YES' ? (
-          <>
-            <ChoiceRow
-              label="Pethidine"
-              options={PETHIDINE_OPTIONS}
-              labelOf={(v) => (v === 'NO' ? 'No' : `${v} mg`)}
-              value={pethidineChoice}
-              onChange={setPethidine}
-              disabled={disabled}
-            />
-            <TimeRow
-              label="Painkiller given at"
-              value={draft.painkillerAt}
-              onChange={(next) => set({ painkillerAt: next })}
-              disabled={disabled}
-            />
-          </>
-        ) : null}
-        <div className="mt-2">
-          <ChoiceRow
-            label="Sickle-cell treatment identified"
-            options={YES_NO}
-            labelOf={(v) => ANSWER_LABELS[v]}
-            value={draft.sickleCellTreatment}
-            onChange={(v) => set({ sickleCellTreatment: v })}
-            disabled={disabled}
-          />
-        </div>
-      </Section>
-
-      {/* 6. Admission times */}
-      {showAdmission ? (
-        <Section title="Admission times" icon={<ClipboardList size={18} />}>
-          <Chain steps={ADMISSION_STEPS} value={draft} onChange={(next) => set(next)} disabled={disabled} />
-        </Section>
-      ) : null}
-
-      {/* 6b. Case management (Phase 8b, decision B). Also unconditional: a referral to the case
-          manager can happen at any stage, and the coordinator's response time is the figure. */}
-      <Section title="Case management" icon={<Users size={18} />}>
-        <ChoiceRow
-          label="Referred to"
-          options={CASE_MGMT_REFERRALS}
-          labelOf={(v) => CASE_MANAGEMENT_LABELS.referral[v]}
-          value={draft.caseMgmtReferral}
-          onChange={setCaseMgmtReferral}
-          disabled={disabled}
-        />
-        {draft.caseMgmtReferral ? (
-          <>
-            <ChoiceRow
-              label="Criteria"
-              options={CASE_MGMT_CRITERIA}
-              labelOf={(v) => CASE_MANAGEMENT_LABELS.criteria[v]}
-              value={draft.caseMgmtCriteria}
-              onChange={(v) => set({ caseMgmtCriteria: v })}
-              disabled={disabled}
-            />
-            <ChoiceRow
-              label="Action"
-              options={CASE_MGMT_ACTIONS}
-              labelOf={(v) => CASE_MANAGEMENT_LABELS.action[v]}
-              value={draft.caseMgmtAction}
-              onChange={(v) => set({ caseMgmtAction: v })}
-              disabled={disabled}
-            />
-            <TimeRow
-              label="Called at"
-              value={draft.caseMgmtCalledAt}
-              onChange={(next) => set({ caseMgmtCalledAt: next })}
-              disabled={disabled}
-            />
-            <TimeRow
-              label="Replied at"
-              value={draft.caseMgmtRepliedAt}
-              onChange={(next) => set({ caseMgmtRepliedAt: next })}
-              disabled={disabled}
-            />
-          </>
-        ) : null}
-      </Section>
-
-      {/* 7. Referral out */}
+      {/* 6. Referral out. Its three transfer times moved into the journey block in Phase 13;
+          the trigger and the two boxes are what they were. */}
       {showReferral ? (
         <Section title="Referral out" icon={<FileText size={18} />}>
           <Field label="Referral tracking number">
@@ -1118,37 +1026,156 @@ export function CaseEditor(props: CaseEditorProps) {
               onChange={(e) => set({ transferFacility: e.target.value })}
             />
           </Field>
-          <Chain steps={TRANSFER_STEPS} value={draft} onChange={(next) => set(next)} disabled={disabled} />
         </Section>
       ) : null}
 
-      {/* 8. Journey times */}
-      <Section id={JUMP.times}>
-        <Button className="w-full text-left" onClick={() => setShowJourney(!showJourney)}>
-          {showJourney ? 'Hide' : 'Add'} journey times (optional)
+      {/* 7. More to record (Phase 13, decisions E and F). The five answers a navigator fills in
+          when writing the case up rather than while the patient is in the department: the shift,
+          the working diagnosis, the payer, pain management (Adaa KPI 8) and case management.
+          Closed on a new case; open on a case that already carries one of them, so nothing
+          recorded is ever behind a tap. Everything inside keeps the label, the group name and the
+          per-field condition it had as a section of its own. */}
+      <Section>
+        <Button
+          className="w-full text-left"
+          aria-expanded={moreOpen}
+          disabled={busy}
+          onClick={() => setMoreOpen(!moreOpen)}
+        >
+          <Ellipsis size={16} className="mr-2 inline-block align-middle text-accent" />
+          More to record
         </Button>
-        {showJourney ? (
-          <div className="mt-3">
-            {/* The milestone number is the row's own `step` since Phase 11: on a phone it sits on
-                the label's line, so the time box below it keeps the whole width. */}
-            {MILESTONES.map(([key, label], index) => (
-              <TimeRow
-                key={key}
-                step={index + 1}
-                label={label}
-                value={draft[key]}
-                onChange={(next) => set({ [key]: next } as Partial<CaseDraft>)}
+        {moreOpen ? (
+          <div data-more className="mt-3">
+            <Field label="Shift" htmlFor={shiftId}>
+              <Select
+                id={shiftId}
                 disabled={disabled}
-              />
-            ))}
+                value={draft.shift ?? ''}
+                onChange={(e) => set({ shift: (e.target.value || null) as CaseDraft['shift'] })}
+              >
+                <option value="">Select</option>
+                {SHIFTS.map((s) => (
+                  <option key={s} value={s}>
+                    {SHIFT_LABELS[s]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            {/* Phase 10, Ahmed's second request of 10 September: what the patient came in with,
+                for the board row and the weekly deck. A clinical line and not an identifier, but
+                free text all the same, so `phiWarnings` reads it like every other box. */}
+            <Field label="Working diagnosis (optional)" htmlFor={diagnosisId}>
+              <DictationRow
+                disabled={disabled}
+                onText={(text) => set({ diagnosis: appendDictated(draft.diagnosis, text, DIAGNOSIS_MAX) })}
+              >
+                <Input
+                  id={diagnosisId}
+                  maxLength={DIAGNOSIS_MAX}
+                  placeholder="one line, e.g. chest pain, for admission"
+                  disabled={disabled}
+                  value={draft.diagnosis}
+                  onChange={(e) => set({ diagnosis: e.target.value })}
+                />
+              </DictationRow>
+              <MrnOnlyHint />
+            </Field>
+            {/* Phase 10, Ahmed's sixth request: who pays for the visit. */}
+            <ChoiceRow
+              label="Payer"
+              options={PAYERS}
+              labelOf={(p) => PAYER_LABELS[p]}
+              value={draft.payer}
+              onChange={(v) => set({ payer: v })}
+              disabled={disabled}
+            />
+
+            {/* Pain management (Phase 8b, decision F). Every case, not only the ones with an
+                investigation: Adaa KPI 8 is reported for all of them. Nothing here is required. */}
+            <h3 className="mt-4 mb-2.5 border-t border-dashed border-line pt-3 text-section">
+              Pain management (Adaa KPI 8)
+            </h3>
+            <ChoiceRow
+              label="Painkiller prescribed"
+              options={YES_NO}
+              labelOf={(v) => ANSWER_LABELS[v]}
+              value={draft.painkillerPrescribed}
+              onChange={setPainkillerPrescribed}
+              disabled={disabled}
+            />
+            {draft.painkillerPrescribed === 'YES' ? (
+              <>
+                <ChoiceRow
+                  label="Pethidine"
+                  options={PETHIDINE_OPTIONS}
+                  labelOf={(v) => (v === 'NO' ? 'No' : `${v} mg`)}
+                  value={pethidineChoice}
+                  onChange={setPethidine}
+                  disabled={disabled}
+                />
+                <TimeRow
+                  label="Painkiller given at"
+                  value={draft.painkillerAt}
+                  onChange={(next) => set({ painkillerAt: next })}
+                  disabled={disabled}
+                />
+              </>
+            ) : null}
             <div className="mt-2">
-              <TimeRow
-                label="Medical admin on-call informed at"
-                value={draft.medAdminInformedAt}
-                onChange={(next) => set({ medAdminInformedAt: next })}
+              <ChoiceRow
+                label="Sickle-cell treatment identified"
+                options={YES_NO}
+                labelOf={(v) => ANSWER_LABELS[v]}
+                value={draft.sickleCellTreatment}
+                onChange={(v) => set({ sickleCellTreatment: v })}
                 disabled={disabled}
               />
             </div>
+
+            {/* Case management (Phase 8b, decision B). A referral to the case manager can happen
+                at any stage, and the coordinator's response time is the figure. */}
+            <h3 className="mt-4 mb-2.5 border-t border-dashed border-line pt-3 text-section">Case management</h3>
+            <ChoiceRow
+              label="Referred to"
+              options={CASE_MGMT_REFERRALS}
+              labelOf={(v) => CASE_MANAGEMENT_LABELS.referral[v]}
+              value={draft.caseMgmtReferral}
+              onChange={setCaseMgmtReferral}
+              disabled={disabled}
+            />
+            {draft.caseMgmtReferral ? (
+              <>
+                <ChoiceRow
+                  label="Criteria"
+                  options={CASE_MGMT_CRITERIA}
+                  labelOf={(v) => CASE_MANAGEMENT_LABELS.criteria[v]}
+                  value={draft.caseMgmtCriteria}
+                  onChange={(v) => set({ caseMgmtCriteria: v })}
+                  disabled={disabled}
+                />
+                <ChoiceRow
+                  label="Action"
+                  options={CASE_MGMT_ACTIONS}
+                  labelOf={(v) => CASE_MANAGEMENT_LABELS.action[v]}
+                  value={draft.caseMgmtAction}
+                  onChange={(v) => set({ caseMgmtAction: v })}
+                  disabled={disabled}
+                />
+                <TimeRow
+                  label="Called at"
+                  value={draft.caseMgmtCalledAt}
+                  onChange={(next) => set({ caseMgmtCalledAt: next })}
+                  disabled={disabled}
+                />
+                <TimeRow
+                  label="Replied at"
+                  value={draft.caseMgmtRepliedAt}
+                  onChange={(next) => set({ caseMgmtRepliedAt: next })}
+                  disabled={disabled}
+                />
+              </>
+            ) : null}
           </div>
         ) : null}
       </Section>
@@ -1296,13 +1323,29 @@ export function CaseEditor(props: CaseEditorProps) {
               </label>
             </div>
           ) : null}
-          <Field label="Left ED at (defaults to now)">
-            <LocalTimeInput
-              value={draft.departedAt}
-              disabled={disabled}
-              onChange={(next) => set({ departedAt: next })}
-            />
-          </Field>
+          {/* Phase 13: "Left ED" is one input, and it lives in the journey block with the rest of
+              the stay. Here it is the value, read-only, with the one affordance a nurse resolving
+              a case at the desk actually wants: Now. `resolveCase` still defaults an empty
+              departure to the current instant. */}
+          <div data-left-ed className="mb-3.5">
+            <div className="flex min-h-11 flex-wrap items-center gap-2">
+              <span className="text-label font-medium text-muted">Left ED</span>
+              <span className="num flex-1 text-body text-ink">
+                {draft.departedAt ? fmtStamp(draft.departedAt) : 'Not recorded'}
+              </span>
+              {readOnly ? null : (
+                <Button
+                  aria-label="Set Left ED to now"
+                  className="shrink-0 px-2.5 text-caption font-semibold"
+                  disabled={disabled}
+                  onClick={() => set({ departedAt: new Date().toISOString() })}
+                >
+                  Now
+                </Button>
+              )}
+            </div>
+            <p className="text-caption text-muted">Recorded in Patient journey, above.</p>
+          </div>
           <Field label="Resolution note (optional)" htmlFor={noteId}>
             <DictationRow
               disabled={disabled}
@@ -1319,14 +1362,23 @@ export function CaseEditor(props: CaseEditorProps) {
             <MrnOnlyHint />
           </Field>
           {readOnly ? null : status === 'OPEN' ? (
-            <Button
-              tone="main"
-              className="w-full"
-              disabled={busy || !draft.disposition}
-              onClick={() => void onResolve()}
-            >
-              Mark resolved
-            </Button>
+            <>
+              <Button
+                tone="main"
+                className="w-full"
+                disabled={busy || !draft.disposition || resolveMissing.length > 0}
+                onClick={() => void onResolve()}
+              >
+                Mark resolved
+              </Button>
+              {/* Phase 13, decision C: the same list the server would refuse on, said before the
+                  tap rather than after it. */}
+              {resolveMissing.length > 0 ? (
+                <p data-resolve-missing className="mt-1.5 text-caption text-muted">
+                  Before resolving, enter: {resolveMissing.join(', ')}.
+                </p>
+              ) : null}
+            </>
           ) : (
             <Button className="w-full" disabled={busy} onClick={() => void onReopen()}>
               Reopen case
@@ -1428,6 +1480,29 @@ export function CaseEditor(props: CaseEditorProps) {
         </>
       )}
     </main>
+  )
+}
+
+/**
+ * Whether "More to record" opens itself (Phase 13). True when the case already carries any of
+ * the answers behind it, so a nurse reading a worked case sees everything that was recorded
+ * without knowing there is a section to open. A new case answers false: `blankDraft` sets the
+ * shift from the clock, so the shift alone does not count.
+ */
+function hasMoreToRecord(draft: CaseDraft): boolean {
+  return Boolean(
+    draft.diagnosis.trim() ||
+      draft.payer ||
+      draft.painkillerPrescribed ||
+      draft.pethidinePrescribed ||
+      draft.pethidineDoseMg != null ||
+      draft.painkillerAt ||
+      draft.sickleCellTreatment ||
+      draft.caseMgmtReferral ||
+      draft.caseMgmtCriteria ||
+      draft.caseMgmtAction ||
+      draft.caseMgmtCalledAt ||
+      draft.caseMgmtRepliedAt,
   )
 }
 

@@ -4,7 +4,17 @@ import { prisma } from '../../src/lib/db'
 import { NOTE_MAX, OTHER_TEXT_MAX, UPDATE_TEXT_MAX } from '../../src/lib/domain/validation'
 import { riyadhDateKey } from '../../src/lib/export/range'
 import { CASES_HEADER } from '../../src/lib/export/rows'
-import { CASE_URL, fromClientIp, openCase, signIn, uniqueMrn } from './fixtures/case-flow'
+import {
+  ADMISSION_JOURNEY,
+  CASE_URL,
+  DISCHARGE_JOURNEY,
+  fromClientIp,
+  openCase,
+  openMoreToRecord,
+  recordJourney,
+  signIn,
+  uniqueMrn,
+} from './fixtures/case-flow'
 import { E2E_USERS } from './fixtures/seed-users'
 
 /**
@@ -63,7 +73,9 @@ test('a navigator opens a case, adds an update and resolves it as discharged hom
   await expect(page.getByText('Bed coordinator says one hour')).toBeVisible()
   await expect(page.getByText(E2E_USERS.navigator.displayName, { exact: false }).first()).toBeVisible()
   // Phase 12 item 4 (C4): the hint is now under every free-text box, not only this one. On an
-  // existing OPEN case that is the working diagnosis, the updates box and the resolution note.
+  // existing OPEN case that is the working diagnosis, the updates box and the resolution note —
+  // and since Phase 13 the working diagnosis is behind "More to record".
+  await openMoreToRecord(page)
   await expect(page.locator('[data-mrn-hint]')).toHaveCount(3)
   for (const hint of await page.locator('[data-mrn-hint]').all()) {
     await expect(hint).toHaveText('MRN only, no names.')
@@ -80,9 +92,16 @@ test('a navigator opens a case, adds an update and resolves it as discharged hom
     .click()
   await expect(page.locator('[data-mrn-hint]')).toHaveCount(3)
 
-  // Resolve: the button is dead until a disposition is chosen.
+  // Resolve: the button is dead until a disposition is chosen, and then, since Phase 13, until
+  // the times that outcome cannot be resolved without are in. What is missing is named first.
   await expect(page.getByRole('button', { name: 'Mark resolved' })).toBeDisabled()
   await page.getByLabel('Final disposition').selectOption('DISCHARGED_HOME')
+  await expect(page.getByRole('button', { name: 'Mark resolved' })).toBeDisabled()
+  await expect(page.locator('[data-resolve-missing]')).toHaveText(
+    'Before resolving, enter: Triage, First physician contact, Disposition decided, Left ED.',
+  )
+  await recordJourney(page, DISCHARGE_JOURNEY)
+  await expect(page.locator('[data-resolve-missing]')).toHaveCount(0)
   await page.getByRole('button', { name: 'Mark resolved' }).click()
 
   await expect(page.getByRole('heading', { name: 'Resolved' })).toBeVisible()
@@ -93,7 +112,8 @@ test('a navigator opens a case, adds an update and resolves it as discharged hom
 /**
  * Phase 12 item 4 (readiness audit C4). `docs/PLAN.md` claimed every free-text box carried the
  * "MRN only, no names" hint; one of five did. A new case has exactly one box — the working
- * diagnosis — so it has exactly one hint.
+ * diagnosis — so it has exactly one hint. Phase 13 put that box behind "More to record", which a
+ * new case opens closed, so a blank new case has none at all until it is opened.
  */
 test('a new case shows the MRN-only hint under its one free-text box', async ({ page }) => {
   await fromClientIp(page, '198.51.100.61')
@@ -102,6 +122,8 @@ test('a new case shows the MRN-only hint under its one free-text box', async ({ 
   await expect(page.getByLabel('MRN (digits only)')).toBeVisible()
 
   const hints = page.locator('[data-mrn-hint]')
+  await expect(hints).toHaveCount(0)
+  await openMoreToRecord(page)
   await expect(hints).toHaveCount(1)
   await expect(hints).toHaveText('MRN only, no names.')
 })
@@ -113,10 +135,15 @@ test('an admission needs a ward before it can be resolved', async ({ page }) => 
 
   await page.getByLabel('Final disposition').selectOption('ADMITTED')
   await expect(page.getByRole('group', { name: 'Ward' })).toBeVisible()
-  await page.getByRole('button', { name: 'Mark resolved' }).click()
-  await expect(page.getByText('Choose the ward.')).toBeVisible()
+  // Phase 13: the button is blocked rather than refused after the tap, and the ward is named in
+  // the list of what is still missing. The server's own "Choose the ward." is held by
+  // src/lib/domain/__tests__/validation.test.ts and tests/db/cases.test.ts.
+  await recordJourney(page, ADMISSION_JOURNEY)
+  await expect(page.locator('[data-resolve-missing]')).toHaveText('Before resolving, enter: Ward.')
+  await expect(page.getByRole('button', { name: 'Mark resolved' })).toBeDisabled()
 
   await page.getByRole('group', { name: 'Ward' }).getByRole('button', { name: 'ICU' }).click()
+  await expect(page.locator('[data-resolve-missing]')).toHaveCount(0)
   await page.getByRole('button', { name: 'Mark resolved' }).click()
   await expect(page.getByText('Resolved: Admitted')).toBeVisible()
 })
@@ -315,11 +342,19 @@ test('the referral sections appear with the reason that needs them', async ({ pa
   await page.getByRole('button', { name: 'Admission process' }).click()
   await page.getByRole('button', { name: 'Referred out: no bed in accepting department' }).click()
   await expect(page.getByRole('heading', { name: 'Referral out' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Admission times' })).toBeVisible()
+
+  // Phase 13: the admission and the transfer times are steps of the one journey block, revealed
+  // by the stages that imply them — the admission stage here, and a reason that needs a referral
+  // number. There is no "Admission times" section and no "Add journey times" toggle any more.
+  const journey = page.locator('#case-times')
+  await expect(journey.getByRole('heading', { name: 'Patient journey' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Admission times' })).toHaveCount(0)
+  await expect(journey.getByLabel('Admission order written', { exact: true })).toBeVisible()
+  await expect(journey.getByLabel('Transfer requested', { exact: true })).toBeVisible()
 
   // Mobile-first means literally: with every section open the phone never scrolls sideways.
   // (Chrome answers horizontal overflow by shrinking the whole page, which is easy to miss.)
-  await page.getByRole('button', { name: 'Add journey times (optional)' }).click()
+  await openMoreToRecord(page)
   await expect(page.getByText('Medical admin on-call informed at')).toBeVisible()
   const width = await page.evaluate(() => ({
     scroll: document.documentElement.scrollWidth,
@@ -411,13 +446,19 @@ test('the working diagnosis and the payer reach the board row and the export', a
   const mrn = uniqueMrn()
   const url = await openCase(page, mrn, STAGE, REASON, taps)
 
+  await openMoreToRecord(page)
   await page.getByLabel(DIAGNOSIS_LABEL, { exact: true }).fill(DIAGNOSIS)
   await page.getByRole('group', { name: 'Payer' }).getByRole('button', { name: PAYER_LABEL }).click()
   await page.getByRole('button', { name: 'Save changes' }).click()
   await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
 
-  // Both come back on a fresh load, so the values really were stored.
+  // Both come back on a fresh load, so the values really were stored — and "More to record"
+  // opens itself on a case that carries one of them (Phase 13), so neither is behind a tap.
   await page.goto(url)
+  await expect(page.getByRole('button', { name: 'More to record', exact: true })).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  )
   const diagnosis = page.getByLabel(DIAGNOSIS_LABEL, { exact: true })
   await expect(diagnosis).toHaveValue(DIAGNOSIS)
   await expect(
@@ -553,6 +594,7 @@ test('a blocked microphone says why, and the button goes back to Dictate', async
   await fakeRecogniser(page, [{ error: 'not-allowed' }])
   const taps = await signIn(page, E2E_USERS.navigator)
   await openCase(page, uniqueMrn(), STAGE, REASON, taps)
+  await openMoreToRecord(page)
 
   const diagnosis = page.getByLabel(DIAGNOSIS_LABEL, { exact: true })
   const mic = micBeside(page, diagnosis)
@@ -580,6 +622,7 @@ test('dictated words are appended to the box, and trying again clears the last l
   await fakeRecogniser(page, [{ error: 'no-speech' }, { hold: HEARD }])
   const taps = await signIn(page, E2E_USERS.navigator)
   await openCase(page, uniqueMrn(), STAGE, REASON, taps)
+  await openMoreToRecord(page)
 
   const diagnosis = page.getByLabel(DIAGNOSIS_LABEL, { exact: true })
   const mic = micBeside(page, diagnosis)
@@ -693,6 +736,7 @@ test('a stopped session that ends late does not stop the one started after it', 
   await lateEndingRecogniser(page)
   const taps = await signIn(page, E2E_USERS.navigator)
   await openCase(page, uniqueMrn(), STAGE, REASON, taps)
+  await openMoreToRecord(page)
 
   const mic = micBeside(page, page.getByLabel(DIAGNOSIS_LABEL, { exact: true }))
   await mic.click()
@@ -723,6 +767,7 @@ test('a stopped session that fails with nothing started after it still says why'
   await lateEndingRecogniser(page)
   const taps = await signIn(page, E2E_USERS.navigator)
   await openCase(page, uniqueMrn(), STAGE, REASON, taps)
+  await openMoreToRecord(page)
 
   const mic = micBeside(page, page.getByLabel(DIAGNOSIS_LABEL, { exact: true }))
   await mic.click()
@@ -805,7 +850,7 @@ test('the case summary opens over the case, names it, and copies itself as text'
 
 /**
  * Phase 10 review. The editor's own clock on the one case whose departure time does not end the
- * stay: resolved, then "Left ED at" cleared and saved (the draft's departure time is nullable, and
+ * stay: resolved, then "Left ED" cleared and saved (the draft's departure time is nullable, and
  * a save refuses only a voided case). The board row and the summary stop at the resolution; the
  * header built its clock without it and counted on to every page load. It reads `caseClockOf`
  * now, as the summary does, and a departure time typed while the page is open still moves it.
@@ -828,20 +873,34 @@ test('a resolved case whose departure time is cleared keeps its clock stopped at
     return { registered: local(10), left: local(7), corrected: local(8) }
   })
   const registration = page.getByLabel('Registration time (clock starts here)', { exact: true })
-  const leftAt = page.getByLabel('Left ED at (defaults to now)', { exact: true })
   const clock = page.getByRole('img', { name: /^Time in the Emergency Department/ })
+  /**
+   * Phase 13: "Left ED" is one input, in the journey block. A filled step collapses to one line,
+   * so reading or clearing it again goes through its Edit control.
+   */
+  const leftAt = page.getByLabel('Left ED', { exact: true })
+  const editLeftAt = async (): Promise<void> => {
+    const edit = page.getByRole('button', { name: 'Edit — Left ED', exact: true })
+    if (await edit.isVisible().catch(() => false)) await edit.click()
+  }
 
   // Registered ten hours ago and left seven hours ago; `resolveCase` writes that departure time
   // as the resolution too. (The registration box is empty until the page has hydrated.)
   await expect(registration).not.toHaveValue('')
   await registration.fill(at.registered)
+  await page.getByLabel('Triage', { exact: true }).fill(at.registered)
+  await page.getByLabel('First physician contact', { exact: true }).fill(at.registered)
+  await page.getByLabel('Disposition decided', { exact: true }).fill(at.registered)
   await leftAt.fill(at.left)
   await page.getByLabel('Final disposition').selectOption('DISCHARGED_HOME')
   await page.getByRole('button', { name: 'Mark resolved' }).click()
   await expect(page.getByText('Resolved: Discharged home')).toBeVisible()
   await expect(clock).toHaveText('3h 00m')
+  // The resolve block shows the same instant, read-only.
+  await expect(page.locator('[data-left-ed]')).not.toContainText('Not recorded')
 
-  // "Left ED at" cleared: the stay still ended at the resolution, before the save and after it.
+  // "Left ED" cleared: the stay still ended at the resolution, before the save and after it.
+  await editLeftAt()
   await leftAt.fill('')
   await expect(clock).toHaveText('3h 00m')
   await page.getByRole('button', { name: 'Save changes' }).click()
@@ -850,6 +909,7 @@ test('a resolved case whose departure time is cleared keeps its clock stopped at
   await page.goto(url)
   await expect(registration).toHaveValue(at.registered)
   await expect(leftAt).toHaveValue('')
+  await expect(page.locator('[data-left-ed]')).toContainText('Not recorded')
   await expect(clock).toHaveText('3h 00m')
   await expect(clock).toHaveAccessibleName('Time in the Emergency Department: 3 hours')
 
@@ -857,6 +917,7 @@ test('a resolved case whose departure time is cleared keeps its clock stopped at
   // end back at the resolution, which is where the board row has it.
   await leftAt.fill(at.corrected)
   await expect(clock).toHaveText('2h 00m')
+  await editLeftAt()
   await leftAt.fill('')
   await expect(clock).toHaveText('3h 00m')
 })
@@ -936,6 +997,10 @@ test('the pain-management block, an MRI row and a Deceased disposition round-tri
   // still there after a reload: the editor derives its stage chips from the reasons it stored.
   const url = await openCase(page, mrn, 'Investigations', 'Imaging: report delay', taps)
 
+  // Phase 13: pain management and case management live inside "More to record", which a case
+  // that carries neither opens closed.
+  await expect(page.getByRole('heading', { name: 'Pain management (Adaa KPI 8)' })).toHaveCount(0)
+  await openMoreToRecord(page)
   const painkiller = page.getByRole('group', { name: 'Painkiller prescribed' })
   await expect(page.getByRole('heading', { name: 'Pain management (Adaa KPI 8)' })).toBeVisible()
 
@@ -958,8 +1023,13 @@ test('the pain-management block, an MRI row and a Deceased disposition round-tri
   await page.getByRole('button', { name: 'Save changes' }).click()
   await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
 
-  // Everything comes back pressed and filled, so it really was stored.
+  // Everything comes back pressed and filled, so it really was stored — and "More to record"
+  // opens itself, because the case now carries a painkiller answer (Phase 13).
   await page.goto(url)
+  await expect(page.getByRole('button', { name: 'More to record', exact: true })).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  )
   await expect(
     page.getByRole('group', { name: 'Painkiller prescribed' }).getByRole('button', { name: 'Yes', exact: true }),
   ).toHaveAttribute('aria-pressed', 'true')
@@ -973,8 +1043,15 @@ test('the pain-management block, an MRI row and a Deceased disposition round-tri
   await expect(types.getByRole('button', { name: 'MRI' })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByLabel('Ordered', { exact: true })).toHaveValue('2026-09-09T13:00')
 
-  // Decision E: the disposition list carries Deceased, and no ward is asked for.
+  // Decision E: the disposition list carries Deceased, and no ward is asked for. Phase 13: a
+  // death is resolved on the triage, the physician contact and the departure, with no
+  // disposition decision, and the admission and transfer steps are not shown at all.
   await page.getByLabel('Final disposition').selectOption('DECEASED')
+  await expect(page.locator('[data-resolve-missing]')).toHaveText(
+    'Before resolving, enter: Triage, First physician contact, Left ED.',
+  )
+  await expect(page.locator('#case-times').getByLabel('Admission order written', { exact: true })).toHaveCount(0)
+  await recordJourney(page, ['Triage', 'First physician contact', 'Left ED'])
   await page.getByRole('button', { name: 'Mark resolved' }).click()
   await expect(page.getByText('Resolved: Deceased')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Resolved' })).toBeVisible()
@@ -986,6 +1063,7 @@ test('the case-management block records the referral, the outcome and the two ti
   const taps = await signIn(page, E2E_USERS.navigator)
   const url = await openCase(page, uniqueMrn(), STAGE, REASON, taps)
 
+  await openMoreToRecord(page)
   await expect(page.getByRole('heading', { name: 'Case management' })).toBeVisible()
   // The four fields that only mean something under a referral are hidden until there is one.
   await expect(page.getByRole('group', { name: 'Criteria' })).toHaveCount(0)
@@ -1003,6 +1081,10 @@ test('the case-management block records the referral, the outcome and the two ti
   await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
 
   await page.goto(url)
+  await expect(page.getByRole('button', { name: 'More to record', exact: true })).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  )
   await expect(
     page.getByRole('group', { name: 'Referred to' }).getByRole('button', { name: 'Complex-care coordinator' }),
   ).toHaveAttribute('aria-pressed', 'true')
@@ -1068,6 +1150,7 @@ test('a supervisor marks a case reviewed; the navigator sees the line but not th
 
   // Resolve it first: the board chip is for finished records, and a save would clear a review.
   await nurse.getByLabel('Final disposition').selectOption('DISCHARGED_HOME')
+  await recordJourney(nurse, DISCHARGE_JOURNEY)
   await nurse.getByRole('button', { name: 'Mark resolved' }).click()
   await expect(nurse.getByText('Resolved: Discharged home')).toBeVisible()
 

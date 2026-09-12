@@ -1,6 +1,6 @@
 import { statSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
-import { fromClientIp, openCase, signIn, uniqueMrn } from './fixtures/case-flow'
+import { DISCHARGE_JOURNEY, fromClientIp, openCase, recordJourney, signIn, uniqueMrn } from './fixtures/case-flow'
 import { E2E_USERS } from './fixtures/seed-users'
 
 /**
@@ -41,6 +41,7 @@ test('phase 2 gate screenshots', async ({ page }, testInfo) => {
   await page.getByLabel('What changed?').press('Enter')
   await expect(page.getByText('Bed assigned on the medical ward')).toBeVisible()
   await page.getByLabel('Final disposition').selectOption('DISCHARGED_HOME')
+  await recordJourney(page, DISCHARGE_JOURNEY)
   await page.getByRole('button', { name: 'Mark resolved' }).click()
   await expect(page.getByRole('heading', { name: 'Resolved' })).toBeVisible()
 

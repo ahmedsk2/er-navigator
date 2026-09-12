@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { CASE_URL, fromClientIp, openCase, signIn, uniqueMrn } from './fixtures/case-flow'
+import { CASE_URL, fromClientIp, openCase, openMoreToRecord, signIn, uniqueMrn } from './fixtures/case-flow'
 import { E2E_USERS } from './fixtures/seed-users'
 
 /**
@@ -105,7 +105,7 @@ function sectionOf(page: Page, chip: string) {
     Delay: page.getByRole('heading', { name: 'Where is the delay?', exact: true }),
     Teams: page.getByRole('heading', { name: 'Department / consulted team involved', exact: true }),
     Tests: page.getByRole('heading', { name: 'Investigation times', exact: true }),
-    Times: page.getByRole('button', { name: /journey times \(optional\)$/ }),
+    Times: page.getByRole('heading', { name: 'Patient journey', exact: true }),
     Updates: page.getByRole('heading', { name: 'Updates', exact: true }),
     Resolve: page.getByRole('heading', { name: 'Resolve case', exact: true }),
   }
@@ -139,6 +139,8 @@ test('on a worked case every recorded time shows its whole value, and the strip 
   await page.getByRole('group', { name: 'Investigations reasons' }).getByRole('button', { name: 'Imaging: report delay' }).click()
   await page.getByRole('group', { name: 'Investigation types' }).getByRole('button', { name: 'CT', exact: true }).click()
   await page.getByRole('group', { name: 'Departments' }).getByRole('button', { name: 'CCU', exact: true }).click()
+  // Phase 13: pain and case management are behind "More to record".
+  await openMoreToRecord(page)
   await page.getByRole('group', { name: 'Painkiller prescribed' }).getByRole('button', { name: 'Yes', exact: true }).click()
   await page.getByRole('group', { name: 'Referred to' }).getByRole('button', { name: 'Case manager', exact: true }).click()
 
@@ -174,12 +176,20 @@ test('on a worked case every recorded time shows its whole value, and the strip 
 
   await page.goto(url)
   await expect(page.getByRole('heading', { name: `Case ${mrn}` })).toBeVisible()
+  await openMoreToRecord(page)
+  /**
+   * Phase 13: a filled journey step reads back as one collapsed line, so every one of them is
+   * reopened before the widths are measured. That is the state this finding is about — a box
+   * with a value in it — and reopening them all puts every journey row back on the page at once.
+   */
+  const edits = page.getByRole('button', { name: /^Edit — / })
+  for (let i = await edits.count(); i > 0; i -= 1) await edits.first().click()
   await expect(page.getByLabel('RCC / transport arrived', { exact: true })).toHaveValue(later(registered, 300))
   await page.evaluate(() => document.fonts.ready)
 
   const { checked, clipped } = await clippedTimes(page)
-  // Every filled row above, the registration, "Left ED" and "Left ED at": nothing was skipped.
-  expect(checked).toBeGreaterThanOrEqual(times.length + 3)
+  // Every filled row above, the registration and the empty "Left ED": nothing was skipped.
+  expect(checked).toBeGreaterThanOrEqual(times.length + 2)
   expect(clipped).toEqual([])
 
   // The strip, now with Tests. The header above it has not moved.
