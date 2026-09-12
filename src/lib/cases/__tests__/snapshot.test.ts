@@ -45,6 +45,8 @@ function source(overrides: Partial<SnapshotSource> = {}): SnapshotSource {
     caseMgmtAction: null,
     caseMgmtCalledAt: null,
     caseMgmtRepliedAt: null,
+    delayActionTaken: null,
+    escalatedToMedicalDirector: null,
     reviewedAt: null,
     reviewedById: null,
     disposition: null,

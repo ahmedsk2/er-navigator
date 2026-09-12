@@ -114,6 +114,14 @@ export type KpiCase = CaseClock & {
    * The app's own resolve, reopen, void and alert notes are not counted (Phase 8b review C2).
    */
   untaggedUpdatesCount: number
+  /**
+   * Phase 14 (decision E): "What was done to solve the delay", and whether the case went to the
+   * medical director. Optional here, like `updateActions` and `untaggedUpdatesCount` above, which
+   * this module already reads defensively — a fixture or an older caller that knows nothing about
+   * them contributes nothing rather than failing to typecheck.
+   */
+  delayActionTaken?: string | null
+  escalatedToMedicalDirector?: boolean | null
 }
 
 /** A count with a drill-down. `ids` are case ids, deduplicated; `value` may exceed `ids.length` where the unit is a row, and the function says so. */
@@ -290,6 +298,10 @@ export function longestStays(cases: ReadonlyArray<KpiCase>, now: Date, n = 10): 
  * a tag. An action is documented either as a tagged update (decision C) or by the timestamp the
  * app already records for it: an escalation to medical admin is a leadership escalation, a bed
  * request (fax) is bed management, a transfer request is the transfer / fax / RCC pathway.
+ *
+ * Phase 14 (decision E) folded in the two answers that replaced the Updates composer on the case
+ * page: the escalation chip counts as a leadership escalation exactly as `medAdminInformedAt`
+ * does, and a non-empty "what was done" text is a documented action under the untagged row.
  */
 export const ACTION_KINDS = [
   ['LEADERSHIP_ESCALATION', 'Leadership escalation'],
@@ -307,12 +319,16 @@ export type Actions = { any: IdRow; none: IdRow; byKind: IdRow[] }
 
 function actionKindsOf(c: KpiCase): ActionKind[] {
   const kinds = new Set<ActionKind>(c.updateActions ?? [])
-  if (c.medAdminInformedAt) kinds.add('LEADERSHIP_ESCALATION')
+  // Phase 14: the chip and the timestamp are the same fact recorded two ways. `false` is an
+  // answer ("no, it did not go to the director") and is not an escalation; `null` is silence.
+  if (c.medAdminInformedAt || c.escalatedToMedicalDirector === true) kinds.add('LEADERSHIP_ESCALATION')
   if (c.bedRequestedAt) kinds.add('BED_MANAGEMENT')
   if (c.transferRequestedAt) kinds.add('FAX_RCC')
   // Text written with no category chosen. A count, not a comparison against the distinct kinds:
   // two updates both tagged "bed management" are two tagged updates, not one (verification 8b).
-  if ((c.untaggedUpdatesCount ?? 0) > 0) kinds.add('UNTAGGED')
+  // Phase 14: "What was done to solve the delay" is that same thing said in the Resolve block —
+  // something was written and no category was named — and a case counts once either way.
+  if ((c.untaggedUpdatesCount ?? 0) > 0 || c.delayActionTaken?.trim()) kinds.add('UNTAGGED')
   return [...kinds]
 }
 

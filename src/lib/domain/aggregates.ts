@@ -175,6 +175,13 @@ export type CaseForStats = CaseClock & {
    * kinds cannot say whether one plain update was written or nine.
    */
   untaggedUpdatesCount: number
+  /**
+   * Phase 14: "What was done to solve the delay", and whether the case went to the medical
+   * director. `actionsDocumented` reads both — the text as an untagged documented action, the
+   * escalation as a leadership escalation beside `medAdminInformedAt`.
+   */
+  delayActionTaken: string | null
+  escalatedToMedicalDirector: boolean | null
   otherTexts: ReadonlyArray<{ stageName: string; text: string }>
 }
 

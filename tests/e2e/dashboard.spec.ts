@@ -90,6 +90,8 @@ function clocksOf(payload: BoardPayload): CaseForStats[] {
         reviewedByName: null,
         updateActions: [],
         untaggedUpdatesCount: 0,
+        delayActionTaken: null,
+        escalatedToMedicalDirector: null,
         payer: null,
         stageCodes: [],
         reasonNames: [],

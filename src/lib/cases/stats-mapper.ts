@@ -60,6 +60,10 @@ export const CASE_STATS_SELECT = {
   caseMgmtCalledAt: true,
   caseMgmtRepliedAt: true,
   reviewedAt: true,
+  // Phase 14 (docs/specs/phase14-actions-and-escalation.md): the delay action and the escalation,
+  // which the deck's "actions documented" figure and the workbook's Cases sheet both read.
+  delayActionTaken: true,
+  escalatedToMedicalDirector: true,
   primaryReason: { select: { name: true } },
   ward: { select: { code: true } },
   // The name for "By ED area", the code for the filter's URL (Phase 10): a code survives a rename.
@@ -255,6 +259,8 @@ export function toCaseForStats(row: StatsRowInput): CaseForStats {
     // The reviewer's name, not their id: `kpi.ts` reads it to print "Reviewed by …" and never
     // needs to look a user up.
     reviewedByName: row.reviewedBy?.displayName ?? null,
+    delayActionTaken: row.delayActionTaken,
+    escalatedToMedicalDirector: row.escalatedToMedicalDirector,
     updateActions: [...updateActions],
     untaggedUpdatesCount,
     otherTexts: row.reasons

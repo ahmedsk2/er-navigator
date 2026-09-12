@@ -153,9 +153,15 @@ export function caseClockOf(
   }
 }
 
-/** The timestamp on the case that documents a kind on its own (`actionKindsOf` in kpi.ts). */
+/**
+ * What the case itself records that documents a kind, with no update at all (`actionKindsOf` in
+ * kpi.ts). Phase 14 added the escalation chip beside the medical-admin timestamp there, so it is
+ * added here too: the panel and the deck must never disagree about one case.
+ */
 function recordedStep(draft: CaseDraft, kind: ActionKind): boolean {
-  if (kind === 'LEADERSHIP_ESCALATION') return draft.medAdminInformedAt !== null
+  if (kind === 'LEADERSHIP_ESCALATION') {
+    return draft.medAdminInformedAt !== null || draft.escalatedToMedicalDirector === true
+  }
   if (kind === 'BED_MANAGEMENT') return draft.bedRequestedAt !== null
   if (kind === 'FAX_RCC') return draft.transferRequestedAt !== null
   return false

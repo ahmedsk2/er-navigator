@@ -47,6 +47,8 @@ function row(over: Partial<CaseStatsRow> = {}): CaseStatsRow {
     caseMgmtCalledAt: null,
     caseMgmtRepliedAt: null,
     reviewedAt: null,
+    delayActionTaken: null,
+    escalatedToMedicalDirector: null,
     primaryReason: null,
     ward: null,
     area: null,
@@ -88,8 +90,10 @@ describe('CASE_STATS_SELECT', () => {
         'consults',
         'ctas',
         'decisionAt',
+        'delayActionTaken',
         'departedAt',
         'disposition',
+        'escalatedToMedicalDirector',
         'familyEngagement',
         'id',
         'instructionsGiven',
@@ -242,6 +246,8 @@ describe('toCaseForStats', () => {
       reviewedByName: null,
       updateActions: [],
       untaggedUpdatesCount: 0,
+      delayActionTaken: null,
+      escalatedToMedicalDirector: null,
       otherTexts: [],
     })
 
@@ -534,5 +540,27 @@ describe('toFilterableCase', () => {
       stats.payer,
       stats.disposition,
     ])
+  })
+})
+
+/**
+ * Phase 14. The two columns the deck's "actions documented" figure and the workbook's Cases sheet
+ * read. They are carried, not derived: `toCaseForStats` copies them and `actionKindsOf` decides
+ * what they mean.
+ */
+describe('the delay action and the escalation (Phase 14)', () => {
+  it('carries both through, and both as null when nothing was recorded', () => {
+    const filled = toCaseForStats(
+      row({ delayActionTaken: 'Bed manager called twice', escalatedToMedicalDirector: true }),
+    )
+    expect(filled.delayActionTaken).toBe('Bed manager called twice')
+    expect(filled.escalatedToMedicalDirector).toBe(true)
+
+    const bare = toCaseForStats(row())
+    expect(bare.delayActionTaken).toBeNull()
+    expect(bare.escalatedToMedicalDirector).toBeNull()
+
+    // "No" is an answer and survives as one; it must not be flattened into "not recorded".
+    expect(toCaseForStats(row({ escalatedToMedicalDirector: false })).escalatedToMedicalDirector).toBe(false)
   })
 })

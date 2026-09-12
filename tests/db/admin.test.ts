@@ -124,6 +124,8 @@ function draft(overrides: Partial<CaseDraft> = {}): CaseDraft {
     caseMgmtAction: null,
     caseMgmtCalledAt: null,
     caseMgmtRepliedAt: null,
+    delayActionTaken: '',
+    escalatedToMedicalDirector: null,
     disposition: null,
     wardId: null,
     isolation: false,

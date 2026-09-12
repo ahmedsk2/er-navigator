@@ -68,6 +68,8 @@ const c = (p: Seed): CaseForStats => ({
   reviewedByName: null,
   updateActions: [],
   untaggedUpdatesCount: 0,
+  delayActionTaken: null,
+  escalatedToMedicalDirector: null,
   otherTexts: [],
   departedAt: null,
   resolvedAt: null,

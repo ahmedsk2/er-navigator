@@ -319,6 +319,43 @@ describe('the weekly deck', () => {
     expect(by['Update without an action tag']).toEqual(['t2'])
   })
 
+  /**
+   * Phase 14 (docs/specs/phase14-actions-and-escalation.md, item 5). The Updates composer left the
+   * case page, so the two answers that replaced it feed the same figure: an escalation to the
+   * medical director is a leadership escalation exactly as `medAdminInformedAt` is, and a
+   * non-empty "what was done" text is a documented action with no category named.
+   */
+  it('counts the escalation chip as a leadership escalation, and only when it is Yes', () => {
+    const chip = base('x1', { escalatedToMedicalDirector: true })
+    const said = base('x2', { escalatedToMedicalDirector: false })
+    const unasked = base('x3', { escalatedToMedicalDirector: null })
+    const acts = actionsDocumented([chip, said, unasked])
+    expect(acts.any.ids).toEqual(['x1'])
+    expect(acts.none.ids).toEqual(['x2', 'x3'])
+    const by = Object.fromEntries(acts.byKind.map((r) => [r.name, r.ids]))
+    expect(by['Leadership escalation']).toEqual(['x1'])
+    expect(by['Update without an action tag']).toEqual([])
+
+    // The same case with the timestamp as well is still one leadership escalation, not two.
+    const both = base('x4', { escalatedToMedicalDirector: true, medAdminInformedAt: T(3) })
+    expect(actionsDocumented([both]).byKind[0]).toMatchObject({ name: 'Leadership escalation', value: 1 })
+  })
+
+  it('counts a non-empty delay action as a documented action with no tag', () => {
+    const wrote = base('y1', { delayActionTaken: 'Bed manager called twice; ICU holding a bed' })
+    const blank = base('y2', { delayActionTaken: '   ' })
+    const none = base('y3', { delayActionTaken: null })
+    const acts = actionsDocumented([wrote, blank, none])
+    expect(acts.any.ids).toEqual(['y1'])
+    expect(acts.none.ids).toEqual(['y2', 'y3'])
+    const by = Object.fromEntries(acts.byKind.map((r) => [r.name, r.ids]))
+    expect(by['Update without an action tag']).toEqual(['y1'])
+
+    // A text on a case that already has an untagged update is still one case in that row.
+    const twice = base('y4', { delayActionTaken: 'Chased radiology', updatesCount: 1, untaggedUpdatesCount: 1 })
+    expect(actionsDocumented([twice]).byKind[6]).toMatchObject({ name: 'Update without an action tag', value: 1 })
+  })
+
   it('outcomes: resolved by disposition label, largest first, then the open ones', () => {
     expect(outcomes(ALL).map((r) => [r.name, r.value])).toEqual([
       ['Admitted', 1],
