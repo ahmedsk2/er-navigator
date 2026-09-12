@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs'
 import { expect, test, type Locator, type Page } from '@playwright/test'
+import { SHEET_ACTION_MAX } from '../../src/components/board/HandoverSheet'
 import { prisma } from '../../src/lib/db'
 import { DELAY_ACTION_MAX, NOTE_MAX, OTHER_TEXT_MAX } from '../../src/lib/domain/validation'
 import { riyadhDateKey } from '../../src/lib/export/range'
@@ -22,8 +23,19 @@ import { E2E_USERS } from './fixtures/seed-users'
  * desktop rendering is the same single column, which the gate screenshots cover.
  */
 test.describe.configure({ mode: 'serial' })
+/**
+ * P15.41. One exemption from the phone-only rule above: a test annotated `both viewports` runs in
+ * the desktop project too. The handover sheet is paper and the paper is the same size whichever
+ * screen printed it, so a sheet assertion that only ever ran at 390 px was proving half of what
+ * it looked like it proved.
+ */
+const BOTH_VIEWPORTS = 'both viewports'
 test.beforeEach(() => {
-  test.skip(test.info().project.name !== 'mobile', 'the case flow is checked at the phone size')
+  const everywhere = test.info().annotations.some((a) => a.type === BOTH_VIEWPORTS)
+  test.skip(
+    !everywhere && test.info().project.name !== 'mobile',
+    'the case flow is checked at the phone size',
+  )
 })
 test.afterAll(async () => {
   await prisma.$disconnect()
@@ -1003,6 +1015,64 @@ test('the timeline lists the recorded steps in order with the interval between t
   await expect(sheetRow).toContainText('First physician contact (+0h 30m)')
   await page.emulateMedia({ media: 'screen' })
 })
+
+/**
+ * P15.41, beside the timeline row above. The sheet's other per-case line — where this one is
+ * going, what was done about the delay and whether it went to the medical director — had every
+ * one of its parts pinned in `src/components/__tests__/handover.test.ts` and not one of them in a
+ * browser. `actionLine` was proven; the `<ActionRow>` that draws it was not, so the row could be
+ * deleted from `HandoverSheet.tsx` with the whole suite green.
+ *
+ * Both viewports, unlike the rest of this file: this is the sheet rather than the editor, and a
+ * charge nurse prints it from whichever screen is in front of them.
+ */
+test(
+  'the handover sheet prints the trajectory, the delay action and the escalation under the case',
+  { annotation: { type: BOTH_VIEWPORTS, description: 'the sheet is paper, not a phone layout' } },
+  async ({ page }, testInfo) => {
+    const mobile = testInfo.project.name === 'mobile'
+    await fromClientIp(page, mobile ? '198.51.100.58' : '198.51.100.59')
+    const taps = await signIn(page, E2E_USERS.navigator)
+    const mrn = uniqueMrn()
+    await openCase(page, mrn, STAGE, REASON, taps)
+
+    // Longer than SHEET_ACTION_MAX, so the sheet's cut is exercised rather than assumed. The
+    // 200th character is a full stop, so `cutForSheet`'s trimEnd changes nothing and the expected
+    // text is the plain slice; the tail is a word that must not reach the paper.
+    const action =
+      'Bed coordinator called at 09:10 and again at 10:40. The ward says one bed is being cleaned ' +
+      'and a second is held for a transfer out. The charge nurse is informed and the medical ' +
+      'admin on-call is paged. TAIL_OFF_THE_SHEET'
+    expect(action.length).toBeGreaterThan(SHEET_ACTION_MAX)
+
+    await page
+      .getByRole('group', { name: 'Patient trajectory', exact: true })
+      .getByRole('button', { name: 'Admission', exact: true })
+      .click()
+    await page.getByLabel(ACTION_LABEL, { exact: true }).fill(action)
+    await page
+      .getByRole('group', { name: 'Escalated to medical director', exact: true })
+      .getByRole('button', { name: 'Yes', exact: true })
+      .click()
+    await page.getByRole('button', { name: 'Save changes', exact: true }).click()
+    await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
+
+    await page.goto('/')
+    await expect(page.locator(`a[data-mrn="${mrn}"]`)).toBeVisible()
+    // On screen the sheet is `.print-only`, so the row exists and is invisible; it is the printed
+    // page that has to carry the line.
+    await expect(page.locator(`[data-action-row="${mrn}"]`)).toBeHidden()
+    await page.emulateMedia({ media: 'print' })
+
+    const actionRow = page.locator(`[data-action-row="${mrn}"]`)
+    await expect(actionRow).toBeVisible()
+    await expect(actionRow).toContainText('Trajectory: Admission')
+    await expect(actionRow).toContainText(`Action: ${action.slice(0, SHEET_ACTION_MAX)}…`)
+    await expect(actionRow).not.toContainText('TAIL_OFF_THE_SHEET')
+    await expect(actionRow).toContainText('Escalated to medical director: Yes')
+    await page.emulateMedia({ media: 'screen' })
+  },
+)
 
 /**
  * Phase 8b, decisions F and E (docs/specs/phase8b-decisions.md). The pain-management block is
