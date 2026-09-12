@@ -140,6 +140,7 @@ function draft(over: Partial<CaseDraft> = {}): CaseDraft {
     caseMgmtRepliedAt: null,
     delayActionTaken: '',
     escalatedToMedicalDirector: null,
+    trajectory: null,
     disposition: null,
     wardId: null,
     isolation: false,
@@ -259,6 +260,9 @@ beforeAll(async () => {
       // Phase 14: the two columns the Cases sheet ends with, and the update the resolve mirrors.
       delayActionTaken: 'Called the on-call director; family kept informed',
       escalatedToMedicalDirector: true,
+      // Phase 15: a death on a discharge pathway — the trajectory is the plan, the outcome is what
+      // happened, and the sheet carries both in adjacent columns.
+      trajectory: 'DISCHARGE',
       version: 1,
     },
     ctxFor(navigator.id),
@@ -553,6 +557,12 @@ describe('GET /api/export.xlsx as a SUPERVISOR', () => {
       'Called the on-call director; family kept informed',
     )
     expect(columnValues(cases, 'Escalated to medical director')[index]).toBe('Yes')
+
+    // Phase 15 (docs/specs/phase15-trajectory.md, item 6): the pathway, in the column before the
+    // outcome it planned for, on the real workbook and not only on the pure row builder.
+    const columns = header.filter((v): v is string => typeof v === 'string')
+    expect(columns[columns.indexOf('Disposition') - 1]).toBe('Trajectory')
+    expect(columnValues(cases, 'Trajectory')[index]).toBe('Discharge')
 
     const updates = workbook.getWorksheet('Updates')!
     expect(columnValues(updates, 'Update')).toContain('Called the on-call director; family kept informed')

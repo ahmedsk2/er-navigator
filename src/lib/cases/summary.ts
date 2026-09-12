@@ -22,7 +22,7 @@
  *     with it OR when the case carries the timestamp that records it.
  */
 import { ACTION_KINDS, type ActionKind } from '@/src/lib/domain/kpi'
-import { DISPOSITION_LABELS, PAYER_LABELS } from '@/src/lib/domain/taxonomy'
+import { DISPOSITION_LABELS, PAYER_LABELS, TRAJECTORY_LABELS } from '@/src/lib/domain/taxonomy'
 import { band, elapsedHours, endAt, fmtHours, type Band, type CaseClock } from '@/src/lib/domain/time'
 import { fmtStamp } from './local-time'
 import type { LoadedCase } from './load'
@@ -112,6 +112,11 @@ export type CaseSummary = {
   delayActionTaken: string | null
   escalatedToMedicalDirector: boolean | null
   updates: { count: number; lastAt: string | null }
+  /**
+   * Phase 15: where the patient was said to be going, as its own label, or null while nobody has
+   * decided. A plan and not free text, so it is shown by the same rule the disposition is.
+   */
+  trajectoryLabel: string | null
   outcome: SummaryOutcome
   timeline: TimelineStepView[]
   /** The instant the summary was taken: it is a reading of the case, not a live view. */
@@ -242,6 +247,7 @@ export function summaryOf(loaded: LoadedCase, reference: ReferenceData, now: Dat
     delayActionTaken: draft.delayActionTaken.trim() === '' ? null : draft.delayActionTaken,
     escalatedToMedicalDirector: draft.escalatedToMedicalDirector,
     updates: { count: loaded.updates.length, lastAt: lastUpdate },
+    trajectoryLabel: draft.trajectory ? TRAJECTORY_LABELS[draft.trajectory] : null,
     outcome: {
       dispositionLabel: draft.disposition ? DISPOSITION_LABELS[draft.disposition] : null,
       wardCode: nameOf(reference.wards, draft.wardId)?.code ?? null,
@@ -306,6 +312,7 @@ export function summaryText(summary: CaseSummary): string {
       'Updates',
       `${summary.updates.count}${summary.updates.lastAt ? `, last ${fmtStamp(summary.updates.lastAt)}` : ''}`,
     ),
+    line('Trajectory', summary.trajectoryLabel),
     line('Outcome', summary.outcome.dispositionLabel),
     line('Ward', summary.outcome.wardCode),
     summary.outcome.isolation ? 'Isolation: yes' : null,

@@ -26,6 +26,7 @@ import {
   type CaseFilter,
   type FilterReference,
 } from '@/src/lib/domain/case-filter'
+import { TRAJECTORY_LABELS } from '@/src/lib/domain/taxonomy'
 import { fmtHours } from '@/src/lib/domain/time'
 
 const HEAD = 'border border-line px-1.5 py-1 text-left font-bold'
@@ -69,15 +70,18 @@ export function lastUpdateText(row: BoardRow): string {
 }
 
 /**
- * What was done about the delay, and whether it went to the medical director (Phase 14), as one
- * line — or null when the case carries neither, so a sheet of cases nobody has answered is the
- * sheet it always was.
+ * Where the patient is going (Phase 15), what was done about the delay, and whether it went to
+ * the medical director (Phase 14), as one line — or null when the case carries none of the three,
+ * so a sheet of cases nobody has answered is the sheet it always was.
  *
- * A line and not an eighth column: the table's seven headers are pinned and a ward printer's page
- * is already full, and this is prose of up to a thousand characters, which no column would hold.
+ * A line and not three more columns: the table's seven headers are pinned and a ward printer's
+ * page is already full, and the action is prose of up to a thousand characters, which no column
+ * would hold. The trajectory opens it because the question a charge nurse asks at a shift change
+ * is "where is this one going?" before "and what did we do about it?".
  */
 export function actionLine(row: BoardRow): string | null {
   const parts: string[] = []
+  if (row.trajectory) parts.push(`Trajectory: ${TRAJECTORY_LABELS[row.trajectory]}`)
   const action = row.delayActionTaken?.trim()
   if (action) parts.push(`Action: ${action}`)
   if (row.escalatedToMedicalDirector != null) {
@@ -111,7 +115,7 @@ function TimelineRow({ row }: { row: BoardRow }) {
   )
 }
 
-/** `actionLine` under the case, when there is one (Phase 14). */
+/** `actionLine` under the case, when there is one (Phase 14, widened in Phase 15). */
 function ActionRow({ row }: { row: BoardRow }) {
   const line = actionLine(row)
   if (!line) return null

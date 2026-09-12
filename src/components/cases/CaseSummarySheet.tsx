@@ -234,6 +234,8 @@ export function CaseSummaryDialog({ summary, onClose }: { summary: CaseSummary; 
                   </>
                 }
               />
+              {/* Phase 15: the pathway, immediately above the outcome it planned for. */}
+              <Row label="Trajectory" value={summary.trajectoryLabel} />
               <Row label="Outcome" value={summary.outcome.dispositionLabel} />
               <Row label="Ward" value={summary.outcome.wardCode} />
               <Row label="Isolation" value={summary.outcome.isolation ? 'Yes' : null} />

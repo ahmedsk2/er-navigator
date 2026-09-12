@@ -72,6 +72,8 @@ const CASES: CaseForExport[] = FIXTURE.map((c) => {
       resolutionNote: 'Admitted to ICU',
       delayActionTaken: 'Bed manager called twice; ICU holding a bed for 14:00',
       escalatedToMedicalDirector: true,
+      // Phase 15: the one enriched case that says where it was going, so the column is exercised.
+      trajectory: 'ADMISSION',
       updates: [
         { at: c.registrationAt, text: 'Bed requested', authorName: 'Nadia Navigator' },
         { at: c.departedAt!, text: 'Resolved: Admitted', authorName: 'Sami Supervisor' },
@@ -222,6 +224,19 @@ describe('casesSheet', () => {
     expect(c1[column(CASES_HEADER, 'Escalated to medical director')]).toBe('No')
     const c3 = rowFor(sheet.rows, '100003')
     expect(c3[column(CASES_HEADER, 'Escalated to medical director')]).toBe('')
+  })
+
+  /**
+   * Phase 15 (docs/specs/phase15-trajectory.md, item 6). The pathway the case was said to be on,
+   * immediately before the outcome it planned for, so the two are read column against column.
+   */
+  it('carries the trajectory in the column before the disposition', () => {
+    expect(CASES_HEADER[column(CASES_HEADER, 'Disposition') - 1]).toBe('Trajectory')
+    expect(CASES_HEADER.filter((h) => h === 'Trajectory')).toHaveLength(1)
+    const admitted = rowFor(sheet.rows, '100005')
+    expect(admitted[column(CASES_HEADER, 'Trajectory')]).toBe('Admission')
+    // Not decided yet is a blank cell, the way an unrecorded ward or payer is.
+    expect(rowFor(sheet.rows, '100001')[column(CASES_HEADER, 'Trajectory')]).toBe('')
   })
 
   /** The external forms are fixed column lists the receiving side matches on: neither is widened. */

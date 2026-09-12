@@ -83,6 +83,7 @@ describe('lastUpdateText', () => {
     reviewedAt: null,
     delayActionTaken: null,
     escalatedToMedicalDirector: null,
+    trajectory: null,
     timeline: [],
     ...over,
   })
@@ -138,6 +139,7 @@ describe('actionLine', () => {
     reviewedAt: null,
     delayActionTaken: null,
     escalatedToMedicalDirector: null,
+    trajectory: null,
     timeline: [],
     ...over,
   })
@@ -156,5 +158,21 @@ describe('actionLine', () => {
     expect(
       actionLine(row({ delayActionTaken: '  ICU holding a bed  ', escalatedToMedicalDirector: true })),
     ).toBe('Action: ICU holding a bed · Escalated to medical director: Yes')
+  })
+
+  /**
+   * Phase 15 (docs/specs/phase15-trajectory.md, item 6): the trajectory opens the line, because
+   * the question a charge nurse asks at a handover is "where is this one going?" before "and what
+   * did we do about it?". A part of this line and not an eighth column: the seven headers are
+   * pinned and a ward printer's page is already full.
+   */
+  it('opens with the trajectory when the case carries one', () => {
+    expect(actionLine(row({ trajectory: 'ADMISSION' }))).toBe('Trajectory: Admission')
+    expect(actionLine(row({ trajectory: 'TRANSFER' }))).toBe('Trajectory: Transfer to another facility')
+    expect(
+      actionLine(
+        row({ trajectory: 'DISCHARGE', delayActionTaken: 'Pharmacy chased', escalatedToMedicalDirector: false }),
+      ),
+    ).toBe('Trajectory: Discharge · Action: Pharmacy chased · Escalated to medical director: No')
   })
 })

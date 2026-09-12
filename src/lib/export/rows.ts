@@ -25,6 +25,7 @@ import {
   MILESTONES,
   PAYER_LABELS,
   SHIFT_LABELS,
+  TRAJECTORY_LABELS,
   TRANSFER_STEPS,
 } from '@/src/lib/domain/taxonomy'
 import { MIN_N, duration, elapsedHours } from '@/src/lib/domain/time'
@@ -118,6 +119,10 @@ export const CASES_HEADER: string[] = [
   'Departments',
   'Referral tracking no.',
   'Receiving facility',
+  // Phase 15 (docs/specs/phase15-trajectory.md, item 6): the pathway the case was said to be on,
+  // immediately before the outcome it planned for, because the two are read column against
+  // column. This is the app's own sheet and no external side matches on its positions.
+  'Trajectory',
   'Disposition',
   'Ward',
   'Isolation',
@@ -158,6 +163,7 @@ export function casesRow(c: CaseForExport, now: Date): Cell[] {
     join(c.departmentNames),
     c.referralTrackingNo ?? '',
     c.transferFacility ?? '',
+    c.trajectory ? TRAJECTORY_LABELS[c.trajectory] : '',
     c.disposition ? (DISPOSITION_LABELS[c.disposition as keyof typeof DISPOSITION_LABELS] ?? c.disposition) : '',
     c.wardCode ?? '',
     yesOrBlank(c.isolation),

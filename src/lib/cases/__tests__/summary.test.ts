@@ -330,6 +330,25 @@ describe('summaryOf', () => {
   it('reads a blank working diagnosis as nothing recorded, not as an empty line', () => {
     expect(summaryOf(loaded({}, { diagnosis: '   ' }), REFERENCE, NOW).diagnosis).toBeNull()
   })
+
+  /**
+   * Phase 15 (docs/specs/phase15-trajectory.md, item 6): the pathway the case is on, beside the
+   * outcome it planned for, so a summary read down the phone says where the patient is going
+   * before anybody has resolved anything.
+   */
+  it('names the trajectory by its label, and says nothing when none was chosen', () => {
+    expect(summaryOf(loaded(), REFERENCE, NOW).trajectoryLabel).toBeNull()
+    for (const [trajectory, label] of [
+      ['DISCHARGE', 'Discharge'],
+      ['ADMISSION', 'Admission'],
+      ['TRANSFER', 'Transfer to another facility'],
+    ] as const) {
+      const s = summaryOf(loaded({}, { trajectory }), REFERENCE, NOW)
+      expect(s.trajectoryLabel, trajectory).toBe(label)
+      expect(summaryText(s), trajectory).toContain(`Trajectory: ${label}`)
+    }
+    expect(summaryText(summaryOf(loaded(), REFERENCE, NOW))).not.toContain('Trajectory')
+  })
 })
 
 describe('summaryText', () => {
