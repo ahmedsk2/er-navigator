@@ -269,6 +269,65 @@ test('LWBS hides the physician and the decision, and still shows what was record
 })
 
 /**
+ * P13.41, the reopen trap. Decision C is enforced at "Mark resolved" and there is no migration, so
+ * a case resolved before the rule — or seeded without the times its outcome needs — reopened in
+ * one tap and then could not be closed again until they were entered, with nothing on the screen
+ * having said so. "Reopen case" now asks first, in the app's two-tap pattern, and the sentence
+ * above it names exactly what the case will owe.
+ */
+test('Reopen case says what the case will owe, and one tap alone does not reopen it', async ({ page }, testInfo) => {
+  const mobile = testInfo.project.name === 'mobile'
+  await fromClientIp(page, mobile ? '203.0.113.21' : '203.0.113.22')
+  const taps = await signIn(page, E2E_USERS.navigator)
+  await openCase(page, uniqueMrn(), STAGE, REASON, taps)
+
+  await page.getByLabel('Final disposition').selectOption('DISCHARGED_HOME')
+  await recordJourney(page, DISCHARGE_JOURNEY)
+  await page.getByRole('button', { name: 'Mark resolved', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Resolved', exact: true })).toBeVisible()
+
+  // Nothing is missing on a case resolved under the rule, so the confirmation is a plain one.
+  const needs = page.locator('[data-reopen-needs]')
+  await expect(needs).toHaveText(
+    'Reopening puts this case back on the board. Everything it needs to be resolved again is already recorded.',
+  )
+
+  /**
+   * Now the case a nurse actually meets. "Save changes" runs the draft rules and not the resolve
+   * rules — a case opens on an MRN, a time and a reason, and every journey time may be blank — so
+   * clearing Triage on a resolved case leaves exactly the row a pre-Phase-13 resolve left behind.
+   */
+  const journey = journeyOf(page)
+  await journey
+    .locator('[data-journey-step="triageAt"]')
+    .getByRole('button', { name: 'Edit — Triage', exact: true })
+    .click()
+  await journey.getByLabel('Triage', { exact: true }).fill('')
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click()
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
+  await expect(needs).toHaveText(
+    'Reopening puts this case back on the board. Before it can be resolved again, enter: Triage.',
+  )
+
+  // Cancel: one tap arms the button and does nothing else, and the arming lapses on its own.
+  const reopen = page.getByRole('button', { name: 'Reopen case', exact: true })
+  await reopen.click()
+  await expect(page.getByRole('button', { name: 'Tap again to reopen', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Resolved', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Mark resolved', exact: true })).toHaveCount(0)
+  await expect(reopen).toBeVisible({ timeout: 6_000 })
+  await expect(page.getByRole('heading', { name: 'Resolved', exact: true })).toBeVisible()
+
+  // Confirm: the second tap inside the window reopens it, and the case owes what the sentence said.
+  await reopen.click()
+  await page.getByRole('button', { name: 'Tap again to reopen', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Resolve case', exact: true })).toBeVisible()
+  await expect(needs).toHaveCount(0)
+  await expect(page.locator('[data-resolve-missing]')).toHaveText('Before resolving, enter: Triage.')
+  await expect(page.getByRole('button', { name: 'Mark resolved', exact: true })).toBeDisabled()
+})
+
+/**
  * Decision E: "More to record" is closed on a case that carries none of its answers and open on
  * one that does, so nothing already recorded is ever behind a tap.
  *

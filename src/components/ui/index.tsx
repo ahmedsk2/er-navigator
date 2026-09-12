@@ -169,18 +169,24 @@ export function Button({
 /**
  * Two taps, the prototype's guard on a destructive action: the first arms the button for three
  * seconds, the second commits. Nothing is ever deleted here — voiding is what this arms.
+ *
+ * `tone` is `danger` by default, which is voiding. P13.41 arms "Reopen case" with the same
+ * gesture: reopening destroys nothing, so it keeps the quiet tone it already had, and the pattern
+ * a nurse has learned for "this one asks twice" is one pattern rather than two.
  */
 export function ConfirmButton({
   label,
   confirmLabel,
   onConfirm,
   disabled,
+  tone = 'danger',
   className = '',
 }: {
   label: string
   confirmLabel: string
   onConfirm: () => void
   disabled?: boolean
+  tone?: keyof typeof BUTTON_TONE
   className?: string
 }) {
   const [armed, setArmed] = useState(false)
@@ -191,7 +197,7 @@ export function ConfirmButton({
   }, [armed])
   return (
     <Button
-      tone="danger"
+      tone={tone}
       disabled={disabled}
       className={className}
       onClick={() => (armed ? onConfirm() : setArmed(true))}

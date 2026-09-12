@@ -381,8 +381,9 @@ Nothing in this list may change, and every one of them is held by an existing te
   `Tests`, `Times`, `Updates`, `Resolve`, their order, the conditional Teams and Tests, the
   scroll-and-focus behaviour that pushes no history entry.
 - **Buttons**: `Open case`, `Save changes`, `Void`, `Void this case` / `Tap again to void`,
-  `Mark resolved`, `Reopen case`, `Add`, `Summary`, `Mark reviewed` / `Mark again`,
-  `Acknowledge`, and every `Now — {label}`.
+  `Mark resolved`, `Reopen case` (which from P13.41 arms to `Tap again to reopen`, the same
+  two-tap guard as Void, over a sentence naming the times the outcome will owe), `Add`, `Summary`,
+  `Mark reviewed` / `Mark again`, `Acknowledge`, and every `Now — {label}`.
 - **The chains that did not move**: `CONSULT_STEPS` under each department,
   `INVESTIGATION_STEPS` per test type, both with every label unchanged.
 - **`TimeRow`**: stacked below `sm`, 240 px box from `sm`, the whole date visible at 390 px, the

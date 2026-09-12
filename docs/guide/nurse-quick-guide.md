@@ -105,6 +105,10 @@ saying. Then **Mark resolved**.
 The stay is measured from registration to the time the patient left, so the departure time matters
 as much as the registration time did.
 
+**Reopen case** puts a resolved case back on the board, and it asks twice: the first tap arms the
+button, the second commits, and the line above it names the times this outcome will want before
+the case can be closed again.
+
 A case opened twice by mistake is **voided**, not deleted, and only a charge nurse or an admin can
 do it. Nothing in this app is ever deleted.
 

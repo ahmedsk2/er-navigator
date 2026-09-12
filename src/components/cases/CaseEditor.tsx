@@ -392,6 +392,17 @@ export function CaseEditor(props: CaseEditorProps) {
       ]
     : []
 
+  /**
+   * P13.41. Decision C bites at "Mark resolved" and there is no migration, so a case resolved
+   * before this phase, or seeded without the times its outcome needs, reopens into a state it
+   * cannot leave until they are entered. Reopening it is still the right thing to allow — the
+   * alternative was a split rule or a migration, and Ahmed's decision C ruled both out — but it
+   * is no longer a single unannounced tap: the times are named here before the case is moved.
+   * Times only, from the same table the server refuses on; the ward, the referral number and the
+   * facility are typed in front of the nurse and are not what surprises anyone.
+   */
+  const reopenNeeds: string[] =
+    status === 'RESOLVED' ? missingJourneyTimes(draft.disposition, draft).map(([, label]) => label) : []
 
   // --- editing --------------------------------------------------------------------------------
 
@@ -1383,9 +1394,25 @@ export function CaseEditor(props: CaseEditorProps) {
               ) : null}
             </>
           ) : (
-            <Button className="w-full" disabled={busy} onClick={() => void onReopen()}>
-              Reopen case
-            </Button>
+            <>
+              {/* P13.41: the same two-tap guard "Void this case" uses, in the quiet tone, because
+                  reopening destroys nothing — and above it, the times this outcome will ask for
+                  before the case can be closed again. */}
+              <p data-reopen-needs className="mb-1.5 text-caption text-muted">
+                Reopening puts this case back on the board.{' '}
+                {reopenNeeds.length > 0
+                  ? `Before it can be resolved again, enter: ${reopenNeeds.join(', ')}.`
+                  : 'Everything it needs to be resolved again is already recorded.'}
+              </p>
+              <ConfirmButton
+                tone="quiet"
+                className="w-full"
+                label="Reopen case"
+                confirmLabel="Tap again to reopen"
+                disabled={busy}
+                onConfirm={() => void onReopen()}
+              />
+            </>
           )}
 
           {/* Phase 8b, decision H. Under the Resolve block: the line for everyone, the control
