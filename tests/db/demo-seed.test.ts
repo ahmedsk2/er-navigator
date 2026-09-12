@@ -261,6 +261,35 @@ describeDb('the demo seed', () => {
   })
 
   /**
+   * Phase 14 (docs/specs/phase14-actions-and-escalation.md, item 8). The Resolve block's two new
+   * answers are the first thing a presenter meets on a resolved demo case, so every resolved case
+   * carries a "what was done" text — and the `CaseUpdate` a real save would have mirrored from it,
+   * so the demo's own history, board staleness and deck figures are what the app would produce.
+   */
+  it('gives every resolved case a delay action, mirrored into its history', async () => {
+    const resolved = await prisma.case.findMany({
+      where: { status: 'RESOLVED' },
+      select: {
+        mrn: true,
+        delayActionTaken: true,
+        escalatedToMedicalDirector: true,
+        updates: { select: { text: true, action: true, system: true } },
+      },
+    })
+    expect(resolved).toHaveLength(4)
+    for (const c of resolved) {
+      expect(c.delayActionTaken, `case ${c.mrn} has no delay action`).toBeTruthy()
+      expect(c.escalatedToMedicalDirector, `case ${c.mrn} was never asked`).not.toBeNull()
+      const mirrored = c.updates.find((u) => u.text === c.delayActionTaken)
+      expect(mirrored, `case ${c.mrn} has no mirrored update`).toBeDefined()
+      expect(mirrored!.system).toBe(false)
+      expect(mirrored!.action).toBe(c.escalatedToMedicalDirector ? 'LEADERSHIP_ESCALATION' : null)
+    }
+    // At least one of them was escalated, so the presenter has the story to tell.
+    expect(resolved.some((c) => c.escalatedToMedicalDirector === true)).toBe(true)
+  })
+
+  /**
    * P13.42. The seed wrote triage, physician, decision and Left ED and stopped there, so its
    * ADMITTED case had no admission order and no bed assigned and its TRANSFERRED case had no
    * transfer requested, no acceptance and no named facility. Nothing on the board showed it —

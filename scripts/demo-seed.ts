@@ -105,6 +105,14 @@ type CaseSeed = {
   department?: string
   referralNo?: string
   updates?: ReadonlyArray<UpdateSeed>
+  /**
+   * Phase 14 (docs/specs/phase14-actions-and-escalation.md): what was done about the delay, and
+   * whether it went to the medical director. Written to the two columns AND appended as the
+   * `CaseUpdate` the app's own save would have mirrored from it, so a seeded case is exactly the
+   * shape a worked one is — the board's staleness, the deck's figures and the QCH Comments column
+   * all read that row.
+   */
+  delayAction?: { text: string; escalated?: boolean }
   resolve?: {
     /** Hours after registration that the patient left; the LOS clock freezes there. */
     departedAfterHours: number
@@ -240,6 +248,7 @@ const CASES: ReadonlyArray<CaseSeed> = [
     diagnosis: 'cellulitis, admitted',
     reasons: [{ stage: 'adm', reason: 'Bed available, awaiting transport/porter' }],
     updates: [{ hoursAgo: 2 * 24 - 4, text: 'Porter booked.' }],
+    delayAction: { text: 'Porter service called twice; ward agreed to collect the patient themselves.' },
     resolve: { departedAfterHours: 7, disposition: 'ADMITTED', wardCode: 'MMW', note: 'Handed over to the ward.' },
   },
   {
@@ -252,6 +261,7 @@ const CASES: ReadonlyArray<CaseSeed> = [
     payer: 'INSURED',
     diagnosis: 'migraine, treated and discharged',
     reasons: [{ stage: 'inv', reason: 'Lab: delay in processing' }],
+    delayAction: { text: 'Lab asked to prioritise the sample; results released within the hour.' },
     resolve: { departedAfterHours: 5, disposition: 'DISCHARGED_HOME', note: 'Discharged with instructions.' },
   },
   {
@@ -266,6 +276,10 @@ const CASES: ReadonlyArray<CaseSeed> = [
     reasons: [{ stage: 'adm', reason: 'Referred out: no bed in accepting department' }],
     referralNo: 'DEMO-REF-0091',
     updates: [{ hoursAgo: 7 * 24 - 6, text: 'Referral accepted by the receiving hospital.' }],
+    delayAction: {
+      text: 'RCC chased three times, then escalated to the medical director, who called the receiving hospital.',
+      escalated: true,
+    },
     resolve: {
       departedAfterHours: 13,
       disposition: 'TRANSFERRED',
@@ -283,6 +297,7 @@ const CASES: ReadonlyArray<CaseSeed> = [
     payer: 'SELF_PAY',
     diagnosis: 'minor complaint, sent to urgent care',
     reasons: [{ stage: 'reg', reason: 'Registration desk/system delay' }],
+    delayAction: { text: 'Registration re-entered by hand; patient walked to the urgent care centre.' },
     resolve: { departedAfterHours: 3, disposition: 'REFERRED_UCC', note: 'Redirected to the urgent care centre.' },
   },
 ]
@@ -482,6 +497,9 @@ async function createDemoCase(
       triageAt: new Date(registrationAt.getTime() + 15 * 60_000),
       physicianAt: new Date(registrationAt.getTime() + 55 * 60_000),
       referralTrackingNo: seed.referralNo ?? null,
+      // Phase 14: the two answers the Resolve block carries.
+      delayActionTaken: seed.delayAction?.text ?? null,
+      escalatedToMedicalDirector: seed.delayAction ? (seed.delayAction.escalated ?? false) : null,
       ...(seed.resolve && departedAt
         ? {
             status: 'RESOLVED' as const,
@@ -543,6 +561,22 @@ async function createDemoCase(
         createdAt: new Date(now.getTime() - u.hoursAgo * H),
         text: u.text,
         action: u.action ?? null,
+      },
+    })
+  }
+
+  // Phase 14: the row a save would have mirrored from the delay action, written here so the
+  // seeded case's history is what the app would have produced. Dated an hour before the
+  // departure on a resolved case, or an hour ago on an open one, so it is the newest note and
+  // the board's "Updated Xh ago" reads it.
+  if (seed.delayAction) {
+    await prisma.caseUpdate.create({
+      data: {
+        caseId: created.id,
+        authorId: openedById,
+        createdAt: departedAt ? new Date(departedAt.getTime() - H) : new Date(now.getTime() - H),
+        text: seed.delayAction.text,
+        action: seed.delayAction.escalated ? 'LEADERSHIP_ESCALATION' : null,
       },
     })
   }

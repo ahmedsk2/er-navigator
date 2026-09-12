@@ -96,11 +96,13 @@ Still as `demo.nav.a`. Tap **+ New case**.
   management and case management. Say: the four things nobody fills at the bedside, and the
   section opens itself on any case that already carries one of them.
 - Tap **Open case** at the foot of the screen.
-- Add one update in the Updates box, with an action tag, and tap **Add**.
+- Scroll to **Resolve case** and fill the first box, **What was done to solve the delay**, then tap
+  **Save changes**.
 
-Two things to say while you do it: an update cannot be edited or deleted afterwards, and if
-somebody else saves the case while you have it open the app refuses your save and tells you who
-changed it, rather than quietly overwriting one of you.
+Two things to say while you do it: that sentence is added to the case's record with your name and
+the time and can never be edited or deleted afterwards, and if somebody else saves the case while
+you have it open the app refuses your save and tells you who changed it, rather than quietly
+overwriting one of you.
 
 ## 7 to 9 min. The board at its busiest
 
@@ -109,8 +111,10 @@ Go back to the board.
 - **The colours.** Green under 4 hours, amber from 4, red from 6, purple from 12, near-black from
   24. Point at one of each on the seeded rows.
 - **The counts line**, again, now that the colours mean something.
-- Tap a row's **Summary** and show the one-screen picture of a case, with a **Copy** button that
-  puts it on the clipboard as text for pasting into a message.
+- Tap a row's **Summary** and show the one-screen picture of a case: the delay reasons, what was
+  done about them, whether it was escalated, and the case's whole time sequence, with a **Copy**
+  button that puts it on the clipboard as text for pasting into a message. Say: the time sequence
+  used to be a section on the case page and it is here now, where it is read rather than typed.
 - **Filter**: narrow to one stage, for example Admission process, and show the count line change.
 - **The handover sheet.** Open the menu at the top right and tap **Print handover**. Show the print
   preview: the same rows in the same order, plain black and white, with a line saying the board was
@@ -120,7 +124,7 @@ Go back to the board.
 
 Open one of the seeded open cases.
 
-- Point at the **jump strip** under the header: Delay, Teams, Tests, Times, Updates, Resolve. A
+- Point at the **jump strip** under the header: Delay, Teams, Tests, Times, Resolve. A
   worked case is several screens long and this is how a nurse gets down it in one tap. **Times**
   lands on **Patient journey**.
 - In **Patient journey**, tap **Now** on Triage. Watch the row collapse to one line with an
@@ -133,9 +137,13 @@ Open one of the seeded open cases.
   enter: ...". Show the **needed to resolve** tags that appear on those steps up in the journey
   block, fill them, and watch the button come alive. Say: the app asks for the times that outcome
   actually needs and hides the ones it cannot have.
-- In **Resolve case**, point at **Left ED**: it is shown here but not typed here, with a **Now**
-  button and a line saying it is recorded in Patient journey above. Add a resolution note and tap
-  **Mark resolved**.
+- In **Resolve case**, start at the top: **What was done to solve the delay**, and **Escalated to
+  medical director** as Yes or No. Say: these two are the department's answer to "and what did you
+  do about it?", they can be answered before the patient leaves and after, and every change to the
+  box is added to the case's record with a name and a time. Answering **Yes** the first time marks
+  that record as a leadership escalation, which is the row the weekly deck counts.
+- Then point at **Left ED**: it is shown here but not typed here, with a **Now** button and a line
+  saying it is recorded in Patient journey above. Add a resolution note and tap **Mark resolved**.
 - Show **Reopen case** on the resolved row. It asks twice, and the line above it names the times
   the case would owe before it could be closed again. Say: reopening is allowed, and it is never
   a surprise.

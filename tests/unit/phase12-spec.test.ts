@@ -225,6 +225,48 @@ describe('the guides name the controls the app actually renders', () => {
     expect(nurse.indexOf('**More to record**')).toBeLessThan(nurse.indexOf('Working diagnosis (optional)'))
   })
 
+  /**
+   * Phase 14 (docs/specs/phase14-actions-and-escalation.md). The case page lost two sections and
+   * gained two controls, and a guide that still sends a nurse to a box that is not there is the
+   * exact drift P13.43 built this block to catch. Each sentence is read off the component that
+   * renders the control, not off the prose.
+   */
+  it('names the two Resolve inputs the editor renders, and no Updates composer', () => {
+    const { nurse, script, editor } = guides()
+    expect(editor).toMatch(/label="What was done to solve the delay"/)
+    expect(editor).toMatch(/label="Escalated to medical director"/)
+    // The composer, the list and the timeline slot are gone from the editor and from the page.
+    expect(editor, 'the Updates composer is back').not.toMatch(/What changed\?/)
+    expect(editor, 'the action-tag chip row is back').not.toMatch(/Action taken \(optional\)/)
+    expect(editor, 'the timeline slot is back').not.toMatch(/props\.timeline/)
+    const page = readFileSync(path.join(ROOT, 'app/cases/[id]/page.tsx'), 'utf8')
+    expect(page, 'the case page renders a Timeline again').not.toMatch(/CaseTimeline/)
+
+    // Both guides wrap at 100 columns, so a label can be split across two lines; the prose is
+    // compared with its whitespace collapsed, which is how a reader sees it.
+    for (const [name, raw] of [['nurse guide', nurse], ['demo script', script]] as const) {
+      const text = raw.replace(/\s+/g, ' ')
+      expect(text, `${name} names the delay-action box`).toMatch(/\*\*What was done to solve the delay:?\*\*/)
+      expect(text, `${name} names the escalation chips`).toMatch(/\*\*Escalated to medical director:?\*\*/)
+      expect(text, `${name} still sends a nurse to the "What changed?" box`).not.toMatch(/What changed\?/)
+      expect(text, `${name} still says to tap Add`).not.toMatch(/tap \*\*Add\*\*/)
+    }
+  })
+
+  it('lists the five jump chips the editor actually renders', () => {
+    const { nurse, script, editor } = guides()
+    // The strip's labels, in the order the array builds them (Teams and Tests are conditional).
+    const chips = [...editor.matchAll(/label: '(Delay|Teams|Tests|Times|Updates|Resolve)'/g)].map((m) => m[1]!)
+    expect(chips).toEqual(['Delay', 'Teams', 'Tests', 'Times', 'Resolve'])
+    for (const [name, raw] of [['nurse guide', nurse], ['demo script', script]] as const) {
+      const text = raw.replace(/\s+/g, ' ')
+      expect(text, `${name} lists the strip`).toMatch(
+        /\*\*Delay\*\*, \*\*Teams\*\*, \*\*Tests\*\*, \*\*Times\*\*, \*\*Resolve\*\*|Delay, Teams, Tests, Times, Resolve/,
+      )
+      expect(text, `${name} still lists an Updates chip`).not.toMatch(/Times\*\*, \*\*Updates|Times, Updates/)
+    }
+  })
+
   /** House style, and the reason this file can compare strings at all: no em dash in a guide. */
   it('keeps both guides free of em dashes', () => {
     const { nurse, script } = guides()

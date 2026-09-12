@@ -5,7 +5,7 @@
  *   2. each new user signs in with the temporary password; Nadia sets her own;
  *   3. Nadia and Omar open five patients as the delays arise, with real-looking times;
  *   4. the board at its busiest: bands, filter, a row summary, the handover sheet;
- *   5. the navigators work each case (times, consults, updates with action tags) and resolve it;
+ *   5. the navigators work each case (times, consults, what was done about the delay) and resolve it;
  *   6. Sara, the charge nurse, reviews the resolved cases and pulls the workbook and the report;
  *   7. Dr Huda, read-only, opens the dashboard on her phone and on her laptop.
  *
@@ -149,12 +149,16 @@ async function save(page: Page): Promise<void> {
   await tap(page.getByRole('button', { name: 'Save changes', exact: true }))
   await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
 }
-async function update(page: Page, text: string, tag?: string): Promise<void> {
-  if (tag) await tap(chip(page, 'Action taken (optional)', tag))
-  await fill(page.getByLabel('What changed?', { exact: true }), text)
-  await page.getByLabel('What changed?', { exact: true }).press('Enter')
-  act()
-  await expect(page.getByRole('listitem').filter({ hasText: text }).first()).toBeVisible()
+/**
+ * Phase 14 (docs/specs/phase14-actions-and-escalation.md): the Updates composer is off the case
+ * page. What a navigator writes about a delay goes in the Resolve block, and Save appends it to
+ * the case's history as one append-only `CaseUpdate` — which is what the board's staleness and
+ * the weekly deck read, so the presenter's story is unchanged even though the control is not.
+ */
+async function recordAction(page: Page, text: string, escalated?: boolean): Promise<void> {
+  await fill(page.getByLabel('What was done to solve the delay', { exact: true }), text)
+  if (escalated) await tap(chip(page, 'Escalated to medical director', 'Yes'))
+  await save(page)
 }
 /**
  * Phase 13: the journey times are always on the sheet, and the shift, the working diagnosis, the
@@ -210,7 +214,8 @@ type Patient = {
   admission?: Array<[string, number]>
   transfer?: { tracking: string; facility: string; steps: Array<[string, number]> }
   medAdminH?: number
-  updates: Array<{ text: string; tag?: string }>
+  /** Phase 14: what was done about the delay, and whether it went to the medical director. */
+  action: { text: string; escalated?: boolean }
   resolve: { dispo: string; label: string; ward?: RegExp; instructions?: 'Yes' | 'No'; family?: 'Yes' | 'No'; leftH: number; note: string }
 }
 
@@ -245,11 +250,10 @@ const PATIENTS: Patient[] = [
       ['Bed assigned', 1.5],
     ],
     medAdminH: 4,
-    updates: [
-      { text: 'Bed requested from CCU, none free yet', tag: 'Case / bed management' },
-      { text: 'Escalated to the medical admin on-call; CCU to step one patient down', tag: 'Leadership escalation' },
-      { text: 'CCU bed 4 assigned, handover in progress' },
-    ],
+    action: {
+      text: 'Bed requested from CCU, none free yet; escalated, CCU stepped one patient down and assigned bed 4',
+      escalated: true,
+    },
     resolve: { dispo: 'ADMITTED', label: 'Admitted', ward: /^CCU$/, family: 'Yes', leftH: 0.5, note: 'To CCU bed 4' },
   },
   {
@@ -288,10 +292,7 @@ const PATIENTS: Patient[] = [
       ['First physician contact', 7.2],
       ['Disposition decided', 1.8],
     ],
-    updates: [
-      { text: 'Ultrasound done, waiting for the formal report' },
-      { text: 'Radiology called for the report; surgery paged' },
-    ],
+    action: { text: 'Ultrasound done; radiology called for the formal report and surgery paged' },
     resolve: { dispo: 'DISCHARGED_HOME', label: 'Discharged home', instructions: 'Yes', family: 'Yes', leftH: 1, note: 'Not appendicitis; GP follow-up in 48 h' },
   },
   {
@@ -330,10 +331,7 @@ const PATIENTS: Patient[] = [
         ['RCC / transport arrived', 3],
       ],
     },
-    updates: [
-      { text: 'Referral faxed to RCC for hand surgery', tag: 'External transfer / fax / RCC' },
-      { text: 'Accepted by DMC orthopaedics; waiting for transport', tag: 'External transfer / fax / RCC' },
-    ],
+    action: { text: 'Referral faxed to RCC for hand surgery; accepted by DMC orthopaedics, waiting for transport' },
     resolve: { dispo: 'TRANSFERRED', label: 'Transferred to another facility', family: 'Yes', leftH: 2.5, note: 'Left by RCC ambulance' },
   },
   {
@@ -380,12 +378,10 @@ const PATIENTS: Patient[] = [
       ['Bed assigned', 1.2],
     ],
     medAdminH: 3,
-    updates: [
-      { text: 'Medical ward full; bed manager informed', tag: 'Case / bed management' },
-      { text: 'Past 24 h: escalated to the medical director', tag: 'Leadership escalation' },
-      { text: 'Social worker spoke with the family about the room', tag: 'PRO / social work' },
-      { text: 'Male medical bed 12 from 14:00' },
-    ],
+    action: {
+      text: 'Bed manager informed, social worker spoke with the family, and past 24 h it went to the medical director; bed 12 from 14:00',
+      escalated: true,
+    },
     resolve: { dispo: 'ADMITTED', label: 'Admitted', ward: /^MMW$|Male Medical/, family: 'Yes', leftH: 0.3, note: 'To male medical bed 12' },
   },
   {
@@ -409,7 +405,7 @@ const PATIENTS: Patient[] = [
       ['First physician contact', 2.5],
       ['Disposition decided', 1.2],
     ],
-    updates: [{ text: 'Registration system down for 40 minutes' }, { text: 'Triage nurse covering resus; patient waiting' }],
+    action: { text: 'Registration system down for 40 minutes; the triage nurse was covering resus' },
     resolve: { dispo: 'REFERRED_UCC', label: 'Referred to UCC', instructions: 'Yes', family: 'No', leftH: 0.7, note: 'Sutures at the urgent care centre' },
   },
 ]
@@ -593,7 +589,7 @@ test('4. The board at its busiest', async ({ browser }) => {
 })
 
 async function workPatient(page: Page, p: Patient): Promise<void> {
-  begin(`${staff(p.by).displayName} works ${p.mrn}: times, consults, updates`, p.by)
+  begin(`${staff(p.by).displayName} works ${p.mrn}: times, consults, what was done`, p.by)
   await page.goto('/')
   await tap(page.locator(`a[data-mrn="${p.mrn}"]`))
   await expect(page.getByRole('heading', { name: `Case ${p.mrn}` })).toBeVisible()
@@ -607,7 +603,7 @@ async function workPatient(page: Page, p: Patient): Promise<void> {
   if (p.admission) for (const [label, h] of p.admission) await time(page, label, h)
   if (p.transfer) for (const [label, h] of p.transfer.steps) await time(page, label, h)
   await save(page)
-  for (const u of p.updates) await update(page, u.text, u.tag)
+  await recordAction(page, p.action.text, p.action.escalated)
   if (p === PATIENTS[0]!) {
     await reopenJourney(page)
     await shot(page, 'case-worked')
@@ -635,7 +631,8 @@ async function workPatient(page: Page, p: Patient): Promise<void> {
   await fill(page.getByLabel('Resolution note (optional)', { exact: true }), p.resolve.note)
   if (p === PATIENTS[0]!) await shot(page, 'resolve-filled')
   await tap(page.getByRole('button', { name: 'Mark resolved', exact: true }))
-  await expect(page.getByText(`Resolved: ${p.resolve.label}`)).toBeVisible()
+  // Phase 14: the case page no longer lists updates, so the resolve is read off the heading.
+  await expect(page.getByRole('heading', { name: 'Resolved', exact: true })).toBeVisible()
   if (p === PATIENTS[0]! || p === PATIENTS[3]!) await shot(page, `resolved-${p.mrn}`)
   end(page)
 }

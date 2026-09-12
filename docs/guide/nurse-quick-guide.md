@@ -102,16 +102,16 @@ If a **Check these times** panel appears, read it. It means two times are out of
 example a result before its order. You can still save; the out-of-order pair is simply left out of
 the averages.
 
-## 4. Updates and delay reasons as the shift moves
+## 4. Delay reasons as the shift moves
 
 Open the case from the board. On a phone, the strip of chips under the header jumps you straight
-down the page: **Delay**, **Teams**, **Tests**, **Times**, **Updates**, **Resolve**. Use it. A
-worked case is several screens long. **Times** lands on **Patient journey**, which is near the top
-of the sheet rather than in strip order, because the strip is a set of places you have learned.
+down the page: **Delay**, **Teams**, **Tests**, **Times**, **Resolve**. Use it. A worked case is
+several screens long. **Times** lands on **Patient journey**, which is near the top of the sheet
+rather than in strip order, because the strip is a set of places you have learned.
 
-- **Updates:** type what changed in the "What changed?" box and tap **Add**. Pick an **Action
-  taken** chip if the update describes one; leave it blank if it does not. An update cannot be
-  edited or deleted once added, so read it before you tap Add. MRN only, no names.
+- **What you did about the delay** goes in the **Resolve** section, in the box **What was done to
+  solve the delay**. See section 5. There is no separate Updates box on the case any more, and no
+  Timeline section: the case's time sequence is in **Summary**, at the top of the page.
 - **Delay reasons:** add or drop stages and reasons as the picture changes, and move the primary
   one if the real hold-up has moved. Then **Save changes**.
 - If someone else saved the case while you had it open, the app says "This case was changed by
@@ -124,7 +124,18 @@ of the sheet rather than in strip order, because the strip is a set of places yo
 
 ## 5. Resolving a case
 
-In the **Resolve case** section: choose the **Final disposition** (Admitted, Discharged home,
+First, the two things the department is asked about every delayed patient, at the top of the
+section and answerable at any time, before the patient leaves and after:
+
+- **What was done to solve the delay:** one box, plain words, what you actually did. MRN only, no
+  names. The microphone beside it dictates if your phone offers it. Every time you change it and
+  tap **Save changes**, that sentence is added to the case's record with your name and the time,
+  and it can never be edited or deleted afterwards. So it is also what keeps the board's "Updated
+  3h ago" honest and what the weekly deck counts as a documented action.
+- **Escalated to medical director:** **Yes** or **No**. Tap the answer; tap it again to clear it
+  back to unanswered. A **Yes** the first time also tags that record as a leadership escalation.
+
+Then: choose the **Final disposition** (Admitted, Discharged home,
 Discharged DAMA, Transferred to another facility, Left without being seen, Deceased, Referred to
 UCC, or Other), the ward if the patient was admitted, and whether instructions were given and
 family engaged. Add a **Resolution note (optional)** if there is anything worth saying.
