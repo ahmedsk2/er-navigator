@@ -11,6 +11,7 @@
  * are not here; they are warnings (warnings.ts, phiWarnings below).
  */
 import { z } from 'zod'
+import { missingJourneyTimes } from './journey'
 import { PETHIDINE_DOSES } from './taxonomy'
 
 /**
@@ -298,7 +299,13 @@ export function buildCaseSchemas(
 
   /**
    * Resolve is the draft's rules PLUS: disposition required; ADMITTED needs a ward; referral
-   * number when required.
+   * number when required; and, since Phase 13, the journey times the outcome cannot be resolved
+   * without (Ahmed, 12 September, decision C).
+   *
+   * The table is `src/lib/domain/journey.ts`, which the editor reads too, so the list under
+   * "Mark resolved" and the refusal here are one rule and not two. Nothing was added to the
+   * draft schema: a case still opens on an MRN, a registration time and one reason (decision D),
+   * and every one of these times may be blank for as long as the case is open.
    */
   const resolve = base
     .extend({ disposition: dispositionSchema, departedAt: isoOrDate })
@@ -310,6 +317,14 @@ export function buildCaseSchemas(
       const needsRef = c.disposition === 'TRANSFERRED' || c.reasons.some((r) => meta.get(r.reasonId)?.requiresReferralNo)
       if (needsRef && !c.referralTrackingNo?.trim()) {
         ctx.addIssue({ code: 'custom', path: ['referralTrackingNo'], message: 'Enter the referral tracking number.' })
+      }
+      // Phase 13: the facility joins the tracking number on a transfer. A transfer with no named
+      // facility cannot be reported to the RCC and leaves the QCH column empty.
+      if (c.disposition === 'TRANSFERRED' && !c.transferFacility?.trim()) {
+        ctx.addIssue({ code: 'custom', path: ['transferFacility'], message: 'Enter the receiving facility.' })
+      }
+      for (const [field, label] of missingJourneyTimes(c.disposition, c)) {
+        ctx.addIssue({ code: 'custom', path: [field], message: `Enter the ${label} time before resolving.` })
       }
     })
 

@@ -155,8 +155,16 @@ describe('case draft rules (locked plan section 4)', () => {
     expect(issues(draft.safeParse({ ...base(), areaId: RETIRED_ON_THIS_CASE }))).toContain(
       'areaId: That ED area is no longer on the list.',
     )
-    // And the same rule holds on resolve, which is built from the same refinements.
-    const resolved = { ...base(), departedAt: new Date('2026-09-08T11:00:00Z'), disposition: 'DISCHARGED_HOME' }
+    // And the same rule holds on resolve, which is built from the same refinements. The journey
+    // times are the ones a discharge home needs since Phase 13, so the only issue is the area's.
+    const resolved = {
+      ...base(),
+      triageAt: new Date('2026-09-08T06:20:00Z'),
+      physicianAt: new Date('2026-09-08T07:00:00Z'),
+      decisionAt: new Date('2026-09-08T09:00:00Z'),
+      departedAt: new Date('2026-09-08T11:00:00Z'),
+      disposition: 'DISCHARGED_HOME',
+    }
     expect(forCarrier.resolve.safeParse({ ...resolved, areaId: RETIRED_ON_THIS_CASE }).success).toBe(true)
     expect(issues(resolve.safeParse({ ...resolved, areaId: RETIRED_ON_THIS_CASE }))).toContain(
       'areaId: That ED area is no longer on the list.',
@@ -273,13 +281,20 @@ describe('case draft rules (locked plan section 4)', () => {
   })
 
   it('takes the two new dispositions on a draft and on a resolve (decision E)', () => {
+    // Phase 13: each carries the times its own outcome needs (a death needs no decision time).
+    const worked = {
+      ...base(),
+      triageAt: new Date('2026-09-08T06:20:00Z'),
+      physicianAt: new Date('2026-09-08T07:00:00Z'),
+      decisionAt: new Date('2026-09-08T09:00:00Z'),
+      departedAt: new Date('2026-09-08T11:00:00Z'),
+    }
     for (const disposition of ['DECEASED', 'REFERRED_UCC']) {
       expect(draft.safeParse({ ...base(), disposition }).success, disposition).toBe(true)
-      const r = resolve.safeParse({ ...base(), departedAt: new Date('2026-09-08T11:00:00Z'), disposition })
-      expect(r.success, disposition).toBe(true)
+      expect(resolve.safeParse({ ...worked, disposition }).success, disposition).toBe(true)
     }
     // Neither is an admission, so neither asks for a ward.
-    expect(issues(resolve.safeParse({ ...base(), departedAt: new Date('2026-09-08T11:00:00Z'), disposition: 'DECEASED' }))).toEqual([])
+    expect(issues(resolve.safeParse({ ...worked, disposition: 'DECEASED' }))).toEqual([])
     expect(draft.safeParse({ ...base(), disposition: 'LAMA' }).success).toBe(false)
   })
 
@@ -291,7 +306,22 @@ describe('case draft rules (locked plan section 4)', () => {
 })
 
 describe('resolve rules', () => {
-  const resolved = () => ({ ...base(), departedAt: new Date('2026-09-08T11:00:00Z') })
+  /**
+   * Phase 13 (Ahmed, 12 September, decision C): every outcome needs some of the journey times
+   * before it can be resolved, so the helper below carries the whole journey and each test
+   * changes only the thing it is about. The required-by-outcome table itself is exercised in its
+   * own block further down, both directions.
+   */
+  const JOURNEY = {
+    triageAt: new Date('2026-09-08T06:20:00Z'),
+    physicianAt: new Date('2026-09-08T07:00:00Z'),
+    decisionAt: new Date('2026-09-08T09:00:00Z'),
+    admOrderAt: new Date('2026-09-08T09:30:00Z'),
+    bedAssignedAt: new Date('2026-09-08T10:30:00Z'),
+    transferRequestedAt: new Date('2026-09-08T09:40:00Z'),
+    transferAcceptedAt: new Date('2026-09-08T10:10:00Z'),
+  }
+  const resolved = () => ({ ...base(), ...JOURNEY, departedAt: new Date('2026-09-08T11:00:00Z') })
 
   it('requires a disposition', () => {
     expect(resolve.safeParse(resolved()).success).toBe(false)
@@ -302,9 +332,25 @@ describe('resolve rules', () => {
     expect(resolve.safeParse({ ...resolved(), disposition: 'ADMITTED', wardId: 'w-fmw' }).success).toBe(true)
   })
 
-  it('TRANSFERRED requires a referral tracking number', () => {
-    expect(issues(resolve.safeParse({ ...resolved(), disposition: 'TRANSFERRED' }))).toContain('referralTrackingNo: Enter the referral tracking number.')
-    expect(resolve.safeParse({ ...resolved(), disposition: 'TRANSFERRED', referralTrackingNo: 'RCC-48213' }).success).toBe(true)
+  /**
+   * Phase 13: the receiving facility joins the tracking number. A transfer with no named facility
+   * cannot be reported to the RCC and leaves the QCH column empty, so the two are asked together.
+   */
+  it('TRANSFERRED requires a referral tracking number and a receiving facility', () => {
+    const bare = issues(resolve.safeParse({ ...resolved(), disposition: 'TRANSFERRED' }))
+    expect(bare).toContain('referralTrackingNo: Enter the referral tracking number.')
+    expect(bare).toContain('transferFacility: Enter the receiving facility.')
+    expect(
+      issues(resolve.safeParse({ ...resolved(), disposition: 'TRANSFERRED', referralTrackingNo: 'RCC-48213' })),
+    ).toEqual(['transferFacility: Enter the receiving facility.'])
+    expect(
+      resolve.safeParse({
+        ...resolved(),
+        disposition: 'TRANSFERRED',
+        referralTrackingNo: 'RCC-48213',
+        transferFacility: 'Al Mouwasat',
+      }).success,
+    ).toBe(true)
   })
 
   it('a referred-out reason requires the tracking number on resolve, whatever the disposition', () => {
@@ -421,5 +467,127 @@ describe('free text and identifiers', () => {
     expect(phiWarnings('Update', 'MRN 851557, bed 12')).toEqual([])
     expect(phiWarnings('Update', '12345678901')).toEqual([]) // 11 digits is not the 10-digit shape
     expect(phiWarnings('Update', null)).toEqual([])
+  })
+})
+
+/**
+ * Phase 13, Ahmed's decision C of 12 September 2026: which journey times an outcome cannot be
+ * resolved without. The rule is one table in `src/lib/domain/journey.ts`, and this block is the
+ * server half of it: every disposition, both directions, on the field's own path.
+ *
+ * Nothing here can reach "Open case": the draft schema is untouched, so a case still opens on an
+ * MRN, a registration time and one reason (decision D). The last test in the block says so.
+ */
+describe('required by outcome (Phase 13)', () => {
+  const T = (h: number, m = 0) => new Date(Date.UTC(2026, 8, 8, h, m))
+  const WHOLE_JOURNEY = {
+    triageAt: T(6, 20),
+    roomAt: T(6, 40),
+    physicianAt: T(7),
+    decisionAt: T(9),
+    admOrderAt: T(9, 30),
+    bedRequestedAt: T(9, 40),
+    bedAssignedAt: T(10, 30),
+    transferRequestedAt: T(9, 40),
+    transferAcceptedAt: T(10, 10),
+    transportArrivedAt: T(10, 50),
+    departedAt: T(11),
+    medAdminInformedAt: T(10),
+  }
+  /** Everything an outcome other than its times might also need. */
+  const EXTRAS = { wardId: 'w-fmw', referralTrackingNo: 'RCC-48213', transferFacility: 'Al Mouwasat' }
+  const full = (disposition: string) => ({ ...base(), ...WHOLE_JOURNEY, ...EXTRAS, disposition })
+
+  const REQUIRED: Record<string, ReadonlyArray<[string, string]>> = {
+    ADMITTED: [
+      ['triageAt', 'Triage'],
+      ['physicianAt', 'First physician contact'],
+      ['decisionAt', 'Disposition decided'],
+      ['admOrderAt', 'Admission order written'],
+      ['bedAssignedAt', 'Bed assigned'],
+    ],
+    DISCHARGED_HOME: [
+      ['triageAt', 'Triage'],
+      ['physicianAt', 'First physician contact'],
+      ['decisionAt', 'Disposition decided'],
+    ],
+    DISCHARGED_DAMA: [
+      ['triageAt', 'Triage'],
+      ['physicianAt', 'First physician contact'],
+      ['decisionAt', 'Disposition decided'],
+    ],
+    REFERRED_UCC: [
+      ['triageAt', 'Triage'],
+      ['physicianAt', 'First physician contact'],
+      ['decisionAt', 'Disposition decided'],
+    ],
+    TRANSFERRED: [
+      ['triageAt', 'Triage'],
+      ['physicianAt', 'First physician contact'],
+      ['decisionAt', 'Disposition decided'],
+      ['transferRequestedAt', 'Transfer requested'],
+      ['transferAcceptedAt', 'Accepted by facility'],
+    ],
+    LEFT_WITHOUT_BEING_SEEN: [],
+    DECEASED: [
+      ['triageAt', 'Triage'],
+      ['physicianAt', 'First physician contact'],
+    ],
+    OTHER: [['triageAt', 'Triage']],
+  }
+
+  it.each(Object.keys(REQUIRED))('accepts a %s with the whole journey recorded', (disposition) => {
+    expect(issues(resolve.safeParse(full(disposition)))).toEqual([])
+  })
+
+  it.each(Object.keys(REQUIRED))('refuses a %s that is missing one of its required times', (disposition) => {
+    for (const [field, label] of REQUIRED[disposition]!) {
+      const without = { ...full(disposition), [field]: null }
+      expect(issues(resolve.safeParse(without)), `${disposition} without ${field}`).toContain(
+        `${field}: Enter the ${label} time before resolving.`,
+      )
+    }
+  })
+
+  it.each(Object.keys(REQUIRED))('lets %s resolve without the optional times', (disposition) => {
+    const bare = { ...full(disposition), roomAt: null, bedRequestedAt: null, transportArrivedAt: null, medAdminInformedAt: null }
+    expect(issues(resolve.safeParse(bare))).toEqual([])
+  })
+
+  it('never asks a patient who left without being seen for a physician contact or a decision', () => {
+    const lwbs = { ...full('LEFT_WITHOUT_BEING_SEEN'), triageAt: null, physicianAt: null, decisionAt: null }
+    expect(issues(resolve.safeParse(lwbs))).toEqual([])
+  })
+
+  it('never asks a deceased patient for a disposition decision', () => {
+    expect(issues(resolve.safeParse({ ...full('DECEASED'), decisionAt: null }))).toEqual([])
+  })
+
+  it('does not ask an admitted patient for the transfer times, or a transfer for the admission ones', () => {
+    const admitted = { ...full('ADMITTED'), transferRequestedAt: null, transferAcceptedAt: null }
+    expect(issues(resolve.safeParse(admitted))).toEqual([])
+    const transferred = { ...full('TRANSFERRED'), admOrderAt: null, bedAssignedAt: null, wardId: null }
+    expect(issues(resolve.safeParse(transferred))).toEqual([])
+  })
+
+  it('names every missing time at once, so one refusal is the whole list', () => {
+    const nothing = { ...base(), ...EXTRAS, disposition: 'ADMITTED', departedAt: T(11) }
+    expect(issues(resolve.safeParse(nothing)).sort()).toEqual(
+      [
+        'admOrderAt: Enter the Admission order written time before resolving.',
+        'bedAssignedAt: Enter the Bed assigned time before resolving.',
+        'decisionAt: Enter the Disposition decided time before resolving.',
+        'physicianAt: Enter the First physician contact time before resolving.',
+        'triageAt: Enter the Triage time before resolving.',
+      ].sort(),
+    )
+  })
+
+  /** Decision D: none of this reaches "Open case", where the rules are what they always were. */
+  it('asks nothing of a saved draft, whatever disposition it carries', () => {
+    for (const disposition of Object.keys(REQUIRED)) {
+      expect(issues(draft.safeParse({ ...base(), disposition })), disposition).toEqual([])
+    }
+    expect(issues(draft.safeParse(base()))).toEqual([])
   })
 })

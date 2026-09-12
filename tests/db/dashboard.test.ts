@@ -129,6 +129,27 @@ function draft(over: Partial<CaseDraft> = {}): CaseDraft {
   }
 }
 
+/**
+ * Phase 13 (Ahmed, 12 September 2026, decision C): every outcome needs some of the journey times
+ * before it can be resolved. These are the three every outcome but LWBS asks for, in order
+ * between the registration and the departure, so a resolve below still says only what its own
+ * test is about; an admission adds its two with `admitted()`.
+ */
+function worked(registeredHoursAgo = 6, leftHoursAgo = 0): Partial<CaseDraft> {
+  const span = registeredHoursAgo - leftHoursAgo
+  const at = (fraction: number) =>
+    new Date(Date.now() - (registeredHoursAgo - span * fraction) * HOUR).toISOString()
+  return { triageAt: at(0.05), physicianAt: at(0.1), decisionAt: at(0.4) }
+}
+
+/** The two an admission adds to `worked()`: the written order and the bed it was given. */
+function admitted(registeredHoursAgo = 6, leftHoursAgo = 0): Partial<CaseDraft> {
+  const span = registeredHoursAgo - leftHoursAgo
+  const at = (fraction: number) =>
+    new Date(Date.now() - (registeredHoursAgo - span * fraction) * HOUR).toISOString()
+  return { admOrderAt: at(0.5), bedAssignedAt: at(0.8) }
+}
+
 async function openCase(actor: AuthUser, over: Partial<CaseDraft> = {}): Promise<{ id: string; input: CaseDraft }> {
   const input = draft(over)
   const result = await createCase(actor, input, ctxFor(actor.id))
@@ -356,6 +377,8 @@ describe('loadCasesForStats', () => {
         done.id,
         {
           ...done.input,
+          ...worked(30, 5),
+          ...admitted(30, 5),
           disposition: 'ADMITTED',
           wardId: reference.wards.find((w) => w.code === 'ICU')!.id,
           departedAt: new Date(Date.now() - 5 * HOUR).toISOString(),
@@ -390,7 +413,7 @@ describe('loadCasesForStats', () => {
       await resolveCase(
         nurse,
         done.id,
-        { ...done.input, disposition: 'DISCHARGED_HOME', departedAt: new Date(Date.now() - 5 * HOUR).toISOString() },
+        { ...done.input, ...worked(30, 5), disposition: 'DISCHARGED_HOME', departedAt: new Date(Date.now() - 5 * HOUR).toISOString() },
         ctxFor(nurse.id),
       ),
     ).toMatchObject({ ok: true })

@@ -246,6 +246,10 @@ beforeAll(async () => {
       ...draft(),
       mrn: three.input.mrn,
       registrationAt: three.input.registrationAt,
+      // Phase 13 (decision C): a death in the department is resolved on the triage time, the
+      // physician contact and the departure; the decision time stays optional.
+      triageAt: at(DAY_TWO, 8.4).toISOString(),
+      physicianAt: at(DAY_TWO, 9).toISOString(),
       disposition: 'DECEASED',
       departedAt: at(DAY_TWO, 14).toISOString(),
       instructionsGiven: 'YES',

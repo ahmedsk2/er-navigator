@@ -159,6 +159,27 @@ function draft(overrides: Partial<CaseDraft> = {}): CaseDraft {
   }
 }
 
+/**
+ * Phase 13 (Ahmed, 12 September 2026, decision C): every outcome needs some of the journey times
+ * before it can be resolved. These are the three every outcome but LWBS asks for, in order
+ * between the registration and the departure, so a resolve below still says only what its own
+ * test is about; an admission adds its two with `admitted()`.
+ */
+function worked(registeredHoursAgo = 6, leftHoursAgo = 0): Partial<CaseDraft> {
+  const span = registeredHoursAgo - leftHoursAgo
+  const at = (fraction: number) =>
+    new Date(Date.now() - (registeredHoursAgo - span * fraction) * HOUR).toISOString()
+  return { triageAt: at(0.05), physicianAt: at(0.1), decisionAt: at(0.4) }
+}
+
+/** The two an admission adds to `worked()`: the written order and the bed it was given. */
+function admitted(registeredHoursAgo = 6, leftHoursAgo = 0): Partial<CaseDraft> {
+  const span = registeredHoursAgo - leftHoursAgo
+  const at = (fraction: number) =>
+    new Date(Date.now() - (registeredHoursAgo - span * fraction) * HOUR).toISOString()
+  return { admOrderAt: at(0.5), bedAssignedAt: at(0.8) }
+}
+
 /** Create a case for a test and remember it for the cleanup. */
 async function openCase(actor: AuthUser, overrides: Partial<CaseDraft> = {}): Promise<string> {
   const result = await createCase(actor, draft(overrides), ctxFor(actor.id))
@@ -458,6 +479,7 @@ describe('CTAS, the ED area and the preliminary report time', () => {
       nurse,
       id,
       draft({
+        ...worked(),
         ctas: 1,
         areaId,
         investigations: [
@@ -762,7 +784,7 @@ describe('resolve and reopen', () => {
     const noWard = await resolveCase(
       nurse,
       id,
-      draft({ disposition: 'ADMITTED', departedAt, version: 1 }),
+      draft({ ...worked(), ...admitted(), disposition: 'ADMITTED', departedAt, version: 1 }),
       ctxFor(nurse.id),
     )
     expect(noWard).toMatchObject({ ok: false, error: 'validation' })
@@ -773,7 +795,7 @@ describe('resolve and reopen', () => {
     const resolved = await resolveCase(
       nurse,
       id,
-      draft({ disposition: 'ADMITTED', wardId, isolation: true, departedAt, version: 1 }),
+      draft({ ...worked(), ...admitted(), disposition: 'ADMITTED', wardId, isolation: true, departedAt, version: 1 }),
       ctxFor(nurse.id),
     )
     expect(resolved).toMatchObject({ ok: true, version: 2 })
@@ -802,7 +824,7 @@ describe('resolve and reopen', () => {
     const result = await resolveCase(
       nurse,
       id,
-      draft({ disposition: 'TRANSFERRED', departedAt: new Date().toISOString(), version: 1 }),
+      draft({ ...worked(), disposition: 'TRANSFERRED', departedAt: new Date().toISOString(), version: 1 }),
       ctxFor(nurse.id),
     )
     expect(result).toMatchObject({ ok: false, error: 'validation' })
@@ -817,7 +839,7 @@ describe('resolve and reopen', () => {
     const resolved = await resolveCase(
       nurse,
       id,
-      draft({ disposition: 'DISCHARGED_HOME', departedAt, version: 1 }),
+      draft({ ...worked(), disposition: 'DISCHARGED_HOME', departedAt, version: 1 }),
       ctxFor(nurse.id),
     )
     if (!resolved.ok) throw new Error('unreachable')
@@ -847,7 +869,7 @@ describe('resolve and reopen', () => {
     const loser = await resolveCase(
       first,
       id,
-      draft({ disposition: 'DISCHARGED_HOME', departedAt: new Date().toISOString(), version: 1 }),
+      draft({ ...worked(), disposition: 'DISCHARGED_HOME', departedAt: new Date().toISOString(), version: 1 }),
       ctxFor(first.id),
     )
     expect(loser).toMatchObject({ ok: false, error: 'conflict', changedBy: second.displayName })
@@ -867,7 +889,7 @@ describe('resolve and reopen', () => {
     const resolved = await resolveCase(
       nurse,
       id,
-      draft({ disposition: 'DISCHARGED_HOME', departedAt: new Date().toISOString(), version: 1 }),
+      draft({ ...worked(), disposition: 'DISCHARGED_HOME', departedAt: new Date().toISOString(), version: 1 }),
       ctxFor(nurse.id),
     )
     if (!resolved.ok) throw new Error('unreachable')
@@ -987,6 +1009,7 @@ describe('the collection decisions on a real case', () => {
       nurse,
       id,
       draft({
+        ...worked(),
         ...PAIN,
         instructionsGiven: 'NO',
         familyEngagement: 'NOT_SURE',
@@ -1020,7 +1043,7 @@ describe('the collection decisions on a real case', () => {
     const resolved = await resolveCase(
       nurse,
       id,
-      draft({ disposition: 'REFERRED_UCC', departedAt: new Date().toISOString(), version: 1 }),
+      draft({ ...worked(), disposition: 'REFERRED_UCC', departedAt: new Date().toISOString(), version: 1 }),
       ctxFor(nurse.id),
     )
     expect(resolved).toMatchObject({ ok: true, version: 2 })
@@ -1158,7 +1181,7 @@ describe('reviewCase', () => {
       await resolveCase(
         nurse,
         id,
-        draft({ mrn: '900123', disposition: 'DISCHARGED_HOME', departedAt: new Date().toISOString(), version: 2 }),
+        draft({ ...worked(), mrn: '900123', disposition: 'DISCHARGED_HOME', departedAt: new Date().toISOString(), version: 2 }),
         ctxFor(nurse.id),
       ),
     ).toMatchObject({ ok: true })
@@ -1172,7 +1195,7 @@ describe('reviewCase', () => {
     const resolved = await resolveCase(
       nurse,
       id,
-      draft({ disposition: 'DISCHARGED_HOME', departedAt: new Date().toISOString(), version: 1 }),
+      draft({ ...worked(), disposition: 'DISCHARGED_HOME', departedAt: new Date().toISOString(), version: 1 }),
       ctxFor(nurse.id),
     )
     if (!resolved.ok) throw new Error('unreachable')

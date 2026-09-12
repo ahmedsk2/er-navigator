@@ -73,6 +73,11 @@ it('ends the stay of a resolved case whose departure time was cleared at its res
     ...blankDraft({ now, shift: 'MORNING' }),
     mrn: MRN,
     reasons: [{ reasonId, otherText: null }],
+    // Phase 13 (decision C): a discharge home needs the triage, the physician contact and the
+    // decision before it can be resolved. They sit between the registration and the departure.
+    triageAt: new Date(now.getTime() - 5.5 * HOUR).toISOString(),
+    physicianAt: new Date(now.getTime() - 5 * HOUR).toISOString(),
+    decisionAt: new Date(now.getTime() - 3 * HOUR).toISOString(),
     ...over,
   })
 
