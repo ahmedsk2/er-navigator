@@ -4,15 +4,18 @@ For a hands-on session with ED staff on the hosted demo copy at **https://demo-n
 Fifteen minutes of presenting, then the room signs in and tries it.
 
 The order below is the order of `tests/demo/demo.spec.ts`, the script the app was actually walked
-through at the Phase 11 gate, so nothing here is a screen that has never been opened.
+through at the Phase 11 gate and run again on the Phase 13 case sheet, so nothing here is a screen
+that has never been opened.
 
 ---
 
 ## Before the room arrives
 
 - The demo instance is seeded: four demo accounts and about ten invented patients, backdated so the
-  board shows every elapsed colour, a few already resolved, one with a referral. If the board is
-  empty or stale, re-seed it (`docs/RUNBOOK.md`, "Demo instance") before anyone walks in.
+  board shows every elapsed colour, a few already resolved, one with a referral. Every resolved one
+  carries the times its outcome needs, so **Reopen case** on a seeded row shows the plain
+  confirmation and not a list. If the board is empty or stale, re-seed it (`docs/RUNBOOK.md`,
+  "Demo instance") before anyone walks in.
 - Every page carries the banner **DEMO: invented patients only**. Check it is there. If it is not,
   stop: you may be on the real board.
 - Auto-deploy is off on the demo application and nobody pushes to `main` from the start of the
@@ -81,9 +84,17 @@ Still as `demo.nav.a`. Tap **+ New case**.
 - Set the **registration time**. Tap the **6h ago** chip. Point at the line that updates:
   "Waiting 6h 00m so far". Say: the clock starts at registration, not at the moment we noticed, so
   this field is the one that has to be honest.
-- Chips: CTAS, a one-line working diagnosis, the ED area, the payer.
+- Chips: **CTAS**, the **ED area**, and **Shift**. Point at the shift: it is the one box on this
+  page that fills itself in, from the shift this navigator last recorded, which is why it is on
+  the front of the sheet and not behind a tap.
+- **Patient journey**, the block under it, is the one to slow down on. Say: this is the stay in
+  the order it happens, and it is the same block on a new case and on a worked one. Nothing in it
+  is required to open the case.
 - **Where is the delay?** Tap a stage, tap a reason under it. Tap a second reason and show that the
   app now asks which is the **primary** one. Say: that is the field the reports count.
+- Open **More to record** and show what is behind it: the working diagnosis, the payer, pain
+  management and case management. Say: the four things nobody fills at the bedside, and the
+  section opens itself on any case that already carries one of them.
 - Tap **Open case** at the foot of the screen.
 - Add one update in the Updates box, with an action tag, and tap **Add**.
 
@@ -110,12 +121,24 @@ Go back to the board.
 Open one of the seeded open cases.
 
 - Point at the **jump strip** under the header: Delay, Teams, Tests, Times, Updates, Resolve. A
-  worked case is several screens long and this is how a nurse gets down it in one tap.
-- Fill two or three journey times and show the **Check these times** panel if you can make it
-  appear by putting a result before its order. Say: it warns, it does not block, and the pair is
-  left out of the averages.
-- Go to **Resolve**: final disposition, ward, the time the patient left the ED, a resolution note.
-  Tap **Mark resolved**.
+  worked case is several screens long and this is how a nurse gets down it in one tap. **Times**
+  lands on **Patient journey**.
+- In **Patient journey**, tap **Now** on Triage. Watch the row collapse to one line with an
+  **Edit** button while the tint moves to the next empty step. Say: the sheet is always pointing
+  at the one thing the case is waiting for, and nothing recorded is ever lost by collapsing.
+- Show **Check these times** if you can make it appear by putting a result before its order. Say:
+  it warns, it does not block, and the pair is left out of the averages.
+- Now the part worth the room's attention. Choose a **Final disposition** and show that **Mark
+  resolved** is dead, with the grey line under it naming what is missing: "Before resolving,
+  enter: ...". Show the **needed to resolve** tags that appear on those steps up in the journey
+  block, fill them, and watch the button come alive. Say: the app asks for the times that outcome
+  actually needs and hides the ones it cannot have.
+- In **Resolve case**, point at **Left ED**: it is shown here but not typed here, with a **Now**
+  button and a line saying it is recorded in Patient journey above. Add a resolution note and tap
+  **Mark resolved**.
+- Show **Reopen case** on the resolved row. It asks twice, and the line above it names the times
+  the case would owe before it could be closed again. Say: reopening is allowed, and it is never
+  a surprise.
 - Say that nothing here is ever deleted. A case opened by mistake is voided with a reason, by a
   charge nurse, and stays on the record.
 

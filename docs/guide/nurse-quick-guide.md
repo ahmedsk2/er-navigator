@@ -48,15 +48,31 @@ the foot of the left-hand rail, just above the block with your name in it).
   time, not the time you are typing. The quick chips set it to **4h**, **6h**, **8h** or **12h**
   ago, and **-30m** and **+30m** nudge it. The line under the field shows what you have just
   claimed: "Waiting 6h 20m so far". If that number looks wrong, the time is wrong.
-- **Navigator** is you, filled in from your sign-in. **Shift** is Morning, Evening or Night.
+- **Navigator** is you, filled in from your sign-in.
 
 Then the chips. Tap to choose, tap the chosen chip again to clear it:
 
 - **CTAS** 1 to 5, if you know it.
-- **Working diagnosis (optional):** one line, what the patient came in with, for example "chest
-  pain, for admission". It is a clinical line, not an identifier, so no name goes in it either.
 - **ED area:** where the patient is.
-- **Payer:** Government, Insured or Self-pay.
+- **Shift:** Morning, Evening or Night. This is the one box that fills itself in, from the shift
+  you last recorded, so read it before you move on. It is what the dashboard splits by and what
+  the export writes in the Shift column, and a wrong one carries itself forward to your next case.
+
+**Patient journey** is the block under the identity block, and it is the spine of the sheet. It
+lists the stay in the order it happens: Triage, Resus / exam room, First physician contact,
+Disposition decided, Left ED, and Medical admin on-call informed at. Every empty step is a date
+box with a **Now** button beside it, and the next empty one is tinted, so the step the case is
+waiting for is the one your thumb lands on.
+
+- A step you fill collapses to one line, "Triage · 12/09 10:42", with an **Edit** button that
+  puts the box back. Nothing is lost by collapsing it.
+- The block hides what the case cannot have: no admission times until an admission is in the
+  picture, no transfer times until a referral is, and once you choose a final disposition, only
+  the steps that outcome can have.
+- Nothing you already recorded is ever hidden without being said. A time on a step the case has
+  stopped showing is listed on an **Also recorded** line at the foot of the block.
+- None of these times is required to open the case. They are required to resolve it, and which
+  ones depends on the outcome (section 5).
 
 **Where is the delay?** Tap every stage that applies, then the reasons under each one. The stages
 are Registration, Triage, Resus room, Exam room, Investigations, Referral / consulted team,
@@ -67,6 +83,17 @@ count. If nothing on the list fits, use the stage's **Other** chip and describe 
 Some reasons open more of the form. A referral reason asks for the department or consulted team; an
 investigation reason opens the investigation times (ordered, collected, received, resulted, or the
 imaging chain with its preliminary read).
+
+**More to record** is a button near the foot of the form. It opens the four answers you write up
+afterwards rather than at the bedside:
+
+- **Working diagnosis (optional):** one line, what the patient came in with, for example "chest
+  pain, for admission". It is a clinical line, not an identifier, so no name goes in it either.
+- **Payer:** Government, Insured or Self-pay.
+- **Pain management (Adaa KPI 8)** and **Case management**, both optional throughout.
+
+It opens itself on a case that already carries any of them, so nothing anyone recorded is ever
+sitting behind a closed button.
 
 The button at the foot of the screen says **Open case**. It stays dead until the MRN is in and at
 least one delay reason is chosen, and the grey line under it says which one is missing.
@@ -79,7 +106,8 @@ the averages.
 
 Open the case from the board. On a phone, the strip of chips under the header jumps you straight
 down the page: **Delay**, **Teams**, **Tests**, **Times**, **Updates**, **Resolve**. Use it. A
-worked case is several screens long.
+worked case is several screens long. **Times** lands on **Patient journey**, which is near the top
+of the sheet rather than in strip order, because the strip is a set of places you have learned.
 
 - **Updates:** type what changed in the "What changed?" box and tap **Add**. Pick an **Action
   taken** chip if the update describes one; leave it blank if it does not. An update cannot be
@@ -96,11 +124,24 @@ worked case is several screens long.
 
 ## 5. Resolving a case
 
-In the **Resolve** section: choose the **Final disposition** (Admitted, Discharged home,
+In the **Resolve case** section: choose the **Final disposition** (Admitted, Discharged home,
 Discharged DAMA, Transferred to another facility, Left without being seen, Deceased, Referred to
-UCC, or Other), the ward if the patient was admitted, whether instructions were given and family
-engaged, and the time the patient **left the ED**. Add a resolution note if there is anything worth
-saying. Then **Mark resolved**.
+UCC, or Other), the ward if the patient was admitted, and whether instructions were given and
+family engaged. Add a **Resolution note (optional)** if there is anything worth saying.
+
+The disposition decides which times the case cannot be closed without, and **Mark resolved** stays
+dead until they are in. The grey line under the button says which, in these words: "Before
+resolving, enter: Triage, First physician contact, Left ED." They are all steps in **Patient
+journey** at the top of the sheet, and each one still empty carries a small **needed to resolve**
+tag up there. An admitted patient is asked for the admission order and the bed assignment as well;
+a transfer for the request, the acceptance, the referral tracking number and the receiving
+facility; a patient who left without being seen only for Left ED.
+
+**Left ED** is shown in this section too, but only to be read: the value, a **Now** button for the
+common case of resolving at the desk as the patient goes, and a line saying it is recorded in
+Patient journey above. The box you type into is the one in the journey block.
+
+Then **Mark resolved**.
 
 The stay is measured from registration to the time the patient left, so the departure time matters
 as much as the registration time did.

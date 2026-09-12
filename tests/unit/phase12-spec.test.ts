@@ -150,6 +150,87 @@ describe('the guides name the controls the app actually renders', () => {
     expect(guide, 'the guide puts + New case at the top of the rail').not.toMatch(/top of the left-hand rail/)
     expect(guide).toMatch(/foot of the left-hand rail/)
   })
+
+  /**
+   * P13.43. Phase 13 rebuilt the case sheet and both guides went on describing the old one: chips
+   * that are no longer chips, a working diagnosis and a payer in the identity block, a "time the
+   * patient left the ED" typed into Resolve. The two files above were the only guard, and it
+   * checked two sentences, so the drift walked straight through it. These are the Phase 13
+   * sentences, each read off the component that renders the control rather than off the prose.
+   */
+  const guides = () => ({
+    nurse: readFileSync(path.join(ROOT, 'docs/guide/nurse-quick-guide.md'), 'utf8'),
+    script: readFileSync(path.join(ROOT, 'docs/guide/demo-script.md'), 'utf8'),
+    editor: readFileSync(path.join(ROOT, 'src/components/cases/CaseEditor.tsx'), 'utf8'),
+    journey: readFileSync(path.join(ROOT, 'src/components/cases/CaseJourney.tsx'), 'utf8'),
+  })
+
+  it('calls the times block by the heading the journey component renders', () => {
+    const { nurse, script, journey } = guides()
+    expect(journey).toMatch(/title="Patient journey"/)
+    for (const [name, text] of [['nurse guide', nurse], ['demo script', script]] as const) {
+      expect(text, `${name} names Patient journey`).toMatch(/\*\*Patient journey\*\*/)
+      // The controls the block was built out of, and the two names Phase 13 retired.
+      expect(text, `${name} still offers "Add journey times"`).not.toMatch(/journey times \(optional\)/)
+      expect(text, `${name} still has an "Admission times" section`).not.toMatch(/\*\*Admission times\*\*/)
+      expect(text, `${name} still types Left ED into Resolve`).not.toMatch(/Left ED at \(defaults to now\)/)
+    }
+  })
+
+  it('puts the shift where the identity block puts it, and not behind More to record', () => {
+    const { nurse, script, editor } = guides()
+    // P13.40: a `ChoiceRow` in the identity block, and no Shift control inside `data-more`.
+    const identity = editor.slice(0, editor.indexOf('<CaseJourney'))
+    expect(identity, 'the Shift chip row is not in the identity block').toMatch(/label="Shift"/)
+    const more = editor.slice(editor.indexOf('data-more'), editor.indexOf('7. More to record') + 4000)
+    expect(more, 'Shift is back inside More to record').not.toMatch(/label="Shift"/)
+    for (const [name, text] of [['nurse guide', nurse], ['demo script', script]] as const) {
+      expect(text, `${name} does not name the Shift chips`).toMatch(/\*\*Shift:?\*\*/)
+    }
+    // The guides say the shift fills itself in, which is only true while `blankDraft` stamps it.
+    expect(readFileSync(path.join(ROOT, 'src/lib/cases/load.ts'), 'utf8')).toMatch(/shift: input\.shift/)
+    expect(nurse).toMatch(/fills itself in/)
+  })
+
+  it('quotes the blocked-resolve line the editor actually prints', () => {
+    const { nurse, script, editor } = guides()
+    expect(editor).toMatch(/Before resolving, enter: \{resolveMissing\.join\(', '\)\}\./)
+    for (const [name, text] of [['nurse guide', nurse], ['demo script', script]] as const) {
+      expect(text, `${name} quotes the blocked-resolve line`).toMatch(/Before\s+resolving,\s+enter:/)
+    }
+    // And the read-only Left ED row, with the button by the name it carries.
+    expect(editor).toMatch(/aria-label="Set Left ED to now"/)
+    expect(editor).toMatch(/Recorded in Patient journey, above\./)
+    expect(nurse).toMatch(/recorded in\s+Patient journey above/)
+  })
+
+  it('names the reopen confirmation the editor arms', () => {
+    const { nurse, script, editor } = guides()
+    expect(editor).toMatch(/confirmLabel="Tap again to reopen"/)
+    expect(editor).toMatch(/data-reopen-needs/)
+    for (const [name, text] of [['nurse guide', nurse], ['demo script', script]] as const) {
+      expect(text, `${name} names Reopen case`).toMatch(/\*\*Reopen case\*\*/)
+      expect(text, `${name} says it asks twice`).toMatch(/asks twice/)
+    }
+  })
+
+  it('names "More to record" and only what is behind it', () => {
+    const { nurse, script, editor } = guides()
+    expect(editor).toMatch(/More to record/)
+    for (const [name, text] of [['nurse guide', nurse], ['demo script', script]] as const) {
+      expect(text, `${name} names More to record`).toMatch(/\*\*More to record\*\*/)
+    }
+    // Working diagnosis and Payer moved into it in Phase 13; the guides must not still list them
+    // among the identity chips a nurse taps before the delay.
+    expect(nurse.indexOf('**More to record**')).toBeLessThan(nurse.indexOf('Working diagnosis (optional)'))
+  })
+
+  /** House style, and the reason this file can compare strings at all: no em dash in a guide. */
+  it('keeps both guides free of em dashes', () => {
+    const { nurse, script } = guides()
+    expect([...nurse.matchAll(/—/g)].length, 'nurse guide').toBe(0)
+    expect([...script.matchAll(/—/g)].length, 'demo script').toBe(0)
+  })
 })
 
 describe('item 6: the alert email retry pass', () => {
