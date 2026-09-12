@@ -49,6 +49,7 @@ function row(over: Partial<CaseStatsRow> = {}): CaseStatsRow {
     reviewedAt: null,
     delayActionTaken: null,
     escalatedToMedicalDirector: null,
+    trajectory: null,
     primaryReason: null,
     ward: null,
     area: null,
@@ -116,6 +117,7 @@ describe('CASE_STATS_SELECT', () => {
         'shift',
         'sickleCellTreatment',
         'status',
+        'trajectory',
         'transferAcceptedAt',
         'transferRequestedAt',
         'transportArrivedAt',
@@ -248,6 +250,7 @@ describe('toCaseForStats', () => {
       untaggedUpdatesCount: 0,
       delayActionTaken: null,
       escalatedToMedicalDirector: null,
+      trajectory: null,
       otherTexts: [],
     })
 
@@ -562,5 +565,11 @@ describe('the delay action and the escalation (Phase 14)', () => {
 
     // "No" is an answer and survives as one; it must not be flattened into "not recorded".
     expect(toCaseForStats(row({ escalatedToMedicalDirector: false })).escalatedToMedicalDirector).toBe(false)
+  })
+
+  /** Phase 15: the trajectory rides on the same one query, for the workbook's own column. */
+  it('carries the patient trajectory through unchanged', () => {
+    expect(toCaseForStats(row({ trajectory: 'TRANSFER' })).trajectory).toBe('TRANSFER')
+    expect(toCaseForStats(row()).trajectory).toBeNull()
   })
 })

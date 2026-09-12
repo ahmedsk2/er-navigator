@@ -181,6 +181,9 @@ function caseScalarData(d: ValidatedDraft) {
     // escalation is a three-state answer and an untouched chip row clears it, like every other.
     delayActionTaken: blankToNull(d.delayActionTaken),
     escalatedToMedicalDirector: d.escalatedToMedicalDirector ?? null,
+    // Phase 15 (decision A). Nullish-coalesced like every other optional column, so clearing the
+    // chip row back to "Not decided yet" clears the stored value rather than keeping a stale one.
+    trajectory: d.trajectory ?? null,
     disposition: d.disposition ?? null,
     wardId: blankToNull(d.wardId),
     isolation: d.isolation,

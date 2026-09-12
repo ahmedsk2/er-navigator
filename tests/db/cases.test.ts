@@ -154,6 +154,7 @@ function draft(overrides: Partial<CaseDraft> = {}): CaseDraft {
     caseMgmtRepliedAt: null,
     delayActionTaken: '',
     escalatedToMedicalDirector: null,
+    trajectory: null,
     disposition: null,
     wardId: null,
     isolation: false,
@@ -1415,6 +1416,57 @@ describe('the delay action mirrors into an append-only update (Phase 14)', () =>
       ['Resolved: Discharged home', true],
     ])
     expect(rows[0]!.action).toBe('LEADERSHIP_ESCALATION')
+  })
+
+  /**
+   * Phase 15 (docs/specs/phase15-trajectory.md, item 1): the trajectory round trip. It is written
+   * by create, save and resolve like every other scalar; clearing the chip row back to "Not
+   * decided yet" clears the column; and it makes nothing required, so a resolve on one pathway
+   * with an outcome from another is refused only by what that OUTCOME owes.
+   */
+  it('stores the patient trajectory, clears it, and never makes it required', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const id = await openCase(nurse)
+    expect((await prisma.case.findUniqueOrThrow({ where: { id } })).trajectory).toBeNull()
+
+    const saved = await saveCase(nurse, id, draft({ version: 1, trajectory: 'TRANSFER' }), ctxFor(nurse.id))
+    expect(saved).toMatchObject({ ok: true })
+    expect((await prisma.case.findUniqueOrThrow({ where: { id } })).trajectory).toBe('TRANSFER')
+
+    // It is in the audit trail like every other column, so a change of mind is legible.
+    const audited = await prisma.auditLog.findFirst({
+      where: { entity: 'Case', entityId: id, action: 'case.update' },
+      orderBy: { at: 'desc' },
+    })
+    expect((audited!.before as Record<string, unknown>).trajectory).toBeNull()
+    expect((audited!.after as Record<string, unknown>).trajectory).toBe('TRANSFER')
+
+    // Back to "Not decided yet": the chip row clears the stored value rather than keeping a stale
+    // one, exactly as CTAS, the ED area and the escalation do.
+    const cleared = await saveCase(nurse, id, draft({ version: 2, trajectory: null }), ctxFor(nurse.id))
+    expect(cleared).toMatchObject({ ok: true })
+    expect((await prisma.case.findUniqueOrThrow({ where: { id } })).trajectory).toBeNull()
+
+    // A discharge pathway that ends in an admission still resolves: what an outcome owes is
+    // decided by the outcome and by nothing else.
+    const resolved = await resolveCase(
+      nurse,
+      id,
+      draft({
+        version: 3,
+        ...worked(),
+        ...admitted(),
+        trajectory: 'DISCHARGE',
+        disposition: 'ADMITTED',
+        wardId: reference.wards[0]!.id,
+        departedAt: new Date().toISOString(),
+      }),
+      ctxFor(nurse.id),
+    )
+    expect(resolved).toMatchObject({ ok: true })
+    const after = await prisma.case.findUniqueOrThrow({ where: { id } })
+    expect(after.trajectory).toBe('DISCHARGE')
+    expect(after.disposition).toBe('ADMITTED')
   })
 
   it('never offers a way to change or remove a row it wrote', async () => {

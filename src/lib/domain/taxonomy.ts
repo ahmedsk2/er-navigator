@@ -169,6 +169,25 @@ export const DISPOSITION_LABELS = {
 
 export const SHIFT_LABELS = { MORNING: 'Morning', EVENING: 'Evening', NIGHT: 'Night' } as const
 
+/**
+ * Phase 15 (docs/specs/phase15-trajectory.md; Ahmed, 12 September 2026): where this patient is
+ * going, said early and in one tap, so the sheet can show the steps that pathway has and hide the
+ * ones it cannot. An ADDITION to the vocabulary, like Phase 8b's answers and Phase 10's payers;
+ * nothing above is renamed, and the eight dispositions are untouched.
+ *
+ * NULL is "not decided yet", which is what every case carries until somebody taps a chip. It is a
+ * state and not an error: two of the eight outcomes — a patient who left without being seen, and
+ * a death in the department — are none of these three, and a case may reach either.
+ */
+export const TRAJECTORIES = ['DISCHARGE', 'ADMISSION', 'TRANSFER'] as const
+export const TRAJECTORY_LABELS = {
+  DISCHARGE: 'Discharge',
+  ADMISSION: 'Admission',
+  TRANSFER: 'Transfer to another facility',
+} as const
+/** The chip that stands for NULL. Not a stored value, and never sent to the server. */
+export const TRAJECTORY_NOT_DECIDED = 'Not decided yet'
+
 export const INVESTIGATION_LABELS = { LAB: 'Lab', CT: 'CT', US: 'Ultrasound', XR: 'X-ray / KUB', MRI: 'MRI' } as const
 
 export const INVESTIGATION_STEPS = {

@@ -107,6 +107,7 @@ function draft(over: Partial<CaseDraft> = {}): CaseDraft {
     caseMgmtRepliedAt: null,
     delayActionTaken: '',
     escalatedToMedicalDirector: null,
+    trajectory: null,
     disposition: null,
     wardId: null,
     isolation: false,

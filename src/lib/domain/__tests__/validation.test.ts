@@ -657,3 +657,53 @@ describe('the delay action and the escalation (Phase 14)', () => {
     expect(issues(resolve.safeParse(admitted))).toEqual([])
   })
 })
+
+/**
+ * Phase 15 (docs/specs/phase15-trajectory.md; Ahmed, 12 September 2026, decision A): where the
+ * patient is going, said early and in one tap. A vocabulary of three, never required, and NULL is
+ * the state every case starts in.
+ */
+describe('the patient trajectory (Phase 15)', () => {
+  it('takes each of the three, and takes nothing at all', () => {
+    for (const trajectory of ['DISCHARGE', 'ADMISSION', 'TRANSFER'] as const) {
+      const parsed = draft.safeParse({ ...base(), trajectory })
+      expect(issues(parsed), trajectory).toEqual([])
+      expect(parsed.data!.trajectory, trajectory).toBe(trajectory)
+    }
+    const unset = draft.safeParse({ ...base(), trajectory: null })
+    expect(issues(unset)).toEqual([])
+    expect(unset.data!.trajectory).toBeNull()
+    expect(issues(draft.safeParse(base()))).toEqual([])
+  })
+
+  it('refuses a value outside the vocabulary, including the chip that stands for NULL', () => {
+    for (const bad of ['NOT_DECIDED', 'Discharge', 'ADMITTED', '', 1]) {
+      expect(draft.safeParse({ ...base(), trajectory: bad }).success, String(bad)).toBe(false)
+    }
+  })
+
+  /**
+   * Decision C, and the contract in item 12: what a case must record is decided by its outcome
+   * and by nothing else. No trajectory makes a time mandatory, and none excuses one — a transfer
+   * trajectory resolved as ADMITTED still owes the admission order and the bed.
+   */
+  it('never joins the resolve rules, whichever pathway it names', () => {
+    const admitted = {
+      ...base(),
+      disposition: 'ADMITTED',
+      wardId: 'w-mmw',
+      triageAt: new Date('2026-09-08T06:10:00Z'),
+      physicianAt: new Date('2026-09-08T06:40:00Z'),
+      decisionAt: new Date('2026-09-08T08:00:00Z'),
+      admOrderAt: new Date('2026-09-08T08:10:00Z'),
+      bedAssignedAt: new Date('2026-09-08T09:00:00Z'),
+      departedAt: new Date('2026-09-08T09:30:00Z'),
+    }
+    for (const trajectory of [null, 'DISCHARGE', 'ADMISSION', 'TRANSFER'] as const) {
+      expect(issues(resolve.safeParse({ ...admitted, trajectory })), String(trajectory)).toEqual([])
+    }
+    // And it excuses nothing: the same case with no bed is refused on the bed's own path.
+    const noBed = { ...admitted, trajectory: 'DISCHARGE', bedAssignedAt: null }
+    expect(issues(resolve.safeParse(noBed))).toEqual(['bedAssignedAt: Enter the Bed assigned time before resolving.'])
+  })
+})

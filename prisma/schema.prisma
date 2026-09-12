@@ -112,6 +112,19 @@ enum UpdateAction {
   DAMA_MANAGEMENT
 }
 
+/**
+ * Phase 15 (docs/specs/phase15-trajectory.md; Ahmed, 12 September 2026): where this patient is
+ * going, said early and in one tap, so the case sheet shows the steps that pathway has and hides
+ * the ones it cannot. An addition to the vocabulary; nothing is renamed and no Disposition value
+ * is touched. NULL on Case is "not decided yet", which every case carries until somebody taps a
+ * chip and which two of the eight outcomes (left without being seen, deceased) never leave.
+ */
+enum Trajectory {
+  DISCHARGE
+  ADMISSION
+  TRANSFER
+}
+
 enum OtherReviewStatus {
   PENDING
   PROMOTED
@@ -251,6 +264,14 @@ model Case {
   // `escalatedToMedicalDirector` is a three-state answer, where NULL means nobody has said.
   delayActionTaken           String?
   escalatedToMedicalDirector Boolean?
+
+  // Phase 15 (docs/specs/phase15-trajectory.md; Ahmed, 12 September 2026, decision A). Where the
+  // patient is going, chosen early in the stay, so the Patient journey block can show the steps
+  // that pathway has and hide the ones it cannot. Nullable and unset by default, never required,
+  // and never inferred: the app does not write it when a disposition is chosen, and nothing here
+  // makes a journey time mandatory — what a case must record is still decided by its outcome
+  // alone (src/lib/domain/journey.ts).
+  trajectory Trajectory?
 
   // resolution
   disposition    Disposition?

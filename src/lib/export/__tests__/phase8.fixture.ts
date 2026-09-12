@@ -61,6 +61,7 @@ export const BASE_CASE: CaseForExport = {
   untaggedUpdatesCount: 0,
   delayActionTaken: null,
   escalatedToMedicalDirector: null,
+  trajectory: null,
   otherTexts: [],
   diagnosis: null,
   navigatorName: 'Nadia Navigator',

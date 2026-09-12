@@ -50,6 +50,8 @@ const BOARD_ROW_SELECT = {
   // Phase 14: the line the handover sheet prints under the case.
   delayActionTaken: true,
   escalatedToMedicalDirector: true,
+  // Phase 15: the first part of that line.
+  trajectory: true,
   triageAt: true,
   roomAt: true,
   physicianAt: true,
@@ -127,6 +129,7 @@ type SelectedRow = Milestones & {
   reviewedAt: Date | null
   delayActionTaken: string | null
   escalatedToMedicalDirector: boolean | null
+  trajectory: BoardRow['trajectory']
   primaryReason: { name: string } | null
   ward: { code: string } | null
   area: { code: string } | null
@@ -175,6 +178,7 @@ function toBoardRow(row: SelectedRow): BoardRow {
     reviewedAt: iso(row.reviewedAt),
     delayActionTaken: row.delayActionTaken,
     escalatedToMedicalDirector: row.escalatedToMedicalDirector,
+    trajectory: row.trajectory,
     timeline: timelineOf({
       status: row.status,
       registrationAt: row.registrationAt,

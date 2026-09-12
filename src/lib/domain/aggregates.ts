@@ -182,6 +182,11 @@ export type CaseForStats = CaseClock & {
    */
   delayActionTaken: string | null
   escalatedToMedicalDirector: boolean | null
+  /**
+   * Phase 15: where the patient was said to be going. Read by the workbook's Cases sheet and by
+   * nothing else — no KPI counts a plan, so nothing in `kpi.ts` reads it.
+   */
+  trajectory: 'DISCHARGE' | 'ADMISSION' | 'TRANSFER' | null
   otherTexts: ReadonlyArray<{ stageName: string; text: string }>
 }
 

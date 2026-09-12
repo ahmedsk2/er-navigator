@@ -20,6 +20,7 @@ import type {
   Payer,
   RoomType,
   Shift,
+  Trajectory,
 } from '@prisma/client'
 
 type Time = Date | null
@@ -91,6 +92,8 @@ export type SnapshotSource = {
   /** Phase 14: the delay action and the escalation, audited like every other column. */
   delayActionTaken: string | null
   escalatedToMedicalDirector: boolean | null
+  /** Phase 15: the pathway the case was said to be on, audited beside the outcome it plans for. */
+  trajectory: Trajectory | null
   disposition: Disposition | null
   wardId: string | null
   isolation: boolean
@@ -152,6 +155,7 @@ export function caseSnapshot(c: SnapshotSource): Record<string, unknown> {
     reviewedById: c.reviewedById,
     delayActionTaken: c.delayActionTaken,
     escalatedToMedicalDirector: c.escalatedToMedicalDirector,
+    trajectory: c.trajectory,
     disposition: c.disposition,
     wardId: c.wardId,
     isolation: c.isolation,

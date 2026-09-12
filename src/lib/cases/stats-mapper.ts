@@ -64,6 +64,8 @@ export const CASE_STATS_SELECT = {
   // which the deck's "actions documented" figure and the workbook's Cases sheet both read.
   delayActionTaken: true,
   escalatedToMedicalDirector: true,
+  // Phase 15 (docs/specs/phase15-trajectory.md): the workbook's own Trajectory column.
+  trajectory: true,
   primaryReason: { select: { name: true } },
   ward: { select: { code: true } },
   // The name for "By ED area", the code for the filter's URL (Phase 10): a code survives a rename.
@@ -261,6 +263,7 @@ export function toCaseForStats(row: StatsRowInput): CaseForStats {
     reviewedByName: row.reviewedBy?.displayName ?? null,
     delayActionTaken: row.delayActionTaken,
     escalatedToMedicalDirector: row.escalatedToMedicalDirector,
+    trajectory: row.trajectory,
     updateActions: [...updateActions],
     untaggedUpdatesCount,
     otherTexts: row.reasons

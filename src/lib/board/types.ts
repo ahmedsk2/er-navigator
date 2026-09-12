@@ -5,7 +5,7 @@
  * Plain JSON on purpose: every timestamp is an ISO-8601 UTC string, exactly as
  * `src/lib/cases/types.ts` does it, because this crosses both the RSC boundary and `fetch`.
  */
-import type { Disposition, Payer } from '@prisma/client'
+import type { Disposition, Payer, Trajectory } from '@prisma/client'
 import type { TimelineStepView } from '@/src/lib/cases/timeline'
 
 export const BOARD_FILTERS = ['open', 'resolved', 'all'] as const
@@ -68,6 +68,13 @@ export type BoardRow = {
    */
   delayActionTaken: string | null
   escalatedToMedicalDirector: boolean | null
+  /**
+   * Phase 15: where the patient was said to be going, or null for "not decided yet". Like the two
+   * above it is not drawn on the screen row — a phone row has one line to say what happened to
+   * the patient — and it opens the line the handover sheet prints under the case, which is where
+   * a charge nurse at a shift change asks "and where is this one going?".
+   */
+  trajectory: Trajectory | null
   /**
    * The case's recorded milestones in time order (Phase 8), for the compact timeline on the
    * handover sheet. It rides on the row rather than being fetched for the sheet alone because

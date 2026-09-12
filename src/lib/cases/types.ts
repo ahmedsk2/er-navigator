@@ -17,6 +17,7 @@ import type {
   Payer,
   RoomType,
   Shift,
+  Trajectory,
   UpdateAction,
 } from '@prisma/client'
 
@@ -107,6 +108,12 @@ export type CaseDraft = {
    */
   delayActionTaken: string
   escalatedToMedicalDirector: boolean | null
+  /**
+   * Phase 15, decision A: where the patient is going, or null for "not decided yet" — which is a
+   * state and not a missing answer. It decides which journey steps and which other blocks the
+   * sheet shows while no outcome has been chosen, and it makes nothing required.
+   */
+  trajectory: Trajectory | null
   disposition: Disposition | null
   wardId: string | null
   isolation: boolean

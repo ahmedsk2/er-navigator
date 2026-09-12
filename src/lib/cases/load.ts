@@ -91,6 +91,7 @@ export function blankDraft(input: { now: Date; shift: CaseDraft['shift'] }): Cas
     caseMgmtRepliedAt: null,
     delayActionTaken: '',
     escalatedToMedicalDirector: null,
+    trajectory: null,
     disposition: null,
     wardId: null,
     isolation: false,
@@ -141,6 +142,8 @@ type CaseRow = {
   // Phase 14: free text, so a NULL column becomes the empty string the controlled input needs.
   delayActionTaken: string | null
   escalatedToMedicalDirector: boolean | null
+  // Phase 15: NULL is "not decided yet" and travels as null; the chip row shows it as its own chip.
+  trajectory: CaseDraft['trajectory']
   disposition: CaseDraft['disposition']
   wardId: string | null
   isolation: boolean
@@ -227,6 +230,7 @@ export function draftFromCase(row: CaseRow, reference: ReferenceData): CaseDraft
     caseMgmtRepliedAt: iso(row.caseMgmtRepliedAt),
     delayActionTaken: row.delayActionTaken ?? '',
     escalatedToMedicalDirector: row.escalatedToMedicalDirector,
+    trajectory: row.trajectory,
     disposition: row.disposition,
     wardId: row.wardId,
     isolation: row.isolation,

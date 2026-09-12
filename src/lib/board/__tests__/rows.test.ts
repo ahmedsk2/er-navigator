@@ -45,6 +45,7 @@ function row(over: Partial<BoardRow> & Pick<BoardRow, 'id' | 'mrn'>): BoardRow {
     reviewedAt: null,
     delayActionTaken: null,
     escalatedToMedicalDirector: null,
+    trajectory: null,
     // The sort, search and staleness helpers read the clock and the MRN only; a row's Phase 8
     // timeline is the handover sheet's business.
     timeline: [],

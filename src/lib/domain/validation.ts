@@ -100,6 +100,13 @@ export const dispositionSchema = z.enum([
 export const investigationTypeSchema = z.enum(['LAB', 'CT', 'US', 'XR', 'MRI'])
 
 /**
+ * Phase 15 (Ahmed, 12 September 2026, decision A): where the patient is going. A vocabulary, so
+ * an unknown value is refused here rather than reaching the column — including `NOT_DECIDED`,
+ * which is the editor's chip for NULL and is mapped away before the draft is posted.
+ */
+export const trajectorySchema = z.enum(['DISCHARGE', 'ADMISSION', 'TRANSFER'])
+
+/**
  * Phase 8b. Two answer vocabularies, and the difference between them is a decision, not an
  * oversight: a navigator writing the case up after the shift may genuinely not know whether the
  * doctor gave discharge instructions (decision D, three answers), while "not sure whether a
@@ -220,6 +227,9 @@ export function buildCaseSchemas(
     // resolved" — so both live on `base` and neither is named in the resolve refinement below.
     delayActionTaken: delayActionSchema.nullable().optional(),
     escalatedToMedicalDirector: z.boolean().nullable().optional(),
+    // Phase 15, decision A. Never required, at "Open case" or at "Mark resolved", and it is not
+    // named in the resolve refinement below: what an outcome owes is decided by the outcome.
+    trajectory: trajectorySchema.nullable().optional(),
     disposition: dispositionSchema.nullable().optional(),
     wardId: z.string().nullable().optional(),
     isolation: z.boolean().default(false),

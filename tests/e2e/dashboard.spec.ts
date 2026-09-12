@@ -93,6 +93,7 @@ function clocksOf(payload: BoardPayload): CaseForStats[] {
         delayActionTaken: null,
         escalatedToMedicalDirector: null,
         payer: null,
+        trajectory: null,
         stageCodes: [],
         reasonNames: [],
         otherTexts: [],

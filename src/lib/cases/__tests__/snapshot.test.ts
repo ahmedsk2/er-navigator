@@ -47,6 +47,7 @@ function source(overrides: Partial<SnapshotSource> = {}): SnapshotSource {
     caseMgmtRepliedAt: null,
     delayActionTaken: null,
     escalatedToMedicalDirector: null,
+    trajectory: null,
     reviewedAt: null,
     reviewedById: null,
     disposition: null,
@@ -71,6 +72,18 @@ describe('caseSnapshot', () => {
     expect(snap.status).toBe('OPEN')
     expect(snap.version).toBe(1)
     expect(snap.departedAt).toBeNull()
+  })
+
+  /**
+   * Phase 15 (docs/specs/phase15-trajectory.md, item 1): the trajectory is audited like every
+   * other column, so a reader of the audit trail can see where a case was said to be going and
+   * when somebody changed their mind.
+   */
+  it('audits the patient trajectory, beside the outcome it plans for', () => {
+    expect(caseSnapshot(source())).toHaveProperty('trajectory', null)
+    expect(caseSnapshot(source({ trajectory: 'ADMISSION' })).trajectory).toBe('ADMISSION')
+    const keys = Object.keys(caseSnapshot(source()))
+    expect(keys.indexOf('trajectory')).toBeLessThan(keys.indexOf('disposition'))
   })
 
   it('produces the same JSON whatever order the source keys were built in', () => {
