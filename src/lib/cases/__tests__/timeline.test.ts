@@ -24,7 +24,6 @@ function source(over: Partial<TimelineSource> = {}): TimelineSource {
     admOrderAt: null,
     bedRequestedAt: null,
     bedAssignedAt: null,
-    handoverAt: null,
     transferRequestedAt: null,
     transferAcceptedAt: null,
     transportArrivedAt: null,

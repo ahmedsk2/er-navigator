@@ -53,7 +53,6 @@ const FULL = caseWith({
   departedAt: new Date('2026-09-01T12:15:00Z'), // 15:15
   resolvedAt: new Date('2026-09-01T12:15:00Z'),
   admOrderAt: new Date('2026-09-01T09:30:00Z'), // 12:30
-  handoverAt: new Date('2026-09-01T11:45:00Z'), // 14:45
   disposition: 'ADMITTED',
   wardCode: 'ICU',
   isolation: true,
@@ -238,8 +237,8 @@ describe('qchRow', () => {
       '', // Case Manager Name: a staff name, which this app does not hold
       '', // Time of call case manger
       '', // Time of case manger replay
-      '14:45',
-      '2:15',
+      '15:15',
+      '2:45',
       '7:15',
       'No bed available on accepting ward',
       '09:00 Bed requested | 13:00 Chased ward',
@@ -404,9 +403,12 @@ describe('qchRow', () => {
     const row = qchRow(home)
     expect(row[QCH_GROUP_HEADER.indexOf('Time of Disposition TO WARD')]).toBe('')
     expect(row[QCH_GROUP_HEADER.indexOf('order to disposition /H')]).toBe('')
-    // Still open with an order: the ward time is the departure or handover when it comes.
-    const open = caseWith({ status: 'OPEN', admOrderAt: new Date('2026-09-01T07:00:00Z'), handoverAt: new Date('2026-09-01T08:00:00Z') })
-    expect(qchRow(open)[QCH_GROUP_HEADER.indexOf('Time of Disposition TO WARD')]).toBe('11:00')
+    // Phase 13 (decision A): the nursing handover was the preferred value in this column and a
+    // third admission signal. It is merged into "Left ED", so an open case with an order has no
+    // ward time at all until it leaves, and a resolved admitted one has its departure (15:15 in
+    // the full row above).
+    const open = caseWith({ status: 'OPEN', disposition: null, admOrderAt: new Date('2026-09-01T07:00:00Z') })
+    expect(qchRow(open)[QCH_GROUP_HEADER.indexOf('Time of Disposition TO WARD')]).toBe('')
   })
 
   it('marks isolation on the ward column, with or without a ward code', () => {
@@ -472,6 +474,14 @@ describe('the Read me', () => {
 
   it('says the patient name is not reproduced', () => {
     expect(text).toContain('The patient name column is not reproduced')
+  })
+
+  /** Phase 13 (decision A): the sentence used to offer the nursing handover first. */
+  it('explains the ward time as the departure, with no mention of a handover', () => {
+    expect(text).toContain(
+      'Time of Disposition TO WARD is the departure from the ED, and is blank for a patient who was never admitted.',
+    )
+    expect(text).not.toContain('nursing handover')
   })
 
   it('names every column that is present and blank', () => {

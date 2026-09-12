@@ -30,7 +30,6 @@ export const BASE_CASE: CaseForExport = {
   admOrderAt: null,
   bedRequestedAt: null,
   bedAssignedAt: null,
-  handoverAt: null,
   transferRequestedAt: null,
   transferAcceptedAt: null,
   transportArrivedAt: null,

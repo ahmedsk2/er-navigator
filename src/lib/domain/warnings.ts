@@ -47,7 +47,6 @@ export type CaseTimes = {
   admOrderAt?: TimeValue
   bedRequestedAt?: TimeValue
   bedAssignedAt?: TimeValue
-  handoverAt?: TimeValue
   transferRequestedAt?: TimeValue
   transferAcceptedAt?: TimeValue
   transportArrivedAt?: TimeValue
@@ -112,7 +111,9 @@ export function timeWarnings(c: CaseTimes): string[] {
     }
   }
 
-  // Admission chain and transfer chain, in order.
+  // Admission chain and transfer chain, in order. The admission chain ends at "bed assigned"
+  // since Phase 13: "Nursing handover done" was merged into "Left ED", and the milestone loop
+  // above already holds the departure against the registration.
   for (let i = 1; i < ADMISSION_STEPS.length; i++) {
     const [prevKey, prevLabel] = ADMISSION_STEPS[i - 1]!
     const [key, label] = ADMISSION_STEPS[i]!

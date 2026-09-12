@@ -224,7 +224,6 @@ const PATIENTS: Patient[] = [
       ['Admission order written', 6.8],
       ['Bed requested (fax sent)', 6.6],
       ['Bed assigned', 1.5],
-      ['Nursing handover done', 0.9],
     ],
     medAdminH: 4,
     updates: [
@@ -360,7 +359,6 @@ const PATIENTS: Patient[] = [
       ['Admission order written', 14.5],
       ['Bed requested (fax sent)', 14],
       ['Bed assigned', 1.2],
-      ['Nursing handover done', 0.6],
     ],
     medAdminH: 3,
     updates: [

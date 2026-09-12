@@ -66,7 +66,6 @@ function base(id: string, over: Partial<KpiCase> = {}): KpiCase {
     admOrderAt: null,
     bedRequestedAt: null,
     bedAssignedAt: null,
-    handoverAt: null,
     transferRequestedAt: null,
     transferAcceptedAt: null,
     transportArrivedAt: null,
@@ -148,7 +147,6 @@ const c = base('c', {
   admOrderAt: T(9),
   bedRequestedAt: T(8),
   bedAssignedAt: T(4),
-  handoverAt: T(3.5),
   updatesCount: 2,
   untaggedUpdatesCount: 2,
   lastUpdateAt: T(3),
@@ -390,12 +388,11 @@ describe('the per-case timeline', () => {
       'Admission order written',
       'Bed requested (fax sent)',
       'Bed assigned',
-      'Nursing handover done',
       'Left ED',
     ])
     expect(steps[0]!.fromPrevious).toBeNull()
     expect(steps[1]!.fromPrevious).toBeCloseTo(0.25, 10)
-    expect(steps.at(-1)!.fromPrevious).toBeCloseTo(0.5, 10)
+    expect(steps.at(-1)!.fromPrevious).toBeCloseTo(1, 10)
     const atTwelve = steps.filter((s) => s.at.getTime() === T(12).getTime()).map((s) => s.label)
     expect(atTwelve).toEqual(['Lab: received by lab', 'CT: ordered', 'Internal Medicine: consulted'])
     const atNine = steps.filter((s) => s.at.getTime() === T(9).getTime()).map((s) => s.label)
@@ -663,6 +660,21 @@ describe('Adaa', () => {
     // A reopened case with an order and an old departure is open: not counted.
     const reopened = base('o', { status: 'OPEN', registrationAt: T(10), admOrderAt: T(3), departedAt: T(2.5), wardCode: 'ICU' })
     expect(admissionToUnitBands([reopened])[0]!.bands.map((r) => r.value)).toEqual([0, 0, 0, 0])
+    /**
+     * Phase 13 (decision A). The fallback for a resolved case with no departure time used to be
+     * the nursing handover; that step is gone, so such a case is in no band at all rather than
+     * being banded on a time the app no longer records.
+     */
+    const noDeparture = base('p', {
+      status: 'RESOLVED',
+      registrationAt: T(10),
+      admOrderAt: T(9),
+      departedAt: null,
+      resolvedAt: null,
+      wardCode: 'ICU',
+      disposition: 'ADMITTED',
+    })
+    expect(admissionToUnitBands([noDeparture])[0]!.bands.map((r) => r.value)).toEqual([0, 0, 0, 0])
   })
 })
 

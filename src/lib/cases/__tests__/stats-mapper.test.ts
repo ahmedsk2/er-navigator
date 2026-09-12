@@ -28,7 +28,6 @@ function row(over: Partial<CaseStatsRow> = {}): CaseStatsRow {
     admOrderAt: null,
     bedRequestedAt: null,
     bedAssignedAt: null,
-    handoverAt: null,
     transferRequestedAt: null,
     transferAcceptedAt: null,
     transportArrivedAt: null,
@@ -92,7 +91,6 @@ describe('CASE_STATS_SELECT', () => {
         'departedAt',
         'disposition',
         'familyEngagement',
-        'handoverAt',
         'id',
         'instructionsGiven',
         'investigations',
@@ -217,8 +215,7 @@ describe('toCaseForStats', () => {
       admOrderAt: at('2026-09-07T09:00:00Z'),
       bedRequestedAt: at('2026-09-07T09:30:00Z'),
       bedAssignedAt: at('2026-09-07T13:00:00Z'),
-      handoverAt: null,
-      transferRequestedAt: null,
+        transferRequestedAt: null,
       transferAcceptedAt: null,
       transportArrivedAt: null,
       medAdminInformedAt: null,
@@ -309,7 +306,6 @@ describe('toCaseForStats', () => {
         triageAt: at('2026-09-08T06:10:00Z'),
         physicianAt: at('2026-09-08T06:40:00Z'),
         decisionAt: at('2026-09-08T09:00:00Z'),
-        handoverAt: at('2026-09-08T11:00:00Z'),
         transferRequestedAt: at('2026-09-08T10:00:00Z'),
         medAdminInformedAt: at('2026-09-08T10:30:00Z'),
         _count: { updates: 4 },
@@ -324,7 +320,6 @@ describe('toCaseForStats', () => {
     expect(mapped.triageAt).toEqual(at('2026-09-08T06:10:00Z'))
     expect(mapped.physicianAt).toEqual(at('2026-09-08T06:40:00Z'))
     expect(mapped.decisionAt).toEqual(at('2026-09-08T09:00:00Z'))
-    expect(mapped.handoverAt).toEqual(at('2026-09-08T11:00:00Z'))
     expect(mapped.transferRequestedAt).toEqual(at('2026-09-08T10:00:00Z'))
     expect(mapped.medAdminInformedAt).toEqual(at('2026-09-08T10:30:00Z'))
     expect(mapped.updatesCount).toBe(4)

@@ -120,7 +120,6 @@ function draft(over: Partial<CaseDraft> = {}): CaseDraft {
     admOrderAt: null,
     bedRequestedAt: null,
     bedAssignedAt: null,
-    handoverAt: null,
     transferRequestedAt: null,
     transferAcceptedAt: null,
     transportArrivedAt: null,

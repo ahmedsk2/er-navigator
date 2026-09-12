@@ -102,7 +102,6 @@ function draft(over: Partial<CaseDraft> = {}): CaseDraft {
     admOrderAt: null,
     bedRequestedAt: null,
     bedAssignedAt: null,
-    handoverAt: null,
     transferRequestedAt: null,
     transferAcceptedAt: null,
     transportArrivedAt: null,
@@ -264,7 +263,6 @@ describe('loadCasesForStats', () => {
       admOrderAt: at(3.2),
       bedRequestedAt: at(3.5),
       bedAssignedAt: at(6),
-      handoverAt: at(6.5),
       transferRequestedAt: at(4),
       medAdminInformedAt: at(5),
       disposition: 'ADMITTED',
@@ -292,7 +290,7 @@ describe('loadCasesForStats', () => {
     expect(row.triageAt?.toISOString()).toBe(at(0.2))
     expect(row.physicianAt?.toISOString()).toBe(at(0.5))
     expect(row.decisionAt?.toISOString()).toBe(at(3))
-    expect(row.handoverAt?.toISOString()).toBe(at(6.5))
+    expect(row.bedAssignedAt?.toISOString()).toBe(at(6))
     expect(row.transferRequestedAt?.toISOString()).toBe(at(4))
     expect(row.medAdminInformedAt?.toISOString()).toBe(at(5))
     expect(row.investigations[0]!.preliminaryAt?.toISOString()).toBe(at(2.5))

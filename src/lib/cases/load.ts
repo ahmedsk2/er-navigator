@@ -71,7 +71,6 @@ export function blankDraft(input: { now: Date; shift: CaseDraft['shift'] }): Cas
     admOrderAt: null,
     bedRequestedAt: null,
     bedAssignedAt: null,
-    handoverAt: null,
     transferRequestedAt: null,
     transferAcceptedAt: null,
     transportArrivedAt: null,
@@ -116,7 +115,6 @@ type CaseRow = {
   admOrderAt: Date | null
   bedRequestedAt: Date | null
   bedAssignedAt: Date | null
-  handoverAt: Date | null
   transferRequestedAt: Date | null
   transferAcceptedAt: Date | null
   transportArrivedAt: Date | null
@@ -204,7 +202,6 @@ export function draftFromCase(row: CaseRow, reference: ReferenceData): CaseDraft
     admOrderAt: iso(row.admOrderAt),
     bedRequestedAt: iso(row.bedRequestedAt),
     bedAssignedAt: iso(row.bedAssignedAt),
-    handoverAt: iso(row.handoverAt),
     transferRequestedAt: iso(row.transferRequestedAt),
     transferAcceptedAt: iso(row.transferAcceptedAt),
     transportArrivedAt: iso(row.transportArrivedAt),
@@ -282,7 +279,6 @@ export async function loadCaseForEditor(id: string, reference: ReferenceData): P
       admOrderAt: row.admOrderAt,
       bedRequestedAt: row.bedRequestedAt,
       bedAssignedAt: row.bedAssignedAt,
-      handoverAt: row.handoverAt,
       transferRequestedAt: row.transferRequestedAt,
       transferAcceptedAt: row.transferAcceptedAt,
       transportArrivedAt: row.transportArrivedAt,

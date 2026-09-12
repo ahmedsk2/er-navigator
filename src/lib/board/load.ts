@@ -54,7 +54,6 @@ const BOARD_ROW_SELECT = {
   admOrderAt: true,
   bedRequestedAt: true,
   bedAssignedAt: true,
-  handoverAt: true,
   transferRequestedAt: true,
   transferAcceptedAt: true,
   transportArrivedAt: true,
@@ -101,7 +100,6 @@ type Milestones = {
   admOrderAt: Date | null
   bedRequestedAt: Date | null
   bedAssignedAt: Date | null
-  handoverAt: Date | null
   transferRequestedAt: Date | null
   transferAcceptedAt: Date | null
   transportArrivedAt: Date | null
@@ -182,7 +180,6 @@ function toBoardRow(row: SelectedRow): BoardRow {
       admOrderAt: row.admOrderAt,
       bedRequestedAt: row.bedRequestedAt,
       bedAssignedAt: row.bedAssignedAt,
-      handoverAt: row.handoverAt,
       transferRequestedAt: row.transferRequestedAt,
       transferAcceptedAt: row.transferAcceptedAt,
       transportArrivedAt: row.transportArrivedAt,

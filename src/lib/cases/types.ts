@@ -77,7 +77,6 @@ export type CaseDraft = {
   admOrderAt: TimeString
   bedRequestedAt: TimeString
   bedAssignedAt: TimeString
-  handoverAt: TimeString
   transferRequestedAt: TimeString
   transferAcceptedAt: TimeString
   transportArrivedAt: TimeString

@@ -331,7 +331,6 @@ export function CaseEditor(props: CaseEditorProps) {
         admOrderAt: draft.admOrderAt,
         bedRequestedAt: draft.bedRequestedAt,
         bedAssignedAt: draft.bedAssignedAt,
-        handoverAt: draft.handoverAt,
         transferRequestedAt: draft.transferRequestedAt,
         transferAcceptedAt: draft.transferAcceptedAt,
         transportArrivedAt: draft.transportArrivedAt,

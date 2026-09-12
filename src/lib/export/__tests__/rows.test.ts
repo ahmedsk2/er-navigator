@@ -42,7 +42,6 @@ const asExport = (c: CaseForStats, extra: Partial<CaseForExport> = {}): CaseForE
   roomAt: null,
   physicianAt: null,
   decisionAt: null,
-  handoverAt: null,
   transferRequestedAt: null,
   transferAcceptedAt: null,
   transportArrivedAt: null,
@@ -62,7 +61,6 @@ const CASES: CaseForExport[] = FIXTURE.map((c) => {
     return asExport(c, {
       wardCode: 'ICU',
       isolation: true,
-      handoverAt: c.bedAssignedAt,
       medAdminInformedAt: c.admOrderAt,
       triageAt: c.registrationAt,
       resolutionNote: 'Admitted to ICU',
@@ -118,6 +116,20 @@ describe('casesSheet', () => {
 
   it('gives every row the full set of columns', () => {
     for (const row of sheet.rows) expect(row).toHaveLength(CASES_HEADER.length)
+  })
+
+  /**
+   * Phase 13 (Ahmed, 12 September, decision A). The admission block used to end in a fourth
+   * column, "Nursing handover done", generated from `ADMISSION_STEPS`. The step is merged into
+   * "Left ED", so the workbook has three admission columns and the one departure column.
+   */
+  it('has no "Nursing handover done" column, and three admission columns', () => {
+    expect(CASES_HEADER).not.toContain('Nursing handover done')
+    expect(CASES_HEADER.filter((h) => h.startsWith('Admission order') || h.startsWith('Bed '))).toEqual([
+      'Admission order written',
+      'Bed requested (fax sent)',
+      'Bed assigned',
+    ])
   })
 
   it('has one "Left ED" column, in the prototype position, beside the hours it measures', () => {

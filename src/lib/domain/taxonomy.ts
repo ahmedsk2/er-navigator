@@ -215,11 +215,17 @@ export const CONSULT_STEPS = [
   ['repliedAt', 'Replied / plan given at'],
 ] as const
 
+/**
+ * Phase 13 (Ahmed, 12 September 2026, decision A): "Nursing handover done" is merged into
+ * "Left ED". The pair `['handoverAt', 'Nursing handover done']` used to end this chain, and with
+ * it went the input, the export column, the timeline row and the last link of the warning chain.
+ * `Case.handoverAt` stays in the database, nullable and no longer written, so the cases that
+ * already carry a handover keep it on the record.
+ */
 export const ADMISSION_STEPS = [
   ['admOrderAt', 'Admission order written'],
   ['bedRequestedAt', 'Bed requested (fax sent)'],
   ['bedAssignedAt', 'Bed assigned'],
-  ['handoverAt', 'Nursing handover done'],
 ] as const
 
 export const TRANSFER_STEPS = [
@@ -235,6 +241,14 @@ export const MILESTONES = [
   ['decisionAt', 'Disposition decided'],
   ['departedAt', 'Left ED'],
 ] as const
+
+/**
+ * Phase 13. The one journey step that was never in a chain: it used to be a lone `TimeRow` in the
+ * editor with its label written out there, and the timeline's own label for it is the same words
+ * without the "at". Named here so `src/lib/domain/journey.ts` can compose the whole flow from
+ * taxonomy pairs and no label can be changed in two places.
+ */
+export const MED_ADMIN_STEP = ['medAdminInformedAt', 'Medical admin on-call informed at'] as const
 
 export const THRESHOLDS_H = [4, 6, 12, 24] as const
 

@@ -156,7 +156,6 @@ function caseScalarData(d: ValidatedDraft) {
     admOrderAt: d.admOrderAt ?? null,
     bedRequestedAt: d.bedRequestedAt ?? null,
     bedAssignedAt: d.bedAssignedAt ?? null,
-    handoverAt: d.handoverAt ?? null,
     transferRequestedAt: d.transferRequestedAt ?? null,
     transferAcceptedAt: d.transferAcceptedAt ?? null,
     transportArrivedAt: d.transportArrivedAt ?? null,

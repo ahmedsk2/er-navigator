@@ -16,7 +16,6 @@ describe('timeWarnings (prototype port)', () => {
         admOrderAt: t(4.5),
         bedRequestedAt: t(5),
         bedAssignedAt: t(7),
-        handoverAt: t(7.5),
         consults: [{ departmentName: 'ICU', consultedAt: t(2), seenAt: t(3), repliedAt: t(3.5) }],
         investigations: [{ type: 'LAB', orderedAt: t(1), collectedAt: t(1.2), receivedAt: t(1.5), resultedAt: t(3) }],
       }),
@@ -64,6 +63,27 @@ describe('timeWarnings (prototype port)', () => {
         ],
       }),
     ).toEqual([])
+  })
+
+  /**
+   * Phase 13 (Ahmed, 12 September, decision A). The admission chain ran order -> requested ->
+   * assigned -> handover; "Nursing handover done" is merged into "Left ED", so the chain is three
+   * links and no warning can name a handover any more. The departure is still held against the
+   * registration by the milestone loop.
+   */
+  it('checks the admission chain as order, requested, assigned, and never names a handover', () => {
+    expect(
+      timeWarnings({ registrationAt: t(0), admOrderAt: t(4), bedRequestedAt: t(3), bedAssignedAt: t(5) }),
+    ).toEqual(['bed requested (fax sent) is before admission order written'])
+    expect(
+      timeWarnings({ registrationAt: t(0), admOrderAt: t(4), bedRequestedAt: t(5), bedAssignedAt: t(4.5) }),
+    ).toEqual(['bed assigned is before bed requested (fax sent)'])
+    // A departure before the bed was assigned is not a warning of the admission chain; the
+    // milestone loop only holds it against the registration.
+    expect(
+      timeWarnings({ registrationAt: t(0), admOrderAt: t(4), bedAssignedAt: t(6), departedAt: t(5) }),
+    ).toEqual([])
+    expect(timeWarnings({ registrationAt: t(4), departedAt: t(2) })).toEqual(['Left ED is before registration'])
   })
 
   it('flags a preliminary report entered before the scan was done', () => {

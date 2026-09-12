@@ -186,7 +186,6 @@ export function buildCaseSchemas(
     admOrderAt: timeSchema,
     bedRequestedAt: timeSchema,
     bedAssignedAt: timeSchema,
-    handoverAt: timeSchema,
     transferRequestedAt: timeSchema,
     transferAcceptedAt: timeSchema,
     transportArrivedAt: timeSchema,

@@ -165,7 +165,6 @@ test('on a worked case every recorded time shows its whole value, and the strip 
     ['Bed assigned', 250],
     ['Medical admin on-call informed at', 260],
     ['RCC / transport arrived', 300],
-    ['Nursing handover done', 320],
   ]
   for (const [label, minutes] of times) {
     await page.getByLabel(label, { exact: true }).fill(later(registered, minutes))
@@ -175,7 +174,7 @@ test('on a worked case every recorded time shows its whole value, and the strip 
 
   await page.goto(url)
   await expect(page.getByRole('heading', { name: `Case ${mrn}` })).toBeVisible()
-  await expect(page.getByLabel('Nursing handover done', { exact: true })).toHaveValue(later(registered, 320))
+  await expect(page.getByLabel('RCC / transport arrived', { exact: true })).toHaveValue(later(registered, 300))
   await page.evaluate(() => document.fonts.ready)
 
   const { checked, clipped } = await clippedTimes(page)

@@ -75,7 +75,6 @@ export type KpiCase = CaseClock & {
   admOrderAt: Date | null
   bedRequestedAt: Date | null
   bedAssignedAt: Date | null
-  handoverAt: Date | null
   transferRequestedAt: Date | null
   transferAcceptedAt: Date | null
   transportArrivedAt: Date | null
@@ -391,7 +390,7 @@ function inOrder(seq: ReadonlyArray<Date | null | undefined>): boolean {
 
 export function isOutOfOrder(c: KpiCase): boolean {
   if (!inOrder([c.registrationAt, c.triageAt, c.roomAt, c.physicianAt, c.decisionAt, leftAt(c)])) return true
-  if (!inOrder([c.admOrderAt, c.bedRequestedAt, c.bedAssignedAt, c.handoverAt])) return true
+  if (!inOrder([c.admOrderAt, c.bedRequestedAt, c.bedAssignedAt])) return true
   if (!inOrder([c.transferRequestedAt, c.transferAcceptedAt, c.transportArrivedAt])) return true
   if (!inOrder([c.caseMgmtCalledAt, c.caseMgmtRepliedAt])) return true
   if (!inOrder([c.registrationAt, c.painkillerAt])) return true
@@ -544,7 +543,6 @@ export function timeline(c: KpiCase): TimelineStep[] {
     admOrderAt: c.admOrderAt,
     bedRequestedAt: c.bedRequestedAt,
     bedAssignedAt: c.bedAssignedAt,
-    handoverAt: c.handoverAt,
   }
   for (const [field, label] of ADMISSION_STEPS) push(field, label, admission[field])
   const transfer: Record<(typeof TRANSFER_STEPS)[number][0], Date | null> = {
@@ -837,9 +835,15 @@ export const ADMISSION_BANDS: ReadonlyArray<BandDef> = [
   { name: '>4 h', min: 4 + 1e-9, max: null },
 ]
 
-/** Admission order to leaving the ED (or the nursing handover when the departure was not recorded). */
+/**
+ * Admission order to leaving the ED.
+ *
+ * Phase 13 (decision A): the fallback used to be the nursing handover when the departure was not
+ * recorded. That step no longer exists, so a case with an order and no leaving time is in no
+ * admission band at all, which is the honest answer now that the app records only one end.
+ */
 function orderToLeaveHours(c: KpiCase): number | null {
-  return hoursBetween(c.admOrderAt, leftAt(c) ?? c.handoverAt)
+  return hoursBetween(c.admOrderAt, leftAt(c))
 }
 
 export function admissionToUnitBands(cases: ReadonlyArray<KpiCase>): Array<{ unit: UnitType; bands: IdRow[] }> {

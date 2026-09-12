@@ -129,7 +129,6 @@ export type CaseForStats = CaseClock & {
   admOrderAt: Date | null
   bedRequestedAt: Date | null
   bedAssignedAt: Date | null
-  handoverAt: Date | null
   transferRequestedAt: Date | null
   transferAcceptedAt: Date | null
   transportArrivedAt: Date | null

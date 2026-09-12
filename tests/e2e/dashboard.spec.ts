@@ -64,7 +64,6 @@ function clocksOf(payload: BoardPayload): CaseForStats[] {
         admOrderAt: null,
         bedRequestedAt: null,
         bedAssignedAt: null,
-        handoverAt: null,
         transferRequestedAt: null,
         transferAcceptedAt: null,
         transportArrivedAt: null,

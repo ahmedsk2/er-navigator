@@ -238,9 +238,11 @@ export function qchRow(c: CaseForExport): string[] {
   const firstConsultAt = consults[0]?.consultedAt ?? null
   const left = leftAt(c)
   const admitted = c.disposition === 'ADMITTED'
-  // Admission signals: an order, a ward, or a nursing handover. Without any of them the patient
-  // never went to a ward, and the two ward columns are blank rather than repeating the departure.
-  const toWard = admitted || (c.disposition == null && (c.admOrderAt || c.wardCode || c.handoverAt)) ? (c.handoverAt ?? left) : null
+  // Admission signals: an order or a ward. Without either the patient never went to a ward, and
+  // the two ward columns are blank rather than repeating the departure. Phase 13 (decision A):
+  // the nursing handover was both a third signal and the preferred value here; it is merged into
+  // "Left ED", so the departure is the ward time for every admitted patient.
+  const toWard = admitted || (c.disposition == null && (c.admOrderAt || c.wardCode)) ? left : null
   const imagingReasons = investigationReasons(c, false)
   const referralReasons = reasonsOf(c, STAGE.referral)
 
@@ -402,7 +404,7 @@ export function qchReadMeRows(input: {
     },
     { cells: ['Reviewed By is the display name of the supervisor who marked the case reviewed, and is blank until one has.'] },
     { cells: ['ADMISSION WARD is the ward code, with "/ ISOLATION" appended when the case is flagged as isolation.'] },
-    { cells: ['Time of Disposition TO WARD is the nursing handover, or the departure from the ED when no handover was recorded, and is blank for a patient who was never admitted.'] },
+    { cells: ['Time of Disposition TO WARD is the departure from the ED, and is blank for a patient who was never admitted.'] },
     { cells: ['Comments/Notes is every update on the case, oldest first, as "HH:mm text" joined with " | ".'] },
     { cells: ['ED NAVIGATOR NAME and ID Number are the display name and the login of the navigator who opened the case.'] },
     BLANK,
