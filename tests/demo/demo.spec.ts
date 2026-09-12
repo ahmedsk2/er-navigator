@@ -480,7 +480,11 @@ test('2. Nadia signs in for the first time and sets her own password', async ({ 
   await fill(page.getByLabel('New password', { exact: true }), fresh)
   await fill(page.getByLabel('New password again', { exact: true }), fresh)
   await tap(page.getByRole('button', { name: 'Change password', exact: true }))
-  await page.waitForTimeout(800)
+  // P13.44: the same race [ERN-P13.24] took out of `firstSignIn`, left behind here. The action
+  // deletes every session and issues a fresh cookie; a `goto` sent before that cookie lands
+  // arrives with the deleted one and is bounced to /login?expired=1. An 800 ms sleep was the
+  // wrong instrument twice over — it fails on a slow host and it waits on a fast one.
+  await expect(page.getByText('Password changed. Your other devices have been signed out.')).toBeVisible()
   await shot(page, 'account-changed')
   nadia.password = fresh
   nadia.changed = true
@@ -488,6 +492,7 @@ test('2. Nadia signs in for the first time and sets her own password', async ({ 
 
   begin('And now the board opens', 'nadia')
   await page.goto('/')
+  await expect(page).toHaveURL('/')
   await shot(page, 'nadia-first-board')
   end(page)
   await ctx.close()
