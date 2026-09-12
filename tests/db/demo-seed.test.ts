@@ -4,7 +4,9 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '@prisma/client'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { DEMO_MRN_PREFIX, DEMO_USERNAMES, demoMrn, runDemoSeed } from '@/scripts/demo-seed'
+import { JOURNEY_STEPS, missingJourneyTimes } from '@/src/lib/domain/journey'
 import { band, elapsedHours } from '@/src/lib/domain/time'
+import { buildCaseSchemas } from '@/src/lib/domain/validation'
 
 /**
  * Phase 12 item 3, against a real Postgres.
@@ -256,6 +258,85 @@ describeDb('the demo seed', () => {
     // Four resolved across ten days, which clears MIN_N = 3 for the dashboard's 30-day medians.
     expect(await prisma.case.count({ where: { status: 'RESOLVED' } })).toBe(4)
     expect(await prisma.caseUpdate.count()).toBeGreaterThan(8)
+  })
+
+  /**
+   * P13.42. The seed wrote triage, physician, decision and Left ED and stopped there, so its
+   * ADMITTED case had no admission order and no bed assigned and its TRANSFERRED case had no
+   * transfer requested, no acceptance and no named facility. Nothing on the board showed it —
+   * they are resolved rows — but every one of them was a case the app itself would now refuse to
+   * resolve, which is exactly the trap P13.41 puts a warning on, sitting in the demo where the
+   * room is taught what the app expects.
+   *
+   * Both halves are asserted: the pure table the editor and the server share, and the whole
+   * resolve schema, which is what `resolveCase` actually runs.
+   */
+  it('leaves every resolved case with the times its outcome cannot be closed without', async () => {
+    const resolved = await prisma.case.findMany({
+      where: { status: 'RESOLVED' },
+      include: {
+        reasons: { select: { reasonId: true, otherText: true } },
+        consults: { select: { departmentId: true, consultedAt: true, seenAt: true, repliedAt: true } },
+        investigations: true,
+      },
+      orderBy: { mrn: 'asc' },
+    })
+    expect(resolved).toHaveLength(4)
+    expect(resolved.map((c) => c.disposition).sort()).toEqual([
+      'ADMITTED',
+      'DISCHARGED_HOME',
+      'REFERRED_UCC',
+      'TRANSFERRED',
+    ])
+
+    const reasons = await prisma.reason.findMany({
+      select: { id: true, isOther: true, requiresDepartment: true, requiresReferralNo: true },
+    })
+    const meta = new Map(reasons.map((r) => [r.id, r]))
+    const areaIds = new Set((await prisma.edArea.findMany({ select: { id: true } })).map((a) => a.id))
+    const { resolve } = buildCaseSchemas(meta, () => new Date(), areaIds)
+
+    for (const row of resolved) {
+      expect(missingJourneyTimes(row.disposition, row), `${row.mrn} ${row.disposition}`).toEqual([])
+      const parsed = resolve.safeParse({
+        ...row,
+        reasons: row.reasons.map((r) => ({ reasonId: r.reasonId, otherText: r.otherText })),
+        consults: row.consults.map((c) => ({ ...c })),
+        investigations: [],
+      })
+      const issues = parsed.success ? [] : parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`)
+      expect(issues, `${row.mrn} ${row.disposition}`).toEqual([])
+    }
+  })
+
+  /** And in order: a chain whose middle is later than its end is a warning on the sheet. */
+  it('backdates each resolved chain in flow order', async () => {
+    const resolved = await prisma.case.findMany({
+      where: { status: 'RESOLVED' },
+      select: {
+        mrn: true,
+        disposition: true,
+        registrationAt: true,
+        triageAt: true,
+        physicianAt: true,
+        decisionAt: true,
+        admOrderAt: true,
+        bedRequestedAt: true,
+        bedAssignedAt: true,
+        transferRequestedAt: true,
+        transferAcceptedAt: true,
+        transportArrivedAt: true,
+        departedAt: true,
+      },
+    })
+    for (const row of resolved) {
+      const chain = JOURNEY_STEPS.map(([field]) => field)
+        .filter((field) => field !== 'roomAt' && field !== 'medAdminInformedAt')
+        .map((field) => row[field as keyof typeof row] as Date | null)
+        .filter((at): at is Date => at !== null)
+      const stamps = [row.registrationAt, ...chain].map((d) => d.getTime())
+      expect([...stamps].sort((a, b) => a - b), row.mrn).toEqual(stamps)
+    }
   })
 
   it('is idempotent: a second run adds nothing and changes no password', async () => {

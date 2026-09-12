@@ -110,9 +110,27 @@ type CaseSeed = {
     departedAfterHours: number
     disposition: 'ADMITTED' | 'DISCHARGED_HOME' | 'TRANSFERRED' | 'REFERRED_UCC'
     wardCode?: string
+    /** TRANSFERRED only, and required there since Phase 13: the RCC has to be told a name. */
+    facility?: string
     note?: string
   }
 }
+
+/**
+ * P13.42. Minutes before the departure that each outcome's own chain happened, so a resolved demo
+ * case carries every time `requiredJourneyFields` asks of it and not only the four the seed used
+ * to write. Before this the ADMITTED case had no admission order and no bed assigned and the
+ * TRANSFERRED one had no request, no acceptance and no named facility: four rows the app itself
+ * would refuse to resolve, sitting in the instance the room is taught on. The optional middle
+ * step of each chain is seeded too, in its place, because a chain missing its middle reads as a
+ * gap in the recording rather than as a stay.
+ *
+ * The numbers are minutes before departure and descend, so the chain is in flow order and lands
+ * between `decisionAt` (one hour before the departure) and the departure itself. `timeWarnings`
+ * therefore has nothing to say about a seeded case.
+ */
+const ADMISSION_CHAIN_MINUTES = { admOrderAt: 55, bedRequestedAt: 50, bedAssignedAt: 20 } as const
+const TRANSFER_CHAIN_MINUTES = { transferRequestedAt: 50, transferAcceptedAt: 20, transportArrivedAt: 10 } as const
 
 /**
  * Six open cases across all five elapsed bands (`band()` is ok < 4 h, h4 4–6, h6 6–12, h12 12–24,
@@ -248,7 +266,12 @@ const CASES: ReadonlyArray<CaseSeed> = [
     reasons: [{ stage: 'adm', reason: 'Referred out: no bed in accepting department' }],
     referralNo: 'DEMO-REF-0091',
     updates: [{ hoursAgo: 7 * 24 - 6, text: 'Referral accepted by the receiving hospital.' }],
-    resolve: { departedAfterHours: 13, disposition: 'TRANSFERRED', note: 'Transferred by ambulance.' },
+    resolve: {
+      departedAfterHours: 13,
+      disposition: 'TRANSFERRED',
+      facility: 'Dammam Medical Complex (demo)',
+      note: 'Transferred by ambulance.',
+    },
   },
   {
     n: 10,
@@ -413,6 +436,16 @@ async function loadReference(prisma: PrismaClient): Promise<Reference> {
   }
 }
 
+/** `{ admOrderAt: 55, … }` into `{ admOrderAt: <departure minus 55 minutes>, … }` (P13.42). */
+function chain<K extends string>(departedAt: Date, minutesBefore: Record<K, number>): Record<K, Date> {
+  return Object.fromEntries(
+    Object.entries(minutesBefore).map(([field, minutes]) => [
+      field,
+      new Date(departedAt.getTime() - (minutes as number) * 60_000),
+    ]),
+  ) as Record<K, Date>
+}
+
 function need<T>(map: Map<string, T>, key: string, what: string): T {
   const value = map.get(key)
   if (value === undefined) refuse(`the reference lists have no ${what} "${key}"`)
@@ -449,7 +482,7 @@ async function createDemoCase(
       triageAt: new Date(registrationAt.getTime() + 15 * 60_000),
       physicianAt: new Date(registrationAt.getTime() + 55 * 60_000),
       referralTrackingNo: seed.referralNo ?? null,
-      ...(seed.resolve
+      ...(seed.resolve && departedAt
         ? {
             status: 'RESOLVED' as const,
             decisionAt: new Date(registrationAt.getTime() + (seed.resolve.departedAfterHours - 1) * H),
@@ -459,7 +492,11 @@ async function createDemoCase(
             wardId: seed.resolve.wardCode
               ? need(reference.wardIds, seed.resolve.wardCode, 'ward')
               : null,
+            transferFacility: seed.resolve.facility ?? null,
             resolutionNote: seed.resolve.note ?? null,
+            // P13.42: the chain the outcome cannot be closed without, backdated in flow order.
+            ...(seed.resolve.disposition === 'ADMITTED' ? chain(departedAt, ADMISSION_CHAIN_MINUTES) : {}),
+            ...(seed.resolve.disposition === 'TRANSFERRED' ? chain(departedAt, TRANSFER_CHAIN_MINUTES) : {}),
           }
         : {}),
     },
