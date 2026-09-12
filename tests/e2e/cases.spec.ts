@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { prisma } from '../../src/lib/db'
-import { NOTE_MAX, OTHER_TEXT_MAX, UPDATE_TEXT_MAX } from '../../src/lib/domain/validation'
+import { DELAY_ACTION_MAX, NOTE_MAX, OTHER_TEXT_MAX } from '../../src/lib/domain/validation'
 import { riyadhDateKey } from '../../src/lib/export/range'
 import { CASES_HEADER } from '../../src/lib/export/rows'
 import {
@@ -50,8 +50,10 @@ const AREA_CODE = 'RAZ'
 const DIAGNOSIS_LABEL = 'Working diagnosis (optional)'
 const DIAGNOSIS = 'Chest pain, for admission'
 const PAYER_LABEL = 'Insured'
-/** The other labelled box with a microphone beside it (the Resolve section). */
+/** The other two labelled boxes with a microphone beside them (both in the Resolve section). */
 const NOTE_LABEL = 'Resolution note (optional)'
+/** Phase 14: what took the Updates composer's place (docs/specs/phase14-actions-and-escalation.md). */
+const ACTION_LABEL = 'What was done to solve the delay'
 
 test('a navigator opens a case, adds an update and resolves it as discharged home', async ({ page }) => {
   await fromClientIp(page, '198.51.100.41')
@@ -67,14 +69,15 @@ test('a navigator opens a case, adds an update and resolves it as discharged hom
   await expect(page.getByRole('heading', { name: `Case ${mrn}` })).toBeVisible()
   await expect(page.getByRole('button', { name: REASON })).toHaveAttribute('aria-pressed', 'true')
 
-  // Append-only updates: Enter submits, the row lands with its author.
-  await page.getByLabel('What changed?').fill('Bed coordinator says one hour')
-  await page.getByLabel('What changed?').press('Enter')
-  await expect(page.getByText('Bed coordinator says one hour')).toBeVisible()
-  await expect(page.getByText(E2E_USERS.navigator.displayName, { exact: false }).first()).toBeVisible()
-  // Phase 12 item 4 (C4): the hint is now under every free-text box, not only this one. On an
-  // existing OPEN case that is the working diagnosis, the updates box and the resolution note —
-  // and since Phase 13 the working diagnosis is behind "More to record".
+  // Phase 14: what a navigator writes about the delay goes in the Resolve block, and the save
+  // appends it to the case's history — the append-only row the summary sheet and the deck read.
+  await page.getByLabel(ACTION_LABEL, { exact: true }).fill('Bed coordinator says one hour')
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click()
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
+  await expect(page.getByLabel(ACTION_LABEL, { exact: true })).toHaveValue('Bed coordinator says one hour')
+  // Phase 12 item 4 (C4): the hint is now under every free-text box, not only one. On an existing
+  // OPEN case that is the working diagnosis, the delay action and the resolution note — and since
+  // Phase 13 the working diagnosis is behind "More to record".
   await openMoreToRecord(page)
   await expect(page.locator('[data-mrn-hint]')).toHaveCount(3)
   for (const hint of await page.locator('[data-mrn-hint]').all()) {
@@ -105,8 +108,12 @@ test('a navigator opens a case, adds an update and resolves it as discharged hom
   await page.getByRole('button', { name: 'Mark resolved' }).click()
 
   await expect(page.getByRole('heading', { name: 'Resolved' })).toBeVisible()
-  await expect(page.getByText('Resolved: Discharged home')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Reopen case' })).toBeVisible()
+  // The app's own "Resolved: …" note is still appended; the case page no longer lists updates
+  // (Phase 14, decision B), so it is read where the list lives now.
+  await page.getByRole('button', { name: 'Summary', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: 'Case summary' })).toContainText('Outcome')
+  await page.getByRole('dialog', { name: 'Case summary' }).getByRole('button', { name: 'Close', exact: true }).click()
 })
 
 /**
@@ -145,7 +152,8 @@ test('an admission needs a ward before it can be resolved', async ({ page }) => 
   await page.getByRole('group', { name: 'Ward' }).getByRole('button', { name: 'ICU' }).click()
   await expect(page.locator('[data-resolve-missing]')).toHaveCount(0)
   await page.getByRole('button', { name: 'Mark resolved' }).click()
-  await expect(page.getByText('Resolved: Admitted')).toBeVisible()
+  // Phase 14: the case page no longer lists updates, so a resolve is read off the heading it moves.
+  await expect(page.getByRole('heading', { name: 'Resolved', exact: true })).toBeVisible()
 })
 
 test('a team retired in Admin stays visible and removable on the case that carries it', async ({ page }) => {
@@ -646,9 +654,10 @@ test('dictated words are appended to the box, and trying again clears the last l
 
 /**
  * The same stand-in against the three boxes whose dictation was uncapped: the Other reason, the
- * update and the resolution note. A phrase longer than the room left is cut at the box's own cap
- * (the zod cap, exported from validation.ts) rather than being refused at Save with zod's raw
- * "Too big", and each box carries the cap as its `maxLength`, as the working diagnosis does.
+ * delay action (which took the update box's place in Phase 14) and the resolution note. A phrase
+ * longer than the room left is cut at the box's own cap (the zod cap, exported from
+ * validation.ts) rather than being refused at Save with zod's raw "Too big", and each box carries
+ * the cap as its `maxLength`, as the working diagnosis does.
  */
 test('a dictated phrase stops at the cap of the box it lands in', async ({ page }) => {
   await fromClientIp(page, '198.51.100.188')
@@ -659,7 +668,7 @@ test('a dictated phrase stops at the cap of the box it lands in', async ({ page 
 
   const boxes: Array<[Locator, number]> = [
     [page.getByLabel(`Other reason under ${STAGE}`, { exact: true }), OTHER_TEXT_MAX],
-    [page.getByLabel('What changed?', { exact: true }), UPDATE_TEXT_MAX],
+    [page.getByLabel(ACTION_LABEL, { exact: true }), DELAY_ACTION_MAX],
     [page.getByLabel(NOTE_LABEL, { exact: true }), NOTE_MAX],
   ]
   for (const [box, cap] of boxes) {
@@ -806,11 +815,16 @@ test('the case summary opens over the case, names it, and copies itself as text'
   const mrn = uniqueMrn()
   await openCase(page, mrn, STAGE, REASON, taps)
 
-  // A note with a name in it: exactly the free text a summary must never carry.
-  const UPDATE_TEXT = 'Ward says Mrs Haddad is ahead of us in the queue'
-  await page.getByLabel('What changed?').fill(UPDATE_TEXT)
-  await page.getByLabel('What changed?').press('Enter')
-  await expect(page.getByText(UPDATE_TEXT)).toBeVisible()
+  // A resolution note with a name in it: exactly the free text a summary must never carry. Phase
+  // 14 took the Updates composer off this page, and the box that replaced it IS shown in the
+  // summary (item 7), so the negative assertion moves to the note, which is not.
+  const SECRET_NOTE = 'Ward says Mrs Haddad is ahead of us in the queue'
+  await page.getByLabel(NOTE_LABEL, { exact: true }).fill(SECRET_NOTE)
+  // And the delay action, which the save mirrors into the one update this case will have.
+  const ACTION_TEXT = 'Bed coordinator paged; ward round finishes at 11:00'
+  await page.getByLabel(ACTION_LABEL, { exact: true }).fill(ACTION_TEXT)
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click()
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: 'Summary', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Case summary' })
@@ -819,12 +833,11 @@ test('the case summary opens over the case, names it, and copies itself as text'
   await expect(summaryRow(dialog, 'MRN')).toContainText(mrn)
   await expect(summaryRow(dialog, 'Waiting on')).toContainText(REASON)
   await expect(dialog.locator('[data-summary-timeline]')).toContainText('Registration')
-  // The panel is a reading of the case, not a second editor: the note is counted, never quoted.
-  // The count comes first. The page rendered this summary before the note existed, and it holds
-  // the note only once the update's own revalidation has rendered the page again; until then the
-  // check that the note is not quoted passes whatever the summary does with it. That check is on
-  // the whole dialog, so it covers the hidden copy text as well.
+  // Phase 14: the delay action is shown, and the update the save mirrored from it is counted.
+  await expect(summaryRow(dialog, 'What was done')).toContainText(ACTION_TEXT)
   await expect(summaryRow(dialog, 'Updates').getByRole('cell')).toHaveText(/^1, last \d\d\/\d\d \d\d:\d\d$/)
+  // The panel is a reading of the case, not a second editor: the resolution note is never quoted.
+  // That check is on the whole dialog, so it covers the hidden copy text as well.
   await expect(dialog).not.toContainText('Mrs Haddad')
 
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
@@ -838,7 +851,8 @@ test('the case summary opens over the case, names it, and copies itself as text'
   expect(copied).toContain(`* ${REASON} (Admission process)`)
   expect(copied).toContain('Time sequence:')
   expect(copied).toContain('Registration')
-  // The same reading of the case: the note counted, and not quoted.
+  // The same reading of the case: the delay action shown, the resolution note never quoted.
+  expect(copied).toContain(`What was done: ${ACTION_TEXT}`)
   expect(copied).toMatch(/^Updates: 1, last \d\d\/\d\d \d\d:\d\d$/m)
   expect(copied).not.toContain('Mrs Haddad')
 
@@ -894,7 +908,7 @@ test('a resolved case whose departure time is cleared keeps its clock stopped at
   await leftAt.fill(at.left)
   await page.getByLabel('Final disposition').selectOption('DISCHARGED_HOME')
   await page.getByRole('button', { name: 'Mark resolved' }).click()
-  await expect(page.getByText('Resolved: Discharged home')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Resolved', exact: true })).toBeVisible()
   await expect(clock).toHaveText('3h 00m')
   // The resolve block shows the same instant, read-only.
   await expect(page.locator('[data-left-ed]')).not.toContainText('Not recorded')
@@ -923,9 +937,10 @@ test('a resolved case whose departure time is cleared keeps its clock stopped at
 })
 
 /**
- * Phase 8, Slice E. The case's time sequence, read-only, after the updates — the weekly deck's
- * per-case slide generated — and the same sequence in one compact line under the case's row on
- * the handover sheet.
+ * Phase 8, Slice E, as Phase 14 left it. The case's time sequence is no longer a section of the
+ * case page (Ahmed's decision A); it is in the case summary sheet and in the compact line under
+ * the case's row on the handover sheet, which is what a shift change actually carries. Both are
+ * checked here, and the case page is checked for their absence.
  *
  * The two times are written in the browser's own zone, because that is what a `datetime-local`
  * input reads and writes; the interval between them is therefore exact to the minute, while the
@@ -952,10 +967,16 @@ test('the timeline lists the recorded steps in order with the interval between t
   await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
 
   await page.goto(url)
-  await expect(page.getByRole('heading', { name: 'Timeline', exact: true })).toBeVisible()
+  // Phase 14, decision A: not on this page any more, in any form.
+  await expect(page.getByRole('heading', { name: 'Timeline', exact: true })).toHaveCount(0)
+  await expect(page.locator('[data-timeline]')).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Summary', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Case summary' })
+  await expect(dialog).toBeVisible()
 
   // Registration first, then the two times, in the order they happened and not the order typed.
-  const steps = page.locator('[data-timeline] [data-timeline-step]')
+  const steps = dialog.locator('[data-summary-timeline] [data-timeline-step]')
   expect(await steps.evaluateAll((els) => els.map((e) => e.getAttribute('data-timeline-step')))).toEqual([
     'registrationAt',
     'triageAt',
@@ -969,6 +990,7 @@ test('the timeline lists the recorded steps in order with the interval between t
   await expect(steps.nth(0)).not.toContainText('+')
   await expect(steps.nth(1)).toContainText(/\+\d+h \d\dm/)
   await expect(steps.nth(2)).toContainText('+0h 30m')
+  await page.keyboard.press('Escape')
 
   // And the same sequence on the handover sheet, which is what a shift change actually carries.
   await page.goto('/')
@@ -1053,8 +1075,7 @@ test('the pain-management block, an MRI row and a Deceased disposition round-tri
   await expect(page.locator('#case-times').getByLabel('Admission order written', { exact: true })).toHaveCount(0)
   await recordJourney(page, ['Triage', 'First physician contact', 'Left ED'])
   await page.getByRole('button', { name: 'Mark resolved' }).click()
-  await expect(page.getByText('Resolved: Deceased')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Resolved' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Resolved', exact: true })).toBeVisible()
 })
 
 /** Phase 8b, decision B: the case-management block, and its two times. */
@@ -1101,32 +1122,45 @@ test('the case-management block records the referral, the outcome and the two ti
   await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
 })
 
-/** Phase 8b, decision C: the weekly deck's action category on an update. */
-test('an update can carry one of the deck action categories, and shows it as a chip', async ({ page }) => {
+/**
+ * Phase 8b, decision C, as Phase 14 left it. The action category is still what the weekly deck
+ * counts, and `CaseUpdate.action` still carries it; what changed is who chooses it. The composer
+ * is off the case page (decision B), so the one tag the app now writes by itself is the
+ * LEADERSHIP_ESCALATION on the row a save mirrors when the escalation chip moves to Yes, and the
+ * place a nurse reads the case's categories is the summary sheet's "Documented actions" row.
+ */
+test('a save that escalates writes a tagged update, and the summary names the category', async ({ page }) => {
   await fromClientIp(page, '198.51.100.57')
   const taps = await signIn(page, E2E_USERS.navigator)
   const url = await openCase(page, uniqueMrn(), STAGE, REASON, taps)
 
-  await page
-    .getByRole('group', { name: 'Action taken (optional)' })
-    .getByRole('button', { name: 'Leadership escalation' })
-    .click()
-  await page.getByLabel('What changed?').fill('Escalated to the on-call director')
-  await page.getByLabel('What changed?').press('Enter')
-
-  const tagged = page.locator('[data-update-action="LEADERSHIP_ESCALATION"]')
-  await expect(tagged).toBeVisible()
-  await expect(tagged).toHaveText('Leadership escalation')
-  // The chip row resets with the box, so the next update is untagged unless it is tagged again.
-  await expect(
-    page.getByRole('group', { name: 'Action taken (optional)' }).getByRole('button', { name: 'Leadership escalation' }),
-  ).toHaveAttribute('aria-pressed', 'false')
-  await page.getByLabel('What changed?').fill('Ward says one hour')
-  await page.getByLabel('What changed?').press('Enter')
-  await expect(page.locator('[data-update-action]')).toHaveCount(1)
+  const escalation = page.getByRole('group', { name: 'Escalated to medical director', exact: true })
+  await page.getByLabel(ACTION_LABEL, { exact: true }).fill('Escalated to the on-call director')
+  await escalation.getByRole('button', { name: 'Yes', exact: true }).click()
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click()
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
 
   await page.goto(url)
-  await expect(page.locator('[data-update-action="LEADERSHIP_ESCALATION"]')).toHaveText('Leadership escalation')
+  await page.getByRole('button', { name: 'Summary', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Case summary' })
+  // "×2" is the panel's own rule since Phase 10 — the count is the evidence behind the category,
+  // and here that is the tagged row the save mirrored plus the chip on the case itself. The deck's
+  // own figure counts a case once per category (`actionsDocumented`), which is what is reported.
+  await expect(summaryRow(dialog, 'Documented actions')).toContainText('Leadership escalation ×2')
+  await expect(summaryRow(dialog, 'What was done')).toContainText('Escalated to the on-call director')
+  await expect(summaryRow(dialog, 'Escalated to medical director')).toContainText('Yes')
+  await expect(summaryRow(dialog, 'Updates').getByRole('cell')).toHaveText(/^1, last \d\d\/\d\d \d\d:\d\d$/)
+  await page.keyboard.press('Escape')
+
+  // A second text on an already-escalated case is a second note and not a second escalation: one
+  // more update, and still one Leadership escalation on the case (kpi.ts counts a case once).
+  await page.getByLabel(ACTION_LABEL, { exact: true }).fill('Ward says one hour')
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click()
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
+  await page.goto(url)
+  await page.getByRole('button', { name: 'Summary', exact: true }).click()
+  await expect(summaryRow(dialog, 'Updates').getByRole('cell')).toHaveText(/^2, last \d\d\/\d\d \d\d:\d\d$/)
+  await expect(summaryRow(dialog, 'Documented actions')).toContainText('Leadership escalation ×2')
 })
 
 /**
@@ -1152,7 +1186,7 @@ test('a supervisor marks a case reviewed; the navigator sees the line but not th
   await nurse.getByLabel('Final disposition').selectOption('DISCHARGED_HOME')
   await recordJourney(nurse, DISCHARGE_JOURNEY)
   await nurse.getByRole('button', { name: 'Mark resolved' }).click()
-  await expect(nurse.getByText('Resolved: Discharged home')).toBeVisible()
+  await expect(nurse.getByRole('heading', { name: 'Resolved', exact: true })).toBeVisible()
 
   await signIn(supervisor, E2E_USERS.supervisor)
   await supervisor.goto(url)

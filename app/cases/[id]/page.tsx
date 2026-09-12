@@ -2,7 +2,6 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { CaseEditor } from '@/src/components/cases/CaseEditor'
 import { CaseSummarySheet } from '@/src/components/cases/CaseSummarySheet'
-import { CaseTimeline } from '@/src/components/cases/CaseTimeline'
 import { loadUnacknowledgedAlert } from '@/src/lib/alerts/service'
 import { requireUser } from '@/src/lib/auth/session'
 import { can } from '@/src/lib/authz/policy'
@@ -57,11 +56,9 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
       initialResolvedAt={loaded.resolvedAt}
       voidReason={loaded.voidReason}
       navigatorName={loaded.openedByName}
-      initialUpdates={loaded.updates}
-      // Phase 8: the case's recorded time sequence, read-only, rendered here on the server and
-      // slotted into the editor after the updates. The editor never touches it; every time on it
-      // is edited in the section that owns it.
-      timeline={<CaseTimeline steps={loaded.timeline} />}
+      // Phase 14 (Ahmed's decisions A and B): the case page no longer carries the Timeline slot or
+      // the Updates list. `loaded.timeline` and `loaded.updates` are still read — `summaryOf`
+      // below turns both into the summary sheet, which is where they are shown now.
       summary={<CaseSummarySheet summary={summary} />}
       review={loaded.review}
       canReview={canReview}

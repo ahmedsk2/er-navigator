@@ -24,7 +24,6 @@ import Link from 'next/link'
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react'
 import {
   acknowledgeAlert as acknowledgeAlertAction,
-  addCaseUpdate as addCaseUpdateAction,
   createCase as createCaseAction,
   reopenCase as reopenCaseAction,
   resolveCase as resolveCaseAction,
@@ -53,7 +52,6 @@ import { fmtStamp, hoursAgo, nowLocalInput, shiftMinutes } from '@/src/lib/cases
 import { caseClockOf } from '@/src/lib/cases/summary'
 import type {
   CaseDraft,
-  CaseUpdateView,
   DraftConsult,
   DraftInvestigation,
   ReferenceData,
@@ -72,7 +70,6 @@ import {
   PAYERS,
   PETHIDINE_DOSES,
   SHIFT_LABELS,
-  UPDATE_ACTION_LABELS,
 } from '@/src/lib/domain/taxonomy'
 import { missingJourneyTimes } from '@/src/lib/domain/journey'
 import { CaseJourney } from './CaseJourney'
@@ -83,11 +80,11 @@ import {
   Check,
   Ellipsis,
   FileText,
-  History,
   TriangleAlert,
   Users,
 } from '@/src/components/icons'
 import {
+  DELAY_ACTION_MAX,
   DIAGNOSIS_MAX,
   MRN_RE,
   NOTE_MAX,
@@ -95,7 +92,6 @@ import {
   phiWarnings,
   REGISTRATION_NUDGE_MINUTES,
   REGISTRATION_QUICK_HOURS,
-  UPDATE_TEXT_MAX,
 } from '@/src/lib/domain/validation'
 import { timeWarnings } from '@/src/lib/domain/warnings'
 
@@ -114,7 +110,6 @@ const CTAS_OPTIONS = CTAS_LEVELS.map(String)
 
 const YES_NO = ['YES', 'NO'] as const
 const YES_NO_UNSURE = ['YES', 'NO', 'NOT_SURE'] as const
-const UPDATE_ACTIONS = Object.keys(UPDATE_ACTION_LABELS) as Array<keyof typeof UPDATE_ACTION_LABELS>
 const CASE_MGMT_REFERRALS = ['CASE_MANAGER', 'COMPLEX_CARE'] as const
 const CASE_MGMT_CRITERIA = ['MEETS', 'NOT_MEETING'] as const
 const CASE_MGMT_ACTIONS = ['ENROLLED', 'FOR_ENROLLMENT'] as const
@@ -137,13 +132,15 @@ const BLANK_INVESTIGATION = {
   resultedAt: null,
 } as const
 
-/** The sections the case page's strip jumps to (Phase 11). One editor per page, so plain ids. */
+/**
+ * The sections the case page's strip jumps to (Phase 11). One editor per page, so plain ids.
+ * Phase 14 removed `updates: 'case-updates'` with the section itself (Ahmed's decision B).
+ */
 const JUMP = {
   delay: 'case-delay',
   teams: 'case-teams',
   tests: 'case-tests',
   times: 'case-times',
-  updates: 'case-updates',
   resolve: 'case-resolve',
 } as const
 
@@ -174,7 +171,6 @@ export type CaseEditorProps = {
   initialResolvedAt?: string | null
   voidReason: string | null
   navigatorName: string
-  initialUpdates: CaseUpdateView[]
   readOnly: boolean
   canVoid: boolean
   /**
@@ -183,13 +179,6 @@ export type CaseEditorProps = {
    * so its presence is also the permission to act on it.
    */
   alert?: { id: string; thresholdHours: number; firedAt: string } | null
-  /**
-   * Phase 8: the read-only Timeline section, rendered on the server by `app/cases/[id]/page.tsx`
-   * and slotted in after the updates. A slot rather than a prop of data, because this component
-   * holds the form and the timeline holds none of it: nothing here reads it, changes it or
-   * re-renders it, and `/cases/new` passes nothing at all.
-   */
-  timeline?: ReactNode
   /**
    * Phase 10: the case summary trigger, rendered on the server by `app/cases/[id]/page.tsx` and
    * slotted into the header between "‹ Back" and the clock. A slot for the same reason the
@@ -217,11 +206,6 @@ export function CaseEditor(props: CaseEditorProps) {
   const [status, setStatus] = useState(props.initialStatus)
   /** Held beside the status because resolve and reopen move both, as the server does. */
   const [resolvedAt, setResolvedAt] = useState(props.initialResolvedAt ?? null)
-  const [updates, setUpdates] = useState<CaseUpdateView[]>(props.initialUpdates)
-  const [updateText, setUpdateText] = useState('')
-  /** The deck category for the update being typed, cleared with the box when it is sent. */
-  const [updateAction, setUpdateAction] = useState<(typeof UPDATE_ACTIONS)[number] | null>(null)
-  const [updateWarnings, setUpdateWarnings] = useState<string[]>([])
   const [review, setReview] = useState(props.review ?? null)
   /**
    * "More to record" (Phase 13): closed on a new case, and open on an existing one that already
@@ -260,6 +244,8 @@ export function CaseEditor(props: CaseEditorProps) {
    */
   const primaryReasonId = useId()
   const dispositionId = useId()
+  /** Phase 14: the third box that shares its row with a microphone, above the disposition. */
+  const delayActionId = useId()
 
   // The clock ticks only while the case is open; a resolved case is frozen at its departure time,
   // or at its resolution once that has been cleared. `now` starts at the server's instant so the
@@ -364,6 +350,8 @@ export function CaseEditor(props: CaseEditorProps) {
         investigations: draft.investigations,
       }),
       ...phiWarnings('The working diagnosis', draft.diagnosis),
+      // Phase 14: the box that replaced the Updates composer is free text like the rest of them.
+      ...phiWarnings('The delay action', draft.delayActionTaken),
       ...phiWarnings('The resolution note', draft.resolutionNote),
       ...otherTexts.flatMap((o) => phiWarnings(`The other reason under ${o.stage}`, o.text)),
     ],
@@ -566,20 +554,6 @@ export function CaseEditor(props: CaseEditorProps) {
       } else handleFailure(result)
     })
 
-  const onAddUpdate = (): Promise<void> =>
-    run(async () => {
-      const text = updateText.trim()
-      if (!text || !caseId) return
-      setUpdateWarnings([])
-      const result = await addCaseUpdateAction(caseId, text, updateAction)
-      if (result.ok) {
-        setUpdates((rows) => [...rows, result.update])
-        setUpdateText('')
-        setUpdateAction(null)
-        setUpdateWarnings(result.warnings)
-      } else handleFailure(result)
-    })
-
   const onReview = (): Promise<void> =>
     run(async () => {
       if (!caseId) return
@@ -599,7 +573,6 @@ export function CaseEditor(props: CaseEditorProps) {
         // `resolveCase` writes the departure time as the resolution as well.
         setResolvedAt(departedAt)
         setReview(null)
-        setUpdates((rows) => [...rows, result.update])
       } else handleFailure(result)
     })
 
@@ -612,7 +585,6 @@ export function CaseEditor(props: CaseEditorProps) {
         setStatus('OPEN')
         // `reopenCase` clears the resolution and keeps the departure time as entered.
         setResolvedAt(null)
-        setUpdates((rows) => [...rows, result.update])
       } else handleFailure(result)
     })
 
@@ -637,20 +609,20 @@ export function CaseEditor(props: CaseEditorProps) {
   const disabled = readOnly || busy
 
   /**
-   * The strip's chips (Phase 11, finding 2): a worked case is several phone screens long, and the
-   * Updates box — what a navigator does most — and Resolve are at the bottom of it. One chip per
-   * section a nurse goes looking for; Teams and Tests only while their sections are on the page.
-   * "Times" is the journey block.
+   * The strip's chips (Phase 11, finding 2): a worked case is several phone screens long, and
+   * Resolve is at the bottom of it. One chip per section a nurse goes looking for; Teams and Tests
+   * only while their sections are on the page. "Times" is the journey block.
    *
    * Phase 13 moved that block to the top of the page and left this order alone: the strip is a
    * set of destinations a nurse has learned, and reshuffling it costs more than it explains.
+   * Phase 14 dropped the `Updates` chip with the section it pointed at, and moved nothing else,
+   * for the same reason.
    */
   const jumps: ReadonlyArray<{ id: string; label: string }> = [
     { id: JUMP.delay, label: 'Delay' },
     ...(showDepartments ? [{ id: JUMP.teams, label: 'Teams' }] : []),
     ...(showInvestigations ? [{ id: JUMP.tests, label: 'Tests' }] : []),
     { id: JUMP.times, label: 'Times' },
-    { id: JUMP.updates, label: 'Updates' },
     { id: JUMP.resolve, label: 'Resolve' },
   ]
 
@@ -1197,89 +1169,53 @@ export function CaseEditor(props: CaseEditorProps) {
         ) : null}
       </Section>
 
-      {/* 8. Updates */}
-      {!isNew ? (
-        <Section id={JUMP.updates} title="Updates" icon={<History size={18} />}>
-          {updates.length === 0 ? (
-            <p className="mb-2 text-caption text-muted">No updates yet. Add one when something changes.</p>
-          ) : null}
-          <ul className="mb-2.5">
-            {updates.map((u) => (
-              <li key={u.id} className="border-b border-line-soft py-1.5 text-body">
-                <span className="num mr-2 text-muted">{fmtStamp(u.createdAt)}</span>
-                {/* Phase 8b, decision C: the deck's category, before the text it describes. */}
-                {u.action ? (
-                  <span
-                    data-update-action={u.action}
-                    className="mr-1.5 rounded-chip border border-line px-1.5 py-px text-caption text-ink-2"
-                  >
-                    {UPDATE_ACTION_LABELS[u.action]}
-                  </span>
-                ) : null}
-                {u.text}
-                <span className="text-muted"> · {u.author}</span>
-              </li>
-            ))}
-          </ul>
-          {readOnly ? null : (
-            <>
-              {/* Optional: most updates describe no action at all, and the deck counts those as
-                  their own row rather than pretending they were one of the six. */}
-              <ChoiceRow
-                label="Action taken (optional)"
-                options={UPDATE_ACTIONS}
-                labelOf={(a) => UPDATE_ACTION_LABELS[a]}
-                value={updateAction}
-                onChange={setUpdateAction}
-                disabled={busy}
-              />
-              {/* `items-start`: the microphone's line, when it shows, is under the box only, and the
-                  Add button keeps its height rather than stretching down beside it. */}
-              <div className="flex items-start gap-2">
-                <DictationRow
-                  disabled={busy}
-                  onText={(text) => setUpdateText((current) => appendDictated(current, text, UPDATE_TEXT_MAX))}
-                >
-                  <Input
-                    maxLength={UPDATE_TEXT_MAX}
-                    aria-label="What changed?"
-                    placeholder="What changed?"
-                    disabled={busy}
-                    value={updateText}
-                    onChange={(e) => setUpdateText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
-                        void onAddUpdate()
-                      }
-                    }}
-                  />
-                </DictationRow>
-                <Button tone="main" className="shrink-0" disabled={busy} onClick={() => void onAddUpdate()}>
-                  Add
-                </Button>
-              </div>
-              <MrnOnlyHint />
-              {updateWarnings.map((w) => (
-                <p key={w} className="mt-1.5 text-caption text-band-h4-ink" role="status">
-                  {w}
-                </p>
-              ))}
-            </>
-          )}
-        </Section>
-      ) : null}
-
-      {/* 8b. Timeline (Phase 8): server-rendered, read-only, after the updates. */}
-      {props.timeline}
-
-      {/* 9. Resolve */}
+      {/* 8. Resolve. Phase 14 (Ahmed's decisions A and B) removed the two sections that used to
+          stand between "More to record" and this one: the Updates composer with its list, and the
+          server-rendered Timeline. The timeline is still in the case summary sheet, on the
+          handover sheet and in the printed report; the update list is still everywhere it was
+          outside this page, and every writer still appends to it — including the save below. */}
       {!isNew ? (
         <Section
           id={JUMP.resolve}
           title={status === 'RESOLVED' ? 'Resolved' : 'Resolve case'}
           icon={<Check size={18} />}
         >
+          {/* Phase 14, decision C (docs/specs/phase14-actions-and-escalation.md, item 3). The two
+              answers that took the place of the Updates composer, first in this block because
+              they are what a navigator has to say about the delay before saying how it ended.
+              Both are editable on an open case and on a resolved one, and neither is ever
+              required. A change to the box appends one CaseUpdate carrying the same text
+              (`mirrorDelayAction` in src/lib/cases/service.ts), so the case's history, the board's
+              staleness and the weekly deck stay whole with the composer gone. */}
+          <Field label="What was done to solve the delay" htmlFor={delayActionId}>
+            <DictationRow
+              disabled={disabled}
+              onText={(text) =>
+                set({ delayActionTaken: appendDictated(draft.delayActionTaken, text, DELAY_ACTION_MAX) })
+              }
+            >
+              <Input
+                id={delayActionId}
+                maxLength={DELAY_ACTION_MAX}
+                placeholder="e.g. bed manager called twice, ICU holding a bed for 14:00"
+                disabled={disabled}
+                value={draft.delayActionTaken}
+                onChange={(e) => set({ delayActionTaken: e.target.value })}
+              />
+            </DictationRow>
+            <MrnOnlyHint />
+          </Field>
+          {/* Three states, and the third is "nobody has said": tapping the chosen chip again
+              clears it, the same gesture CTAS, ED area, Shift and Payer already use. Stored as a
+              boolean, so the chips travel as the two answer strings and come back as one. */}
+          <ChoiceRow
+            label="Escalated to medical director"
+            options={YES_NO}
+            labelOf={(v) => ANSWER_LABELS[v]}
+            value={draft.escalatedToMedicalDirector === null ? null : draft.escalatedToMedicalDirector ? 'YES' : 'NO'}
+            onChange={(v) => set({ escalatedToMedicalDirector: v === null ? null : v === 'YES' })}
+            disabled={disabled}
+          />
           <Field label="Final disposition" htmlFor={dispositionId}>
             <Select
               id={dispositionId}

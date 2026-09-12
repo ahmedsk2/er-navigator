@@ -87,15 +87,19 @@ test('phase 11 fixes gate screenshots', async ({ page }, testInfo) => {
   for (const [label, minutes] of times) await page.getByLabel(label, { exact: true }).fill(at(minutes))
   await page.getByRole('button', { name: 'Save changes' }).click()
   await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
-  await page.getByLabel('What changed?', { exact: true }).fill('Bed manager called, CCU bed expected after the ward round')
-  await page.getByLabel('What changed?', { exact: true }).press('Enter')
-  await expect(page.getByText('Bed manager called, CCU bed expected after the ward round')).toBeVisible()
+  // Phase 14: the delay action, in the Resolve block, saved with the case; the save appends the
+  // update the board's "Updated just now" below reads.
+  await page
+    .getByLabel('What was done to solve the delay', { exact: true })
+    .fill('Bed manager called, CCU bed expected after the ward round')
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click()
+  await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('heading', { name: `Case ${mrn}` })).toBeVisible()
   await shoot(page, 'case', suffix)
 
-  // 5. After a jump to Updates: on a phone the strip is stuck to the top over the section.
-  await page.getByRole('navigation', { name: 'Jump to', exact: true }).getByRole('link', { name: 'Updates', exact: true }).click()
+  // 5. After a jump to Resolve: on a phone the strip is stuck to the top over the section.
+  await page.getByRole('navigation', { name: 'Jump to', exact: true }).getByRole('link', { name: 'Resolve', exact: true }).click()
   await shoot(page, 'case-jump', suffix, false)
 
   // 6. The board: the case was updated seconds ago, and says so in words.

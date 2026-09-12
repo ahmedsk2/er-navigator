@@ -184,9 +184,10 @@ test('the stages add their steps, and a filled step collapses and reopens', asyn
   // And with every step of both chains on the page, the phone still never scrolls sideways.
   await expectNoSidewaysScroll(page)
 
-  // The strip still has its six chips in their Phase 11 order, and "Times" lands on the block.
+  // The strip still has its Phase 11 chips in their Phase 11 order, less the Updates one Phase 14
+  // removed with its section, and "Times" lands on the block.
   const strip = page.getByRole('navigation', { name: 'Jump to', exact: true })
-  await expect(strip.getByRole('link')).toHaveText(['Delay', 'Teams', 'Times', 'Updates', 'Resolve'])
+  await expect(strip.getByRole('link')).toHaveText(['Delay', 'Teams', 'Times', 'Resolve'])
   await strip.getByRole('link', { name: 'Times', exact: true }).click()
   await expect(journey).toBeFocused()
 })
@@ -227,7 +228,9 @@ test('Mark resolved is blocked with the missing list, then allowed', async ({ pa
   await expect(journeyOf(page).locator('[data-needed]')).toHaveCount(0)
   await expect(resolve).toBeEnabled()
   await resolve.click()
-  await expect(page.getByText('Resolved: Transferred to another facility')).toBeVisible()
+  // The app's "Resolved: …" note is still appended; the case page stopped listing updates in
+  // Phase 14, so the resolve is read off the section heading it changes.
+  await expect(page.getByRole('heading', { name: 'Resolved', exact: true })).toBeVisible()
 
   // The resolve block shows the departure read-only, and the input for it is in the journey.
   await expect(page.getByLabel('Left ED at (defaults to now)')).toHaveCount(0)
@@ -265,7 +268,7 @@ test('LWBS hides the physician and the decision, and still shows what was record
   await expect(page.locator('[data-resolve-missing]')).toHaveText('Before resolving, enter: Left ED.')
   await recordJourney(page, ['Left ED'])
   await page.getByRole('button', { name: 'Mark resolved', exact: true }).click()
-  await expect(page.getByText('Resolved: Left without being seen')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Resolved', exact: true })).toBeVisible()
 })
 
 /**
@@ -384,5 +387,5 @@ test('More to record opens itself on a case that already carries one of its answ
   await page.getByLabel('Final disposition').selectOption('DISCHARGED_HOME')
   await recordJourney(page, DISCHARGE_JOURNEY)
   await page.getByRole('button', { name: 'Mark resolved', exact: true }).click()
-  await expect(page.getByText('Resolved: Discharged home')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Resolved', exact: true })).toBeVisible()
 })

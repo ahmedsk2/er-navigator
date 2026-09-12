@@ -107,7 +107,6 @@ function sectionOf(page: Page, chip: string) {
     Teams: page.getByRole('heading', { name: 'Department / consulted team involved', exact: true }),
     Tests: page.getByRole('heading', { name: 'Investigation times', exact: true }),
     Times: page.getByRole('heading', { name: 'Patient journey', exact: true }),
-    Updates: page.getByRole('heading', { name: 'Updates', exact: true }),
     Resolve: page.getByRole('heading', { name: 'Resolve case', exact: true }),
   }
   return page.locator('section').filter({ has: top[chip]! })
@@ -131,7 +130,8 @@ test('on a worked case every recorded time shows its whole value, and the strip 
   // A chip per section, in page order; Teams because an admission shows the teams, and no Tests
   // until an investigation stage is chosen.
   const strip = page.getByRole('navigation', { name: 'Jump to', exact: true })
-  await expect(strip.getByRole('link')).toHaveText(['Delay', 'Teams', 'Times', 'Updates', 'Resolve'])
+  // Phase 14 (decision B) dropped the Updates chip with the section it pointed at.
+  await expect(strip.getByRole('link')).toHaveText(['Delay', 'Teams', 'Times', 'Resolve'])
 
   // The sections that only appear for the reasons behind them: a transfer reason (Referral out),
   // an imaging delay (Investigation times), a consulted team, a painkiller, a case manager.
@@ -194,7 +194,7 @@ test('on a worked case every recorded time shows its whole value, and the strip 
   expect(clipped).toEqual([])
 
   // The strip, now with Tests. The header above it has not moved.
-  const chips = ['Delay', 'Teams', 'Tests', 'Times', 'Updates', 'Resolve']
+  const chips = ['Delay', 'Teams', 'Tests', 'Times', 'Resolve']
   await expect(strip.getByRole('link')).toHaveText(chips)
   const back = await page.getByRole('link', { name: '‹ Back' }).boundingBox()
   const stripAtRest = await strip.boundingBox()

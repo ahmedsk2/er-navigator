@@ -25,7 +25,6 @@ export default async function NewCasePage() {
       initialStatus="OPEN"
       voidReason={null}
       navigatorName={user.displayName}
-      initialUpdates={[]}
       readOnly={false}
       canVoid={false}
       nowIso={now.toISOString()}

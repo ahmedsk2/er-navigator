@@ -42,12 +42,16 @@ test('phase 8 gate screenshots', async ({ page }, testInfo) => {
   await expect(page.locator('[data-chart="stacked"] svg[role="application"]')).toBeVisible()
   await shoot(page, 'dashboard', suffix)
 
-  // The case timeline, on the seeded case with the most recorded on it.
+  // The case timeline, on the seeded case with the most recorded on it. Phase 14 (decision A)
+  // took it off the case page; the summary sheet is where a nurse reads it now.
   await page.goto(`/?f=all&q=${RICH_MRN}`)
   await page.locator(`a[data-mrn="${RICH_MRN}"]`).click()
-  await expect(page.getByRole('heading', { name: 'Timeline', exact: true })).toBeVisible()
-  await expect(page.locator('[data-timeline] [data-timeline-step]').first()).toBeVisible()
+  await page.getByRole('button', { name: 'Summary', exact: true }).click()
+  const summary = page.getByRole('dialog', { name: 'Case summary' })
+  await expect(summary).toBeVisible()
+  await expect(summary.locator('[data-summary-timeline] [data-timeline-step]').first()).toBeVisible()
   await shoot(page, 'timeline', suffix)
+  await page.keyboard.press('Escape')
 
   // The same sequence in the compact form the shift handover actually carries. Not one of the
   // three the spec names, but it is the only picture of the second half of the timeline work.

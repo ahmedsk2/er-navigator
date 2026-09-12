@@ -37,9 +37,8 @@ test('phase 2 gate screenshots', async ({ page }, testInfo) => {
 
   await page.goto('/')
   const url = await openCase(page, uniqueMrn(), 'Admission process', 'No bed available on accepting ward', taps)
-  await page.getByLabel('What changed?').fill('Bed assigned on the medical ward')
-  await page.getByLabel('What changed?').press('Enter')
-  await expect(page.getByText('Bed assigned on the medical ward')).toBeVisible()
+  // Phase 14: what a navigator writes about the delay is in the Resolve block now.
+  await page.getByLabel('What was done to solve the delay', { exact: true }).fill('Bed assigned on the medical ward')
   await page.getByLabel('Final disposition').selectOption('DISCHARGED_HOME')
   await recordJourney(page, DISCHARGE_JOURNEY)
   await page.getByRole('button', { name: 'Mark resolved' }).click()
