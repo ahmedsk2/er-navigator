@@ -80,10 +80,11 @@ export function uniqueMrn(): string {
 }
 
 /**
- * Phase 13. The five answers a navigator fills in when writing the case up — the shift, the
- * working diagnosis, the payer, pain management and case management — are behind "More to
- * record", closed on a case that carries none of them. Idempotent, so a spec can call it on a
- * case that opened it by itself.
+ * Phase 13. The four answers a navigator fills in when writing the case up — the working
+ * diagnosis, the payer, pain management and case management — are behind "More to record", closed
+ * on a case that carries none of them. The shift is not one of them: P13.40 put it back in the
+ * identity block, because every case carries one from the moment it is opened. Idempotent, so a
+ * spec can call it on a case that opened it by itself.
  */
 export async function openMoreToRecord(page: Page): Promise<void> {
   const button = page.getByRole('button', { name: 'More to record', exact: true })

@@ -505,9 +505,9 @@ async function openPatient(page: Page, p: Patient): Promise<void> {
   await fill(page.getByLabel('Registration time (clock starts here)', { exact: true }), at(p.regH))
   await tap(chip(page, 'CTAS', String(p.ctas)))
   await tap(chip(page, 'ED area', p.area))
+  // P13.40: the shift is a chip row in the identity block, not a select behind "More to record".
+  await tap(chip(page, 'Shift', p.shift))
   await openMore(page)
-  await page.getByRole('combobox', { name: /^Shift/ }).selectOption({ label: p.shift })
-  act()
   await fill(page.getByLabel('Working diagnosis (optional)', { exact: true }), p.dx)
   await tap(chip(page, 'Payer', p.payer))
   const picked = new Set<string>()

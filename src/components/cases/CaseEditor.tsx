@@ -11,9 +11,10 @@
  * times" toggle near the foot of the page, an "Admission times" section, the transfer chain
  * inside "Referral out", and "Left ED at" inside Resolve — so a nurse recording a stay walked the
  * whole form twice. They are one block, `CaseJourney`, in flow order, second on the page. The
- * fields nobody fills while the patient is in the department (shift, working diagnosis, payer,
- * pain management, case management) are behind "More to record", which opens itself on a case
- * that already carries one of them.
+ * fields nobody fills while the patient is in the department (working diagnosis, payer, pain
+ * management, case management) are behind "More to record", which opens itself on a case that
+ * already carries one of them. The shift is not one of them (P13.40): it is stamped on every
+ * case from the navigator's last one, so it stays visible in the identity block.
  *
  * The prototype wins on behaviour; the locked plan wins on permissions. A VIEWER and a voided
  * case both get exactly this screen with `readOnly` set: every control disabled, no Save, no Add,
@@ -253,10 +254,10 @@ export function CaseEditor(props: CaseEditorProps) {
   const diagnosisId = useId()
   const noteId = useId()
   /**
-   * The three selects, named by a `<label for>` too (Phase 11, finding 4): a label wrapped round a
-   * select holds every option in its text, so the select could not be found by its label alone.
+   * The two remaining selects, named by a `<label for>` too (Phase 11, finding 4): a label wrapped
+   * round a select holds every option in its text, so the select could not be found by its label
+   * alone. Shift was the third until P13.40 made it a chip row.
    */
-  const shiftId = useId()
   const primaryReasonId = useId()
   const dispositionId = useId()
 
@@ -390,6 +391,7 @@ export function CaseEditor(props: CaseEditorProps) {
         ...(draft.disposition === 'TRANSFERRED' && !draft.transferFacility.trim() ? ['Receiving facility'] : []),
       ]
     : []
+
 
   // --- editing --------------------------------------------------------------------------------
 
@@ -826,8 +828,8 @@ export function CaseEditor(props: CaseEditorProps) {
           </ActionChip>
         </div>
         <p className="num mb-3.5 text-caption text-muted">Waiting {fmtHours(elapsed)} so far</p>
-        {/* Phase 13: the Shift select that shared this row moved to "More to record" with the
-            other two answers a navigator fills in when writing the case up. */}
+        {/* Phase 13: the Shift select that shared this row is now the chip row below "ED area"
+            (P13.40), so the Navigator box takes the whole width. */}
         <Field label="Navigator">
           <Input value={navigatorName} readOnly disabled />
         </Field>
@@ -859,6 +861,20 @@ export function CaseEditor(props: CaseEditorProps) {
             disabled={disabled}
           />
         </FieldGroup>
+        {/* P13.40. The shift is not like the other four answers behind "More to record": nobody
+            types it, `blankDraft` stamps it from the navigator's last shift, and every save
+            re-stamps `lastShift` from what was saved — so a wrong one behind a closed section
+            perpetuates itself unseen, and the dashboard's `byShift` and the export both read it.
+            A chip row rather than the old select: three options, one tap, and the value a case
+            already carries is legible without opening anything. */}
+        <ChoiceRow
+          label="Shift"
+          options={SHIFTS}
+          labelOf={(s) => SHIFT_LABELS[s]}
+          value={draft.shift}
+          onChange={(v) => set({ shift: v })}
+          disabled={disabled}
+        />
       </Section>
 
       {/* 2b. Patient journey (Phase 13): the one block of times, in flow order, second on the
@@ -1029,12 +1045,14 @@ export function CaseEditor(props: CaseEditorProps) {
         </Section>
       ) : null}
 
-      {/* 7. More to record (Phase 13, decisions E and F). The five answers a navigator fills in
-          when writing the case up rather than while the patient is in the department: the shift,
-          the working diagnosis, the payer, pain management (Adaa KPI 8) and case management.
-          Closed on a new case; open on a case that already carries one of them, so nothing
-          recorded is ever behind a tap. Everything inside keeps the label, the group name and the
-          per-field condition it had as a section of its own. */}
+      {/* 7. More to record (Phase 13, decisions E and F). The four answers a navigator fills in
+          when writing the case up rather than while the patient is in the department: the working
+          diagnosis, the payer, pain management (Adaa KPI 8) and case management. Closed on a new
+          case; open on a case that already carries one of them, so nothing recorded is ever behind
+          a tap — which is why the shift went back to the identity block in P13.40: it is stamped
+          on every case from the moment it is opened, so it was recorded and hidden at once.
+          Everything inside keeps the label, the group name and the per-field condition it had as
+          a section of its own. */}
       <Section>
         <Button
           className="w-full text-left"
@@ -1047,21 +1065,6 @@ export function CaseEditor(props: CaseEditorProps) {
         </Button>
         {moreOpen ? (
           <div data-more className="mt-3">
-            <Field label="Shift" htmlFor={shiftId}>
-              <Select
-                id={shiftId}
-                disabled={disabled}
-                value={draft.shift ?? ''}
-                onChange={(e) => set({ shift: (e.target.value || null) as CaseDraft['shift'] })}
-              >
-                <option value="">Select</option>
-                {SHIFTS.map((s) => (
-                  <option key={s} value={s}>
-                    {SHIFT_LABELS[s]}
-                  </option>
-                ))}
-              </Select>
-            </Field>
             {/* Phase 10, Ahmed's second request of 10 September: what the patient came in with,
                 for the board row and the weekly deck. A clinical line and not an identifier, but
                 free text all the same, so `phiWarnings` reads it like every other box. */}
@@ -1486,8 +1489,12 @@ export function CaseEditor(props: CaseEditorProps) {
 /**
  * Whether "More to record" opens itself (Phase 13). True when the case already carries any of
  * the answers behind it, so a nurse reading a worked case sees everything that was recorded
- * without knowing there is a section to open. A new case answers false: `blankDraft` sets the
- * shift from the clock, so the shift alone does not count.
+ * without knowing there is a section to open.
+ *
+ * The shift is not on this list and no longer behind the section either (P13.40). `blankDraft`
+ * fills it from the navigator's last shift, so every case carries one from the moment it is
+ * opened: counting it here would open the section on every case there is, and leaving it inside
+ * while not counting it hid a value the case had already recorded. It is in the identity block.
  */
 function hasMoreToRecord(draft: CaseDraft): boolean {
   return Boolean(

@@ -89,13 +89,32 @@ test('a new case opens on the journey block with the core steps alone', async ({
   await expect(next).toHaveCount(1)
   await expect(next).toContainText('Triage')
 
-  // Decision E: "More to record" starts closed, and its five answers with it.
+  /**
+   * P13.40. The shift is the one answer "More to record" held that a new case already carries:
+   * `blankDraft` stamps it from the navigator's last shift and every save re-stamps `lastShift`,
+   * so behind a closed section a wrong one perpetuates itself unseen while `byShift` and the
+   * export read it. It is back in the identity block, as a chip row after "ED area", and the
+   * section keeps its promise that nothing recorded is behind a tap.
+   */
+  const shift = page.getByRole('group', { name: 'Shift', exact: true })
+  await expect(shift).toBeVisible()
+  await expect(shift.getByRole('button')).toHaveText(['Morning', 'Evening', 'Night'])
+  const area = (await page.getByRole('group', { name: 'ED area', exact: true }).boundingBox())!
+  const shiftBox = (await shift.boundingBox())!
+  expect(area.y).toBeLessThan(shiftBox.y)
+  expect(shiftBox.y).toBeLessThan((await journey.boundingBox())!.y)
+  await shift.getByRole('button', { name: 'Evening', exact: true }).click()
+  await expect(shift.getByRole('button', { name: 'Evening', exact: true })).toHaveAttribute('aria-pressed', 'true')
+
+  // Decision E: "More to record" starts closed, and its four answers with it.
   const more = page.getByRole('button', { name: 'More to record', exact: true })
   await expect(more).toHaveAttribute('aria-expanded', 'false')
   await expect(page.getByLabel('Working diagnosis (optional)', { exact: true })).toHaveCount(0)
-  await expect(page.getByRole('combobox', { name: 'Shift', exact: true })).toHaveCount(0)
   await openMoreToRecord(page)
   await expect(page.getByLabel('Working diagnosis (optional)', { exact: true })).toBeVisible()
+  // And the shift is not in there as well: it is recorded in one place.
+  await expect(page.getByRole('combobox', { name: 'Shift', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('group', { name: 'Shift', exact: true })).toHaveCount(1)
   await expect(page.getByRole('heading', { name: 'Pain management (Adaa KPI 8)' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Case management', exact: true })).toBeVisible()
 

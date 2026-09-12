@@ -208,7 +208,7 @@ warning-only in "Check these times" and are still left out of the averages.
 Top to bottom, on `/cases/[id]`:
 
 1. **Identity** — MRN, registration time and its chips, "Waiting Xh Ym so far", Navigator, CTAS,
-   ED area.
+   ED area, Shift (the chip row of P13.40).
 2. **Patient journey** (`case-times`) — item 2.
 3. **Where is the delay?** (`case-delay`) — unchanged.
 4. **Department / consulted team involved** (`case-teams`) — unchanged trigger, unchanged
@@ -224,8 +224,9 @@ Top to bottom, on `/cases/[id]`:
 11. **Check these times** — unchanged.
 12. Save / Void, or the sticky "Open case" bar on a new case.
 
-Shift, Working diagnosis and Payer leave the identity block for "More to record"; the Navigator
-box stays and takes the full width the Shift select used to share with it.
+Working diagnosis and Payer leave the identity block for "More to record"; the Navigator box stays
+and takes the full width the Shift select used to share with it. Shift left with them and came
+back in P13.40, as the chip row after ED area described in item 7.
 
 The **Jump to** strip keeps its Phase 11 chips and its Phase 11 order — `Delay`, `Teams`,
 `Tests`, `Times`, `Updates`, `Resolve` — with `Times` pointing at `case-times`. The order is now
@@ -310,8 +311,8 @@ being shown.
 One `Section`, `[data-more]`, whose whole visible content when closed is a button:
 
 - role `button`, accessible name **"More to record"**, `aria-expanded="false"` when closed;
-- pressing it reveals, in this order: **Shift**, **Working diagnosis (optional)**, **Payer**,
-  **Pain management (Adaa KPI 8)** and **Case management**, each keeping every label, group name
+- pressing it reveals, in this order: **Working diagnosis (optional)**, **Payer**, **Pain
+  management (Adaa KPI 8)** and **Case management**, each keeping every label, group name
   and per-field condition it has today (the pethidine row and the painkiller time only under a
   "Yes"; the criteria, action and two times only under a chosen referral);
 - the two blocks keep their headings, as `h3` inside this section rather than `h2` section
@@ -325,9 +326,22 @@ value**: a non-blank diagnosis, or a non-null payer, `painkillerPrescribed`,
 `caseMgmtRepliedAt`. Computed once, from the initial draft, so opening and closing it by hand is
 never undone by a re-render.
 
-**The shift is deliberately not one of those fields.** `blankDraft` fills it from the navigator's
-last shift, so every case carries one from the moment it is opened; counting it would mean the
-section is open on every case there is, which is the state this item exists to avoid.
+**The shift is not in this section at all** (P13.40, the review round of 12 September). It was
+listed here first, and not counted among the fields that open the section, on the grounds that
+`blankDraft` fills it from the navigator's last shift so counting it would open the section on
+every case there is. Both halves of that were true and together they were the fault: the value
+was already recorded, and it was behind a tap. Worse, it is self-perpetuating — every save
+re-stamps the navigator's `lastShift` from what was saved, so one wrong shift, never seen, goes on
+stamping itself onto new cases, and the dashboard's `byShift` split and the export column both
+read it.
+
+So the shift is back in the **identity block**, as a compact chip row — **Morning**, **Evening**,
+**Night** — immediately after **ED area**, still defaulted from the last shift and now visible
+while it is. It is a `ChoiceRow`, the same tap-to-choose, tap-again-to-clear gesture the CTAS, ED
+area and Payer rows already use, so nothing new was invented for it; the `<select>` and its
+`Field label="Shift"` are gone, and with them the third of the three Phase 11 "named by a
+`<label for>`" selects. What is left in this section is four answers, none of which a case carries
+until someone types it, and the section's promise — nothing recorded is behind a tap — is true.
 
 ---
 
@@ -357,7 +371,8 @@ Nothing in this list may change, and every one of them is held by an existing te
   investigation type, update action, case-management or pain-management string is renamed. The
   only taxonomy edit in the phase is the deletion of one `ADMISSION_STEPS` pair.
 - **The identity block's labels**: `MRN (digits only)`, `Registration time (clock starts here)`,
-  the four "Nh ago" chips and `−30m` / `+30m`, `Navigator`, the `CTAS` and `ED area` chip groups.
+  the four "Nh ago" chips and `−30m` / `+30m`, `Navigator`, the `CTAS`, `ED area` and (from
+  P13.40) `Shift` chip groups.
 - **Section headings and ids**: `Where is the delay?` / `case-delay`,
   `Department / consulted team involved` / `case-teams`, `Investigation times` / `case-tests`,
   `Referral out`, `Updates` / `case-updates`, `Resolve case` and `Resolved` / `case-resolve`,
@@ -398,7 +413,8 @@ Named here so the change is deliberate rather than discovered:
 | the transfer chain inside `Referral out` | the transfer steps inside `Patient journey` | `tests/e2e/phase11-fixes.spec.ts`, `tests/demo/demo.spec.ts` |
 | field `Left ED at (defaults to now)` | `Left ED` in the journey block; read-only in resolve | `tests/e2e/cases.spec.ts`, `tests/demo/demo.spec.ts` |
 | sections `Pain management (Adaa KPI 8)` and `Case management` as `h2` on the page | `h3` inside "More to record", which must be opened first | `tests/e2e/cases.spec.ts` |
-| Shift, Working diagnosis, Payer in the identity block | inside "More to record" | `tests/e2e/cases.spec.ts`, `tests/demo/demo.spec.ts` |
+| Working diagnosis, Payer in the identity block | inside "More to record" | `tests/e2e/cases.spec.ts`, `tests/demo/demo.spec.ts` |
+| the `Shift` select | a `Shift` chip row (Morning / Evening / Night) in the identity block, after ED area (P13.40) | `tests/e2e/phase11-fixes.spec.ts`, `tests/e2e/phase13-case-sheet.spec.ts`, `tests/demo/demo.spec.ts` |
 
 ---
 

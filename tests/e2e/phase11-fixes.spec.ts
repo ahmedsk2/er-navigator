@@ -81,6 +81,7 @@ async function clippedTimes(page: Page): Promise<{ checked: number; clipped: str
  * Night"), so `getByLabel('Shift', { exact: true })` found nothing. Shift, Primary reason and
  * Final disposition had nothing else; Format, Status, Stage and Role carried an aria-label standing
  * in for the label. Each is now named by a `<label for>` beside it, which holds the caption alone.
+ * Shift itself stopped being a select in P13.40 and is a chip row in the identity block.
  */
 async function expectNamedByItsLabel(page: Page, label: string): Promise<void> {
   const select = page.getByRole('combobox', { name: label, exact: true })
@@ -225,13 +226,17 @@ test('on a worked case every recorded time shows its whole value, and the strip 
     expect((await strip.boundingBox())!.y).toBeLessThan(0)
   }
 
-  // The case page's three selects, each named by its label alone (three reasons, so the primary
-  // one is asked for).
-  for (const label of ['Shift', 'Primary reason (the biggest contributor)', 'Final disposition']) {
+  // The case page's two remaining selects, each named by its label alone (three reasons, so the
+  // primary one is asked for). Shift was the third until P13.40 made it a chip row in the
+  // identity block; the finding was about a select inside a wrapping label, so what stands in for
+  // it here is that the chips are reachable by the same name and there is no Shift select left.
+  for (const label of ['Primary reason (the biggest contributor)', 'Final disposition']) {
     await expectNamedByItsLabel(page, label)
   }
-  await page.getByLabel('Shift', { exact: true }).selectOption('EVENING')
-  await expect(page.getByRole('combobox', { name: 'Shift', exact: true })).toHaveValue('EVENING')
+  await expect(page.getByRole('combobox', { name: 'Shift', exact: true })).toHaveCount(0)
+  const shift = page.getByRole('group', { name: 'Shift', exact: true })
+  await shift.getByRole('button', { name: 'Evening', exact: true }).click()
+  await expect(shift.getByRole('button', { name: 'Evening', exact: true })).toHaveAttribute('aria-pressed', 'true')
 })
 
 /**
