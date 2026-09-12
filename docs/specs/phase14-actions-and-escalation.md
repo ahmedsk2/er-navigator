@@ -16,6 +16,19 @@ The sheet keeps everything else Phase 13 gave it. No taxonomy name is renamed, a
 There is one additive migration: two nullable columns on `Case`, and no existing row is read or
 written by it.
 
+**Status (13 September 2026): delivered.** Every item below is built, reviewed and live: this
+spec [ERN-P14.1], the build [ERN-P14.10 to 16], the gate captures [ERN-P14.17], then one
+four-lens review over the combined Phase 14 and Phase 15 diff with three refuters per finding,
+fourteen findings raised and six confirmed, none of them a product defect, each fixed with a
+test that failed first [ERN-P15.40 to 44] and recorded in [ERN-P15.45], with the captures
+re-taken in [ERN-P15.46]. Nothing this document specified was changed by that review; one
+sentence of it was corrected, the one that named the printed report as a place the case timeline
+appears, which it never has, and it now says where the timeline is, in the case summary sheet
+and on the handover sheet. The three questions the close of this phase left with Ahmed were
+answered inside Phase 15, one commit each: the summary panel counts one escalation once, the
+handover sheet cuts the delay action at 200 characters, and the unused `addCaseUpdate` server
+action is retired. The phase closes at [ERN-P15.60], in the same build as Phase 15.
+
 ## Ahmed's decisions of 12 September 2026 (second set)
 
 | # | Decision |

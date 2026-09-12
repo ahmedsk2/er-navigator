@@ -19,6 +19,17 @@ one enum and one nullable column on `Case`, read and written by nothing that exi
 This phase also folds in the three Phase 14 follow-ups the close of that phase left with Ahmed
 (`docs/PLAN.md`, "Delivered in Phase 14", last bullet), one commit each: items 8, 9 and 10 below.
 
+**Status (13 September 2026): delivered.** Every item below is built, reviewed and live: this
+spec [ERN-P15.1], the build [ERN-P15.10 to 23], the gate captures [ERN-P15.15], then a four-lens
+review over the combined Phase 14 and Phase 15 diff with three refuters per finding, fourteen
+findings raised and six confirmed, none of them a product defect, each fixed with a test that
+failed first [ERN-P15.40 to 44] and recorded in [ERN-P15.45], with the captures re-taken in
+[ERN-P15.46]. Nothing this document specified was changed by that review: what it added was the
+test cover two items could have been deleted without, and the sentences four documents had
+drifted into. The one recorded deviation from Fable's design stands, in item 3: `Left ED` stays
+in the undecided view. The three Phase 14 follow-ups, items 8, 9 and 10, are delivered with the
+rest. The phase closes at [ERN-P15.60].
+
 ## Ahmed's request of 12 September 2026, as Fable's design answered it
 
 | # | Decision |
