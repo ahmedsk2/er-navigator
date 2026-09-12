@@ -198,6 +198,60 @@ function caseScalarData(d: ValidatedDraft) {
  */
 const CLEARS_REVIEW = { reviewedAt: null, reviewedById: null } as const
 
+/**
+ * Phase 14, decision D (docs/specs/phase14-actions-and-escalation.md, item 4). The Updates
+ * composer left the case page, so "What was done to solve the delay" is the one place a navigator
+ * now writes prose about a case — and three things read `CaseUpdate` rather than the case: the
+ * weekly deck's action figures, the board's "Updated 3h ago" and the QCH sheet's Comments column.
+ * A change to that box therefore appends one row carrying the same text, and the history stays
+ * whole without anyone having to remember to type it twice.
+ *
+ * The rules, all four of them load-bearing:
+ *
+ *  - Only a CHANGE to a non-empty text appends. Saving a case whose box was not touched writes
+ *    nothing, and clearing the box writes nothing either: there is no sentence to append, and the
+ *    row an earlier save wrote stays exactly where it is.
+ *  - `system: false`, the default. This is a navigator documenting an action, unlike the resolve,
+ *    reopen, void and alert notes, which the deck's figures deliberately leave out (Phase 8b
+ *    review C2).
+ *  - The tag is `LEADERSHIP_ESCALATION` only on the transition to Yes. The tag records an event;
+ *    a later edit to the text on an already-escalated case is a second note, not a second
+ *    escalation. Every other save is untagged, because none of the six deck categories is the
+ *    general question this box asks and guessing one would invent a category in the deck.
+ *  - It only ever CREATEs. There is no path here, or anywhere else, that changes or removes a row
+ *    this function wrote (`CLAUDE.md`: `CaseUpdate` is append-only, and the app DB role has
+ *    UPDATE and DELETE on it revoked).
+ */
+async function mirrorDelayAction(
+  tx: Prisma.TransactionClient,
+  caseId: string,
+  actor: AuthUser,
+  before: Pick<CaseWithChildren, 'delayActionTaken' | 'escalatedToMedicalDirector'>,
+  d: ValidatedDraft,
+  ctx: AuditContext,
+): Promise<void> {
+  const next = blankToNull(d.delayActionTaken)
+  if (next === null || next === before.delayActionTaken) return
+
+  const escalatedNow = d.escalatedToMedicalDirector === true && before.escalatedToMedicalDirector !== true
+  const action = escalatedNow ? ('LEADERSHIP_ESCALATION' as const) : null
+
+  const row = await tx.caseUpdate.create({
+    data: { caseId, authorId: actor.id, text: next, action },
+    select: { id: true },
+  })
+  await audit(
+    {
+      action: 'case.update.add',
+      entity: 'CaseUpdate',
+      entityId: row.id,
+      after: { caseId, text: next, action, mirrored: true },
+    },
+    ctx,
+    tx,
+  )
+}
+
 /** "Other" text belongs only to an "Other" reason; anything else is dropped. */
 function otherTextsByStage(d: ValidatedDraft, reference: ReferenceData): Map<string, string> {
   const meta = reasonMetaOf(reference)
@@ -439,6 +493,8 @@ export async function saveCase(
     if (touched.count === 0) return { kind: 'conflict' }
 
     await applyChildren(tx, caseId, d, reference, before)
+    // Phase 14: one appended row when the delay action changed, before the case's own audit row.
+    await mirrorDelayAction(tx, caseId, actor, before, d, ctx)
     const after = await tx.case.findUniqueOrThrow({ where: { id: caseId }, include: WITH_CHILDREN })
     await audit(
       {
@@ -550,6 +606,9 @@ export async function resolveCase(
       if (touched.count === 0) return { kind: 'conflict' }
 
       await applyChildren(tx, caseId, d, reference, before)
+      // Phase 14: the navigator's own note first, then the app's "Resolved: …" — so the history
+      // reads "what we did", and then "and then it was resolved".
+      await mirrorDelayAction(tx, caseId, actor, before, d, ctx)
       const row = await tx.caseUpdate.create({
         data: { caseId, authorId: actor.id, text: `Resolved: ${DISPOSITION_LABELS[d.disposition]}`, system: true },
         select: UPDATE_VIEW_SELECT,

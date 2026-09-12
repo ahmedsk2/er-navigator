@@ -1,4 +1,6 @@
 import { randomBytes } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import type { Role, User } from '@prisma/client'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { AuditContext } from '@/src/lib/audit'
@@ -1271,5 +1273,154 @@ describe('voidCase', () => {
     expect(row.voidReason).toBeNull()
     expect(await prisma.auditLog.count({ where: { entity: 'Case', entityId: id, action: 'case.void' } })).toBe(0)
     expect(await prisma.caseUpdate.count({ where: { caseId: id } })).toBe(0)
+  })
+})
+
+/**
+ * Phase 14 (docs/specs/phase14-actions-and-escalation.md, item 4). The Updates composer left the
+ * case page, so the one place a navigator now writes prose about a delay is a column — and the
+ * weekly deck, the board's staleness and the QCH sheet's Comments column all read `CaseUpdate`.
+ * A change to that column therefore appends one row, authored by whoever pressed Save, and
+ * nothing ever rewrites a row an earlier save appended.
+ */
+describe('the delay action mirrors into an append-only update (Phase 14)', () => {
+  const ACTION = 'Bed manager called twice; ICU holding a bed for 14:00'
+  const SECOND = 'ICU bed confirmed, porter booked for 14:20'
+
+  /** Every update on the case, oldest first, with what makes a row identifiable. */
+  const updatesOf = (caseId: string) =>
+    prisma.caseUpdate.findMany({
+      where: { caseId },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, text: true, action: true, system: true, authorId: true, createdAt: true },
+    })
+
+  it('appends one row on the save that first writes the text, untagged, by the actor', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const id = await openCase(nurse)
+
+    const saved = await saveCase(nurse, id, draft({ version: 1, delayActionTaken: ACTION }), ctxFor(nurse.id))
+    expect(saved).toMatchObject({ ok: true, version: 2 })
+
+    const rows = await updatesOf(id)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ text: ACTION, action: null, system: false, authorId: nurse.id })
+
+    // The column carries it too, and the audit trail has the append as a row of its own.
+    const row = await prisma.case.findUniqueOrThrow({ where: { id } })
+    expect(row.delayActionTaken).toBe(ACTION)
+    const audit = await prisma.auditLog.findFirst({
+      where: { entity: 'CaseUpdate', entityId: rows[0]!.id, action: 'case.update.add' },
+    })
+    expect(audit).not.toBeNull()
+  })
+
+  it('appends nothing when the text is unchanged, and nothing when it is cleared', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const id = await openCase(nurse)
+
+    await saveCase(nurse, id, draft({ version: 1, delayActionTaken: ACTION }), ctxFor(nurse.id))
+    // The same text again, and then the same text with the whitespace a box collects.
+    await saveCase(nurse, id, draft({ version: 2, delayActionTaken: ACTION }), ctxFor(nurse.id))
+    await saveCase(nurse, id, draft({ version: 3, delayActionTaken: `  ${ACTION}  ` }), ctxFor(nurse.id))
+    expect(await updatesOf(id)).toHaveLength(1)
+
+    // Emptying the box writes no row: there is nothing to say, and the row already written stays.
+    const cleared = await saveCase(nurse, id, draft({ version: 4, delayActionTaken: '' }), ctxFor(nurse.id))
+    expect(cleared).toMatchObject({ ok: true })
+    expect(await updatesOf(id)).toHaveLength(1)
+    expect((await prisma.case.findUniqueOrThrow({ where: { id } })).delayActionTaken).toBeNull()
+  })
+
+  it('appends a second row for a second text and leaves the first byte-identical', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const id = await openCase(nurse)
+
+    await saveCase(nurse, id, draft({ version: 1, delayActionTaken: ACTION }), ctxFor(nurse.id))
+    const first = (await updatesOf(id))[0]!
+    await saveCase(nurse, id, draft({ version: 2, delayActionTaken: SECOND }), ctxFor(nurse.id))
+
+    const rows = await updatesOf(id)
+    expect(rows.map((r) => r.text)).toEqual([ACTION, SECOND])
+    expect(rows[0]).toEqual(first)
+  })
+
+  it('tags the row LEADERSHIP_ESCALATION on the move to Yes, and not on the text after it', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const id = await openCase(nurse)
+
+    await saveCase(
+      nurse,
+      id,
+      draft({ version: 1, delayActionTaken: ACTION, escalatedToMedicalDirector: true }),
+      ctxFor(nurse.id),
+    )
+    // Still escalated, new text: a second note, not a second escalation.
+    await saveCase(
+      nurse,
+      id,
+      draft({ version: 2, delayActionTaken: SECOND, escalatedToMedicalDirector: true }),
+      ctxFor(nurse.id),
+    )
+
+    const rows = await updatesOf(id)
+    expect(rows.map((r) => [r.text, r.action])).toEqual([
+      [ACTION, 'LEADERSHIP_ESCALATION'],
+      [SECOND, null],
+    ])
+    expect((await prisma.case.findUniqueOrThrow({ where: { id } })).escalatedToMedicalDirector).toBe(true)
+  })
+
+  it('appends nothing for the escalation alone, and No is not an escalation', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const id = await openCase(nurse)
+
+    await saveCase(nurse, id, draft({ version: 1, escalatedToMedicalDirector: true }), ctxFor(nurse.id))
+    expect(await updatesOf(id)).toHaveLength(0)
+
+    // A No with a text is an ordinary untagged note.
+    await saveCase(
+      nurse,
+      id,
+      draft({ version: 2, delayActionTaken: ACTION, escalatedToMedicalDirector: false }),
+      ctxFor(nurse.id),
+    )
+    const rows = await updatesOf(id)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.action).toBeNull()
+  })
+
+  it('mirrors on a resolve, before the resolution note', async () => {
+    const nurse = actorOf(await makeUser('NAVIGATOR'))
+    const id = await openCase(nurse)
+
+    const resolved = await resolveCase(
+      nurse,
+      id,
+      draft({
+        version: 1,
+        ...worked(),
+        disposition: 'DISCHARGED_HOME',
+        departedAt: new Date().toISOString(),
+        delayActionTaken: ACTION,
+        escalatedToMedicalDirector: true,
+      }),
+      ctxFor(nurse.id),
+    )
+    expect(resolved).toMatchObject({ ok: true })
+
+    const rows = await updatesOf(id)
+    expect(rows.map((r) => [r.text, r.system])).toEqual([
+      [ACTION, false],
+      ['Resolved: Discharged home', true],
+    ])
+    expect(rows[0]!.action).toBe('LEADERSHIP_ESCALATION')
+  })
+
+  it('never offers a way to change or remove a row it wrote', async () => {
+    // The rule the whole phase rests on, asserted the way CLAUDE.md states it: the service module
+    // has no `caseUpdate.update` and no `caseUpdate.delete` anywhere in it.
+    const source = readFileSync(path.resolve(__dirname, '../../src/lib/cases/service.ts'), 'utf8')
+    expect(source).not.toMatch(/caseUpdate\.(update|delete|updateMany|deleteMany|upsert)/)
   })
 })
