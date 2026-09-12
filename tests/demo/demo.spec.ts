@@ -104,10 +104,14 @@ async function firstSignIn(page: Page, person: Staff): Promise<void> {
   await fill(page.getByLabel('New password', { exact: true }), fresh)
   await fill(page.getByLabel('New password again', { exact: true }), fresh)
   await tap(page.getByRole('button', { name: 'Change password', exact: true }))
-  await page.waitForTimeout(800)
+  // Wait for the confirmation rather than a fixed 800 ms: the action deletes every session and
+  // issues a fresh cookie, and a `goto` sent before that cookie lands arrives with the deleted
+  // one and is bounced to /login?expired=1.
+  await expect(page.getByText('Password changed. Your other devices have been signed out.')).toBeVisible()
   person.password = fresh
   person.changed = true
   await page.goto('/')
+  await expect(page).toHaveURL('/')
 }
 
 /** Their first sign-in if they still hold a temporary password, an ordinary one after that. */
