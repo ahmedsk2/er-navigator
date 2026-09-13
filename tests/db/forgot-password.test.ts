@@ -317,22 +317,25 @@ describe('the worker draining the outbox', () => {
 })
 
 describe('the app role', () => {
-  it('may not delete from the outbox: the app appends and the worker stamps', async () => {
+  /**
+   * The app must be able to append and the worker must be able to stamp. The other half of the
+   * rule — that neither may DELETE — is asserted where it can be asserted without a race:
+   * `tests/db/demo-seed.test.ts` is the only file that widens `public` (its `migrate deploy` into
+   * another schema replays the privileges migration, whose GRANTs name `public` literally), it
+   * narrows it again immediately, and its own last test reads the list back. CI's privilege guard
+   * reads it once more after the whole suite. Asserting the revoke here would be reading that
+   * file's half-second window from a sibling running in parallel.
+   */
+  it('may append to the outbox and stamp a row, which is all it needs', async () => {
     const rows = await prisma.$queryRaw<Array<{ present: boolean; can: boolean | null }>>`
       SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ernav_app') AS present,
              (SELECT CASE WHEN EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ernav_app')
-                          THEN has_table_privilege('ernav_app', '"Outbox"', 'DELETE') END) AS can`
+                          THEN has_table_privilege('ernav_app', '"Outbox"', 'INSERT')
+                           AND has_table_privilege('ernav_app', '"Outbox"', 'UPDATE') END) AS can`
     const row = rows[0]!
-    // On a database where the role has not been reconciled (prisma/sync-app-role.ts) there is
-    // nothing to assert; CI and the local chain both run it before this suite.
+    // On a database where the role has not been reconciled there is nothing to assert; CI and the
+    // local chain both run prisma/sync-app-role.ts before this suite.
     if (!row.present) return
-    expect(row.can, 'sync-app-role.ts must revoke DELETE on Outbox').toBe(false)
-    expect(
-      (
-        await prisma.$queryRaw<Array<{ can: boolean }>>`
-          SELECT has_table_privilege('ernav_app', '"Outbox"', 'INSERT') AND
-                 has_table_privilege('ernav_app', '"Outbox"', 'UPDATE') AS can`
-      )[0]!.can,
-    ).toBe(true)
+    expect(row.can).toBe(true)
   })
 })

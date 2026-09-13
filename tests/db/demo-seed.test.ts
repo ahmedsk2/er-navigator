@@ -63,6 +63,8 @@ const PUBLIC_MUST_NOT_HOLD: ReadonlyArray<readonly [table: string, privilege: st
   ['public."Case"', 'DELETE'],
   ['public."User"', 'DELETE'],
   ['public."Alert"', 'DELETE'],
+  // Phase 16: the app appends to the outbox and the worker stamps the outcome; neither deletes.
+  ['public."Outbox"', 'DELETE'],
   ['public."_prisma_migrations"', 'SELECT'],
 ]
 
@@ -91,6 +93,7 @@ async function narrowPublicAgain(): Promise<void> {
       `REVOKE DELETE ON public."Case" FROM ${APP_ROLE}`,
       `REVOKE DELETE ON public."User" FROM ${APP_ROLE}`,
       `REVOKE DELETE ON public."Alert" FROM ${APP_ROLE}`,
+      `REVOKE DELETE ON public."Outbox" FROM ${APP_ROLE}`,
       `REVOKE ALL ON public."_prisma_migrations" FROM ${APP_ROLE}`,
     ]) {
       await owner.$executeRawUnsafe(sql)
