@@ -16,12 +16,12 @@ export default function ForgotPage() {
     <PublicAuthCard title="Forgot your password?">
       <ForgotForm message={RESET_REQUESTED_MESSAGE} />
       <p className="mt-8 text-caption text-muted">
-        <Link href="/login" className="underline underline-offset-2">
+        No email on your account? Ask the ER Navigator lead to reset it for you.
+      </p>
+      <p className="mt-4 text-body">
+        <Link href="/login" className="text-accent-ink underline underline-offset-2">
           Back to sign in
         </Link>
-      </p>
-      <p className="mt-2 text-caption text-muted">
-        No email on your account? Ask the ER Navigator lead to reset it for you.
       </p>
     </PublicAuthCard>
   )

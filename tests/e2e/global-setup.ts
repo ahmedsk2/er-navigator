@@ -4,6 +4,7 @@ import { prisma } from '../../src/lib/db'
 import { seedAdminCases } from './fixtures/admin-cases'
 import { seedBoardCases } from './fixtures/board-cases'
 import { seedDashboardCases } from './fixtures/dashboard-cases'
+import { seedForgotUsers } from './fixtures/forgot'
 import { seedE2EUsers } from './fixtures/seed-users'
 
 /**
@@ -50,4 +51,9 @@ export default async function globalSetup(): Promise<void> {
   // Phase 6: the two rows the admin screens act on and the UI cannot create — a queued "Other"
   // description and a fired threshold alert, written the way the worker writes them.
   await seedAdminCases()
+
+  // Phase 16: one account per project for the forgot-password spec, each with an @example.invalid
+  // address, and last run's tokens and outbox rows cleared so the three-an-hour rule starts fresh.
+  // Its own accounts because that spec changes the password of the one it drives.
+  await seedForgotUsers()
 }
