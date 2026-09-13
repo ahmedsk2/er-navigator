@@ -10,18 +10,22 @@ const FIELD =
   'min-h-11 w-full rounded-field border border-line bg-panel px-3 text-input text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft'
 
 /**
- * One message for "wrong password", "no such user" and "deactivated" — the form must not tell
- * an attacker which usernames exist. Locked is separate because the user needs to know waiting
- * is the answer.
+ * One message for "wrong password", "no such user", "deactivated" AND "locked" — the form must
+ * not tell an attacker which usernames exist.
+ *
+ * Locked used to be separate, on the grounds that the user needs to know waiting is the answer.
+ * P16.44 took it out: only a real account can be locked, so that sentence answered "does this
+ * person work here?" in ten requests and undid every other outcome sharing one message. The lock
+ * is still applied and still audited; a nurse learns the rule from section 1 of the guide, and
+ * from Phase 16 there is a link under this form that clears it.
+ *
+ * "Too many attempts from this device" below is a different thing and safe to say: it is about
+ * this browser's address, not about any account, and it is reached with no username at all.
  */
 function message(state: LoginState): string | null {
   switch (state.error) {
     case 'invalid':
       return 'Wrong username or password.'
-    case 'locked': {
-      const n = state.lockedMinutes ?? 15
-      return `Too many attempts. Try again in ${n} ${n === 1 ? 'minute' : 'minutes'}.`
-    }
     case 'rate_limited':
       return 'Too many attempts from this device. Wait a minute and try again.'
     case 'invalid_input':

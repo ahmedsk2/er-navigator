@@ -14,12 +14,10 @@ import {
   setSessionCookie,
 } from '@/src/lib/auth/session'
 
-export type LoginErrorCode = 'invalid' | 'locked' | 'rate_limited' | 'invalid_input'
+export type LoginErrorCode = 'invalid' | 'rate_limited' | 'invalid_input'
 
 export type LoginState = {
   error?: LoginErrorCode
-  /** Only set with `locked`, so the form can say how long the wait is. */
-  lockedMinutes?: number
 }
 
 export async function login(_previous: LoginState, formData: FormData): Promise<LoginState> {
@@ -54,9 +52,22 @@ export async function login(_previous: LoginState, formData: FormData): Promise<
   })
 
   if (!outcome.ok) {
-    return outcome.error === 'locked'
-      ? { error: 'locked', lockedMinutes: outcome.lockedMinutes }
-      : { error: outcome.error }
+    /**
+     * P16.44, a Phase 1 defect the Phase 16 security review found. A LOCKED account used to be
+     * told so, with the minutes: "Too many attempts. Try again in 15 minutes." Only a real
+     * account can be locked, so ten wrong passwords against a name said, deterministically and
+     * in a handful of requests, whether that name belongs to a member of staff — undoing the one
+     * message every other outcome of this form has shared since Phase 1, and the whole of the
+     * discipline Phase 16 was built on.
+     *
+     * So the lock stays and the lock is silent. `attemptLogin` still refuses the sign-in, still
+     * distinguishes the outcomes and still writes the `auth.locked` row an administrator reads;
+     * this is where the difference stops, because a difference in the RESPONSE is an oracle
+     * whether or not a page renders it. `lockedMinutes` is gone from the state for the same
+     * reason. Where a nurse learns that ten wrong passwords costs fifteen minutes is the guide,
+     * section 1, which says it.
+     */
+    return { error: outcome.error === 'locked' ? 'invalid' : outcome.error }
   }
 
   await setSessionCookie(outcome.token, parsed.data.remember)

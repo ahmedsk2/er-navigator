@@ -75,10 +75,24 @@ test.describe('signing in', () => {
     await expect(page.getByRole('menuitem', { name: `${ADMIN_DISPLAY_NAME} · Admin` })).toBeVisible()
   })
 
-  test('a locked account is told to wait, not that the password was wrong', async ({ page }) => {
+  /**
+   * P16.44. This test used to pin the opposite: a locked account was told to wait, with the
+   * minutes. Only a real account can be locked, so that sentence answered "does this person work
+   * here?" in ten requests, and it undid the one message every other outcome of this form has
+   * shared since Phase 1. The lock is still applied and still audited; it is silent now, and the
+   * proof is that the two answers are read off the screen and compared.
+   */
+  test('a locked account is told exactly what an unknown username is told', async ({ page }) => {
     await fromClientIp(page, '198.51.100.24')
     await signIn(page, LOCKED_USERNAME, LOCKED_PASSWORD)
-    await expect(page.getByText(/^Too many attempts\. Try again in \d+ minutes?\.$/)).toBeVisible()
+    await expect(page.getByRole('alert')).toHaveText('Wrong username or password.')
+    const locked = await page.getByRole('alert').innerText()
+
+    await signIn(page, 'nobody_at_all_p1644', 'definitely-not-the-password')
+    await expect(page.getByRole('alert')).toHaveText('Wrong username or password.')
+    expect(await page.getByRole('alert').innerText()).toBe(locked)
+    // And nothing anywhere on the page names the wait, which is the whole finding.
+    await expect(page.locator('body')).not.toContainText('Try again in')
   })
 
   /**

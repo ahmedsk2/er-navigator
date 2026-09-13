@@ -231,14 +231,22 @@ describe('every server action checks the caller server-side', () => {
       // The sign-in bucket must not be the one being spent: a nurse who has just failed to sign
       // in five times is exactly the person who needs this form to answer.
       expect(source, `${name} spends the sign-in bucket`).not.toMatch(/loginRateLimiter/)
+      // P16.41: and one answer is not enough on its own, because a sentence delivered in 1 ms
+      // and the same sentence delivered in 10 are two answers. Both actions open with the floor.
+      expect(source, `${name} does not hold every outcome to the same floor`).toMatch(
+        /return withConstantTimeFloor\(async \(\) => \{/,
+      )
     }
 
     // Every `return` in requestReset is the same object. Anything else is a difference an
     // attacker can measure.
     const body = forgot.slice(forgot.indexOf('export async function requestReset'))
     const returns = [...body.matchAll(/\breturn (.+)$/gm)].map((m) => m[1]!.trim())
-    expect(returns.length).toBeGreaterThan(1)
-    expect(new Set(returns)).toEqual(new Set(['{ sent: true }']))
+    // The outer one is the P16.41 envelope; every return inside it is the one answer.
+    expect(returns[0]).toBe('withConstantTimeFloor(async () => {')
+    const answers = returns.slice(1)
+    expect(answers.length).toBeGreaterThan(1)
+    expect(new Set(answers)).toEqual(new Set(['{ sent: true }']))
 
     // And the reset action gives one outcome for a token that cannot be spent, whatever was
     // wrong with it.

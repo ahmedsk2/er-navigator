@@ -24,7 +24,11 @@ Put it on your home screen so it opens like an app, without the browser bar:
   it, use the browser menu and **Install app** or **Add to Home screen**.
 
 Five wrong passwords in a minute from the same place, and the app stops answering for a minute.
-Ten wrong passwords, and the account is locked for fifteen minutes. Wait, or ask for a reset.
+Ten wrong passwords, and the account is locked for fifteen minutes. The screen still says
+**Wrong username or password.** and does not mention the lock, on purpose: a message that named it
+would tell a stranger that the username belongs to somebody real. So if the password you are sure
+of stops working, assume the lock: wait fifteen minutes, or reset it with the link below, which
+clears it.
 
 Forgotten it? Tap **Forgot your password?** under the **Sign in** button and type your username, or
 the email address on your account, into the one field.
