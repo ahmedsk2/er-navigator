@@ -58,6 +58,27 @@ test('the board still fits under the banner, and every signed-in page carries on
 })
 
 /**
+ * Phase 16. The two public pages of the password reset carry the banner too, and `/forgot` is the
+ * reason this test exists: it reads nothing per request, so Next would prerender it at build time
+ * and bake in the `INSTANCE_LABEL` of the BUILD (unset) rather than of the container (DEMO). It
+ * would have been the one page on the demo instance without "DEMO: invented patients only" on it,
+ * which is the accident the banner exists to prevent. `app/forgot/page.tsx` opts out of static
+ * rendering for that reason and this is what proves it.
+ */
+test('the signed-out reset pages carry the banner, so nothing is prerendered without it', async ({
+  page,
+}, testInfo) => {
+  await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.215' : '198.51.100.216')
+
+  for (const path of ['/forgot', '/reset?token=a-token-nobody-ever-issued']) {
+    await page.goto(path)
+    const banner = page.locator('[data-instance-banner]')
+    await expect(banner, path).toHaveCount(1)
+    await expect(banner, path).toHaveText(TEXT)
+  }
+})
+
+/**
  * Phase 12 review round, finding 4. The banner is in normal flow, so on a laptop it pushes the
  * whole grid — including the sticky navy rail, which was `lg:top-0 lg:h-dvh`. A full viewport
  * height starting one banner down ends one banner below the fold, and the last thing in the rail

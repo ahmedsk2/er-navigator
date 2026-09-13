@@ -7,6 +7,16 @@ import { ForgotForm } from './forgot-form'
 export const metadata: Metadata = { title: 'Forgot your password? · ER Navigator' }
 
 /**
+ * This page reads nothing per request, so Next would prerender it at build time — and the root
+ * layout's instance banner (Phase 12, D6) is rendered from `INSTANCE_LABEL`, which is unset in
+ * the Docker build stage and set on the demo CONTAINER. A static /forgot would therefore be the
+ * one page on the demo instance without "DEMO: invented patients only" on it, which is exactly
+ * the accident that banner exists to prevent. `/reset` is dynamic already: it reads the query
+ * and the headers. `tests/instance/instance.spec.ts` is what proves this.
+ */
+export const dynamic = 'force-dynamic'
+
+/**
  * Public (Phase 16, docs/specs/phase16-forgot-password.md). `proxy.ts` lists it beside /login, and
  * it checks everything itself — which here means checking nothing about the caller and everything
  * about the answer: one sentence, whatever the server decided.
