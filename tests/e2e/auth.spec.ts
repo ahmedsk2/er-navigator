@@ -83,14 +83,17 @@ test.describe('signing in', () => {
    * proof is that the two answers are read off the screen and compared.
    */
   test('a locked account is told exactly what an unknown username is told', async ({ page }) => {
+    // The form's own alert. Next puts a `role="alert"` route announcer on every page, so the
+    // bare role would match two elements and neither of them only.
+    const alert = page.locator('form p[role="alert"]')
     await fromClientIp(page, '198.51.100.24')
     await signIn(page, LOCKED_USERNAME, LOCKED_PASSWORD)
-    await expect(page.getByRole('alert')).toHaveText('Wrong username or password.')
-    const locked = await page.getByRole('alert').innerText()
+    await expect(alert).toHaveText('Wrong username or password.')
+    const locked = await alert.innerText()
 
     await signIn(page, 'nobody_at_all_p1644', 'definitely-not-the-password')
-    await expect(page.getByRole('alert')).toHaveText('Wrong username or password.')
-    expect(await page.getByRole('alert').innerText()).toBe(locked)
+    await expect(alert).toHaveText('Wrong username or password.')
+    expect(await alert.innerText()).toBe(locked)
     // And nothing anywhere on the page names the wait, which is the whole finding.
     await expect(page.locator('body')).not.toContainText('Try again in')
   })
