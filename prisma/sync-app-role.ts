@@ -42,6 +42,8 @@ async function main() {
     `REVOKE DELETE ON "Case" FROM "${user}"`,
     `REVOKE DELETE ON "User" FROM "${user}"`,
     `REVOKE DELETE ON "Alert" FROM "${user}"`,
+    // Phase 16: the app appends to the outbox and the worker stamps the outcome; neither deletes.
+    `REVOKE DELETE ON "Outbox" FROM "${user}"`,
     `REVOKE ALL ON "_prisma_migrations" FROM "${user}"`,
   ]
   for (const sql of statements) await prisma.$executeRawUnsafe(sql)

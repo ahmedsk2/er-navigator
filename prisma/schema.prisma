@@ -160,6 +160,60 @@ model User {
   reviewedCases   Case[]        @relation("CaseReviewedBy")
   auditEntries    AuditLog[]
   sessions        Session[]
+  // Phase 16: the one-time links this account has asked for (docs/specs/phase16-forgot-password.md).
+  resetTokens     PasswordResetToken[]
+}
+
+/**
+ * Phase 16 (docs/specs/phase16-forgot-password.md; Ahmed, 13 September 2026): one "Forgot your
+ * password?" link, alive for 30 minutes and usable once.
+ *
+ * The same shape `Session` uses, and for the same reason: the link carries 32 random bytes and
+ * this row carries only sha256 of them, so a database leak cannot be replayed as a reset. The raw
+ * token exists in the email and nowhere else.
+ *
+ * `usedAt` means "cannot be used again", whether it was spent or superseded: issuing a new token
+ * stamps it on every earlier unused token of that user in the same transaction, which is what
+ * keeps this table free of a delete path.
+ */
+model PasswordResetToken {
+  id          String    @id @default(cuid())
+  userId      String
+  tokenHash   String    @unique // sha256(hex) of the 32 random bytes in the link
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+  usedAt      DateTime?
+  /// The client IP that asked, for the same reason Session carries one. Never the username.
+  requestedIp String?
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+}
+
+/**
+ * Phase 16: the app writes mail here and the alerts worker sends it.
+ *
+ * The app has no SMTP transport in any request path and this phase does not give it one — a
+ * server action that opens a socket to a mail server blocks a nurse's form on that mail server.
+ * The worker already owns the mailer, the log-only mode and the retry rule, so it polls this
+ * table every 20 seconds (src/lib/alerts/outbox.ts) and stamps the outcome.
+ *
+ * Append-only from the app: it INSERTs and nothing else, only the worker UPDATEs, and
+ * prisma/sync-app-role.ts revokes DELETE. `to` is a member of staff's work address, the same data
+ * User.email holds; nothing here can carry a patient identifier.
+ */
+model Outbox {
+  id        String    @id @default(cuid())
+  to        String
+  subject   String
+  text      String
+  createdAt DateTime  @default(now())
+  sentAt    DateTime?
+  attempts  Int       @default(0)
+  lastError String?
+
+  @@index([sentAt, createdAt])
 }
 
 // Opaque server-side sessions (locked plan §7): the cookie carries 32 random bytes, the row
