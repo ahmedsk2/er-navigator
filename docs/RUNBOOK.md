@@ -336,8 +336,9 @@ failed (five `auth.fail` rows, no lock yet). Sign in with the original value and
 ## Reset a password from the host (Phase 15)
 
 **Before this, try the link.** Since Phase 16 the sign-in form carries "Forgot your password?",
-which mails a one-time link to the address on the account (see "Forgot password" above). It is the
-self-service path and it needs no host access. It cannot help an account that has **no email
+which mails a one-time link to the address on the account (see "Forgot password" above). Its one
+field takes a **username or the email address on the account**, so a person who remembers only
+their address can still use it. It is the self-service path and it needs no host access. It cannot help an account that has **no email
 address on it**, and it cannot help if the mail is not arriving — that is what the rest of this
 section is for.
 
