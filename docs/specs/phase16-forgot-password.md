@@ -13,6 +13,16 @@ Minimal, and correct. No new dependency, no new environment variable, no new con
 to the Content-Security-Policy, no change to any existing screen except one link and one notice on
 `/login`.
 
+**Status (13 September 2026): delivered.** Everything below is built, reviewed and live: this spec
+[ERN-P16.1], the build [ERN-P16.10 to 22], the documents [ERN-P16.30 to 32], then one security
+lens over the whole diff with three refuters per finding, three findings raised and two confirmed,
+each fixed from a test that failed first [ERN-P16.40, P16.41] with the refuted one's hardening
+taken as well [ERN-P16.43], recorded in [ERN-P16.45]. Two things this document did NOT specify
+were added by the same day's use and are marked in place: the field takes a username OR an email
+address [ERN-P16.42], and the sign-in form's lockout sentence, a Phase 1 defect this phase's
+review found, no longer names the accounts that exist [ERN-P16.44]. The phase closes at
+[ERN-P16.60].
+
 ---
 
 ## 1. What the user sees
