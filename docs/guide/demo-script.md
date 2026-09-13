@@ -139,7 +139,7 @@ Open one of the seeded open cases.
   **Edit** button while the tint moves to the next empty step. Say: the sheet is always pointing
   at the one thing the case is waiting for, and nothing recorded is ever lost by collapsing.
 - The promise from the new-case screen, kept. With the trajectory on **Transfer to another
-  facility**, tap **Now** on **Transfer requested**, then move the trajectory to **Admission**.
+  facility**, tap **Now** on **Fax sent**, then move the trajectory to **Admission**.
   The step goes and the time reappears on the **Also recorded** line at the foot of the block. Say:
   the app hides a step, it never drops a time, and that line is saved and exported like any other.
 - Show **Check these times** if you can make it appear by putting a result before its order. Say:

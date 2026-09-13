@@ -110,7 +110,7 @@ export const TRANSFER_JOURNEY = [
   'Triage',
   'First physician contact',
   'Disposition decided',
-  'Transfer requested',
+  'Fax sent',
   'Accepted by facility',
   'Left ED',
 ] as const

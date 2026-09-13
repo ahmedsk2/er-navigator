@@ -31,8 +31,8 @@ const CORE_STEPS = [
   'Left ED',
   'Medical admin on-call informed at',
 ] as const
-const ADMISSION_STEPS = ['Admission order written', 'Bed requested (fax sent)', 'Bed assigned'] as const
-const TRANSFER_STEPS = ['Transfer requested', 'Accepted by facility', 'RCC / transport arrived'] as const
+const ADMISSION_STEPS = ['Admission order written', 'Bed requested', 'Bed assigned'] as const
+const TRANSFER_STEPS = ['Fax sent', 'Accepted by facility', 'RCC / transport arrived'] as const
 
 const journeyOf = (page: Page) => page.locator('#case-times')
 
@@ -141,7 +141,7 @@ test('the stages add their steps, and a filled step collapses and reopens', asyn
   for (const label of ADMISSION_STEPS) {
     await expect(journey.getByLabel(label, { exact: true }), label).toBeVisible()
   }
-  await expect(journey.getByLabel('Transfer requested', { exact: true })).toHaveCount(0)
+  await expect(journey.getByLabel('Fax sent', { exact: true })).toHaveCount(0)
 
   // A reason that needs a referral number brings the transfer steps with it.
   await page
@@ -210,7 +210,7 @@ test('Mark resolved is blocked with the missing list, then allowed', async ({ pa
   await page.getByLabel('Final disposition').selectOption('TRANSFERRED')
   await expect(resolve).toBeDisabled()
   await expect(missing).toHaveText(
-    'Before resolving, enter: Triage, First physician contact, Disposition decided, Transfer requested, ' +
+    'Before resolving, enter: Triage, First physician contact, Disposition decided, Fax sent, ' +
       'Accepted by facility, Left ED, Referral tracking number, Receiving facility.',
   )
   // Each required step says so on its own row.
@@ -219,7 +219,7 @@ test('Mark resolved is blocked with the missing list, then allowed', async ({ pa
   await page.getByLabel('Referral tracking number', { exact: true }).fill('RCC-2026-9001')
   await page.getByLabel('Receiving facility', { exact: true }).fill('Dammam Medical Complex')
   await expect(missing).toHaveText(
-    'Before resolving, enter: Triage, First physician contact, Disposition decided, Transfer requested, ' +
+    'Before resolving, enter: Triage, First physician contact, Disposition decided, Fax sent, ' +
       'Accepted by facility, Left ED.',
   )
 

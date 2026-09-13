@@ -46,14 +46,14 @@ test('phase 15 the patient trajectory', async ({ page }, testInfo) => {
   // 2. A transfer: the fax, the acceptance and the RCC, with two steps already recorded so the
   //    block shows a real stay rather than a column of empty boxes.
   await chip(page, 'Transfer to another facility').click()
-  await recordJourney(page, ['Triage', 'First physician contact', 'Transfer requested'])
+  await recordJourney(page, ['Triage', 'First physician contact', 'Fax sent'])
   await expect(journeyOf(page).getByLabel('Accepted by facility', { exact: true })).toBeVisible()
   await shoot(page, 'journey-transfer', suffix, journeyOf(page))
 
   // 3. An admission: the same case moved to the other pathway. The transfer time it recorded is
   //    on the "Also recorded" line, which is the whole of the "nothing is lost" rule on screen.
   await chip(page, 'Admission').click()
-  await expect(page.locator('[data-also-recorded]')).toContainText('Transfer requested')
+  await expect(page.locator('[data-also-recorded]')).toContainText('Fax sent')
   await recordJourney(page, ['Admission order written'])
   await shoot(page, 'journey-admission', suffix, journeyOf(page))
 

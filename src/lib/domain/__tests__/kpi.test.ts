@@ -423,7 +423,7 @@ describe('the per-case timeline', () => {
       'Disposition decided',
       'CT: reported',
       'Admission order written',
-      'Bed requested (fax sent)',
+      'Bed requested',
       'Bed assigned',
       'Left ED',
     ])
@@ -477,7 +477,7 @@ describe('the per-case timeline', () => {
       'CT: scan done',
       'CT: reported',
       'Neurosurgery: consulted',
-      'Transfer requested',
+      'Fax sent',
       'CT: ordered',
       'CT: scan done',
       'Accepted by facility',

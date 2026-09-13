@@ -71,10 +71,10 @@ starts on the first one:
   the app reading the delay you flagged; the moment you tap a chip below, what you said wins.
 - **Discharge.** The steps every patient has, and nothing more: a trajectory stands the stage rule
   down, so an Admission process stage no longer adds its steps.
-- **Admission.** Those, plus Admission order written, Bed requested (fax sent) and Bed assigned,
+- **Admission.** Those, plus Admission order written, Bed requested and Bed assigned,
   and the **Ward** chips appear in the Resolve section so you can record the bed as soon as it is
   given.
-- **Transfer to another facility.** Those, plus Transfer requested, Accepted by facility and
+- **Transfer to another facility.** Those, plus Fax sent, Accepted by facility and
   RCC / transport arrived, and the **Referral out** block appears for the tracking number and the
   receiving facility.
 

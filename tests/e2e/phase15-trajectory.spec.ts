@@ -104,10 +104,10 @@ test('the trajectory decides which steps the block asks for', async ({ page }, t
     'departedAt',
     'medAdminInformedAt',
   ])
-  for (const label of ['Admission order written', 'Bed requested (fax sent)', 'Bed assigned']) {
+  for (const label of ['Admission order written', 'Bed requested', 'Bed assigned']) {
     await expect(journeyOf(page).getByLabel(label, { exact: true }), label).toBeVisible()
   }
-  await expect(journeyOf(page).getByLabel('Transfer requested', { exact: true })).toHaveCount(0)
+  await expect(journeyOf(page).getByLabel('Fax sent', { exact: true })).toHaveCount(0)
 
   await chip(page, 'Transfer to another facility').click()
   expect(await shownSteps(page)).toEqual([
@@ -120,7 +120,7 @@ test('the trajectory decides which steps the block asks for', async ({ page }, t
     'medAdminInformedAt',
   ])
   // Ahmed's own three: the fax, the acceptance and the RCC.
-  for (const label of ['Transfer requested', 'Accepted by facility', 'RCC / transport arrived']) {
+  for (const label of ['Fax sent', 'Accepted by facility', 'RCC / transport arrived']) {
     await expect(journeyOf(page).getByLabel(label, { exact: true }), label).toBeVisible()
   }
   await expect(journeyOf(page).getByLabel('Admission order written', { exact: true })).toHaveCount(0)
@@ -184,28 +184,28 @@ test('a time entered under another pathway is kept and said out loud', async ({ 
   const url = await openCase(page, uniqueMrn(), STAGE, REASON, taps)
 
   await chip(page, 'Transfer to another facility').click()
-  await recordJourney(page, ['Transfer requested'])
+  await recordJourney(page, ['Fax sent'])
   const stamp = await journeyOf(page)
     .locator('[data-journey-step="transferRequestedAt"]')
     .innerText()
-  expect(stamp).toMatch(/Transfer requested · \d\d\/\d\d \d\d:\d\d/)
+  expect(stamp).toMatch(/Fax sent · \d\d\/\d\d \d\d:\d\d/)
 
   await chip(page, 'Admission').click()
   await expect(journeyOf(page).locator('[data-journey-step="transferRequestedAt"]')).toHaveCount(0)
   await expect(page.locator('[data-also-recorded]')).toContainText(
-    /^Also recorded: Transfer requested · \d\d\/\d\d \d\d:\d\d$/,
+    /^Also recorded: Fax sent · \d\d\/\d\d \d\d:\d\d$/,
   )
 
   await page.getByRole('button', { name: 'Save changes', exact: true }).click()
   await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
   await page.goto(url)
-  await expect(page.locator('[data-also-recorded]')).toContainText(/Transfer requested/)
+  await expect(page.locator('[data-also-recorded]')).toContainText(/Fax sent/)
 
   // And moving back shows it in its own row again, with the value it had.
   await chip(page, 'Transfer to another facility').click()
   await expect(page.locator('[data-also-recorded]')).toHaveCount(0)
   await expect(journeyOf(page).locator('[data-journey-step="transferRequestedAt"]')).toContainText(
-    /Transfer requested · \d\d\/\d\d \d\d:\d\d/,
+    /Fax sent · \d\d\/\d\d \d\d:\d\d/,
   )
 })
 

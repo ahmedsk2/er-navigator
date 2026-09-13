@@ -137,7 +137,7 @@ describe('casesSheet', () => {
     expect(CASES_HEADER).not.toContain('Nursing handover done')
     expect(CASES_HEADER.filter((h) => h.startsWith('Admission order') || h.startsWith('Bed '))).toEqual([
       'Admission order written',
-      'Bed requested (fax sent)',
+      'Bed requested',
       'Bed assigned',
     ])
   })

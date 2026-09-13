@@ -82,7 +82,7 @@ test('phase 11 fixes gate screenshots', async ({ page }, testInfo) => {
     ['Replied / plan given at', 170],
     ['Disposition decided', 185],
     ['Admission order written', 200],
-    ['Bed requested (fax sent)', 215],
+    ['Bed requested', 215],
   ]
   for (const [label, minutes] of times) await page.getByLabel(label, { exact: true }).fill(at(minutes))
   await page.getByRole('button', { name: 'Save changes' }).click()

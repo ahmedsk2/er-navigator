@@ -211,7 +211,7 @@ describe('visibleJourneyFields once a trajectory is chosen', () => {
         requiresReferralNo: false,
         values: { transferRequestedAt: '2026-09-12T09:10:00.000Z', triageAt: '2026-09-12T08:00:00.000Z' },
       }),
-    ).toEqual([['transferRequestedAt', 'Transfer requested']])
+    ).toEqual([['transferRequestedAt', 'Fax sent']])
   })
 })
 
@@ -492,7 +492,7 @@ describe('hiddenRecordedJourneySteps', () => {
         values: { transferRequestedAt: at(3), transportArrivedAt: at(5), admOrderAt: at(6) },
       }),
     ).toEqual([
-      ['transferRequestedAt', 'Transfer requested'],
+      ['transferRequestedAt', 'Fax sent'],
       ['transportArrivedAt', 'RCC / transport arrived'],
     ])
   })

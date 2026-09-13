@@ -125,9 +125,9 @@ Every label is the string the taxonomy already holds; nothing is renamed.
 | 3 | `physicianAt` | `First physician contact` | core | yes |
 | 4 | `decisionAt` | `Disposition decided` | core | yes |
 | 5 | `admOrderAt` | `Admission order written` | admission | yes |
-| 6 | `bedRequestedAt` | `Bed requested (fax sent)` | admission | never |
+| 6 | `bedRequestedAt` | `Bed requested` | admission | never |
 | 7 | `bedAssignedAt` | `Bed assigned` | admission | yes |
-| 8 | `transferRequestedAt` | `Transfer requested` | transfer | yes |
+| 8 | `transferRequestedAt` | `Fax sent` | transfer | yes |
 | 9 | `transferAcceptedAt` | `Accepted by facility` | transfer | yes |
 | 10 | `transportArrivedAt` | `RCC / transport arrived` | transfer | never |
 | 11 | `departedAt` | `Left ED` | core | always |
@@ -174,7 +174,7 @@ same `superRefine` that already asks ADMITTED for a ward, and mirrored in the ed
 | `DISCHARGED_HOME` | Triage, First physician contact, Disposition decided, Left ED | — | admission, transfer |
 | `DISCHARGED_DAMA` | Triage, First physician contact, Disposition decided, Left ED | — | admission, transfer |
 | `REFERRED_UCC` | Triage, First physician contact, Disposition decided, Left ED | — | admission, transfer |
-| `TRANSFERRED` | Triage, First physician contact, Disposition decided, Transfer requested, Accepted by facility, Left ED | referral tracking number (as today) and receiving facility | admission |
+| `TRANSFERRED` | Triage, First physician contact, Disposition decided, Fax sent, Accepted by facility, Left ED | referral tracking number (as today) and receiving facility | admission |
 | `LEFT_WITHOUT_BEING_SEEN` | Left ED | — | First physician contact, Disposition decided, admission, transfer |
 | `DECEASED` | Triage, First physician contact, Left ED | — | admission, transfer |
 | `OTHER` | Triage, Left ED | — | admission and transfer, unless a selected stage implies them |
@@ -291,7 +291,7 @@ stays in the draft, is saved by "Save changes" and "Mark resolved", and is liste
 the foot of the block:
 
 ```
-Also recorded: Transfer requested · 12/09 09:10, RCC / transport arrived · 12/09 11:40
+Also recorded: Fax sent · 12/09 09:10, RCC / transport arrived · 12/09 11:40
 ```
 
 `[data-also-recorded]`, absent when every hidden step is empty. This is the whole of the "never

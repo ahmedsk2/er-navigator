@@ -74,10 +74,10 @@ describe('timeWarnings (prototype port)', () => {
   it('checks the admission chain as order, requested, assigned, and never names a handover', () => {
     expect(
       timeWarnings({ registrationAt: t(0), admOrderAt: t(4), bedRequestedAt: t(3), bedAssignedAt: t(5) }),
-    ).toEqual(['bed requested (fax sent) is before admission order written'])
+    ).toEqual(['bed requested is before admission order written'])
     expect(
       timeWarnings({ registrationAt: t(0), admOrderAt: t(4), bedRequestedAt: t(5), bedAssignedAt: t(4.5) }),
-    ).toEqual(['bed assigned is before bed requested (fax sent)'])
+    ).toEqual(['bed assigned is before bed requested'])
     // A departure before the bed was assigned is not a warning of the admission chain; the
     // milestone loop only holds it against the registration.
     expect(
@@ -161,7 +161,7 @@ describe('timeWarnings (prototype port)', () => {
 
   it('flags the admission and transfer chains', () => {
     const w = timeWarnings({ registrationAt: t(0), admOrderAt: t(5), bedRequestedAt: t(4), transferRequestedAt: t(6), transferAcceptedAt: t(5.5) })
-    expect(w).toEqual(['bed requested (fax sent) is before admission order written', 'accepted by facility is before transfer requested'])
+    expect(w).toEqual(['bed requested is before admission order written', 'accepted by facility is before fax sent'])
   })
 
   it('ignores missing values and unparsable strings', () => {

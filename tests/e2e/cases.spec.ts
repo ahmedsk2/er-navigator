@@ -370,7 +370,7 @@ test('the referral sections appear with the reason that needs them', async ({ pa
   await expect(journey.getByRole('heading', { name: 'Patient journey' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Admission times' })).toHaveCount(0)
   await expect(journey.getByLabel('Admission order written', { exact: true })).toBeVisible()
-  await expect(journey.getByLabel('Transfer requested', { exact: true })).toBeVisible()
+  await expect(journey.getByLabel('Fax sent', { exact: true })).toBeVisible()
 
   // Mobile-first means literally: with every section open the phone never scrolls sideways.
   // (Chrome answers horizontal overflow by shrinking the whole page, which is easy to miss.)

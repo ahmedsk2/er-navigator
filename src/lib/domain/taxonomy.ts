@@ -243,12 +243,12 @@ export const CONSULT_STEPS = [
  */
 export const ADMISSION_STEPS = [
   ['admOrderAt', 'Admission order written'],
-  ['bedRequestedAt', 'Bed requested (fax sent)'],
+  ['bedRequestedAt', 'Bed requested'],
   ['bedAssignedAt', 'Bed assigned'],
 ] as const
 
 export const TRANSFER_STEPS = [
-  ['transferRequestedAt', 'Transfer requested'],
+  ['transferRequestedAt', 'Fax sent'],
   ['transferAcceptedAt', 'Accepted by facility'],
   ['transportArrivedAt', 'RCC / transport arrived'],
 ] as const

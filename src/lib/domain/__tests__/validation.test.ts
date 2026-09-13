@@ -526,7 +526,7 @@ describe('required by outcome (Phase 13)', () => {
       ['triageAt', 'Triage'],
       ['physicianAt', 'First physician contact'],
       ['decisionAt', 'Disposition decided'],
-      ['transferRequestedAt', 'Transfer requested'],
+      ['transferRequestedAt', 'Fax sent'],
       ['transferAcceptedAt', 'Accepted by facility'],
     ],
     LEFT_WITHOUT_BEING_SEEN: [],

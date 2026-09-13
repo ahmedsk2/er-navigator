@@ -253,7 +253,7 @@ const PATIENTS: Patient[] = [
     ],
     admission: [
       ['Admission order written', 6.8],
-      ['Bed requested (fax sent)', 6.6],
+      ['Bed requested', 6.6],
       ['Bed assigned', 1.5],
     ],
     medAdminH: 4,
@@ -335,7 +335,7 @@ const PATIENTS: Patient[] = [
       tracking: 'RCC-2026-4471',
       facility: 'Dammam Medical Complex',
       steps: [
-        ['Transfer requested', 10.5],
+        ['Fax sent', 10.5],
         ['Accepted by facility', 6],
         ['RCC / transport arrived', 3],
       ],
@@ -384,7 +384,7 @@ const PATIENTS: Patient[] = [
     ],
     admission: [
       ['Admission order written', 14.5],
-      ['Bed requested (fax sent)', 14],
+      ['Bed requested', 14],
       ['Bed assigned', 1.2],
     ],
     medAdminH: 3,
