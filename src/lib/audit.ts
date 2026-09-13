@@ -41,6 +41,17 @@ export type AuditAction =
   | 'auth.locked'
   | 'auth.forbidden'
   /**
+   * Phase 16: somebody asked for a "Forgot your password?" link and one was issued
+   * (docs/specs/phase16-forgot-password.md). Written in the same transaction as the token and the
+   * outbox row, with the target as `entityId`. The `after` is `{ requested: true }` and nothing
+   * else: not the token, not its hash, not the address it was sent to, not the username typed on
+   * a public form by somebody who may not be the account holder. A request that issues nothing —
+   * no such user, no address, inactive, or a fourth request within the hour — writes no row at
+   * all, so this action's presence never confirms that an account exists to anyone who cannot
+   * already read the audit log.
+   */
+  | 'auth.reset.requested'
+  /**
    * Phase 12 (C2): a workbook was downloaded, and the printable report was rendered. Reads, both
    * of them, and on the record because a page of MRNs leaving the building is the fact an
    * information-governance question asks about. Deliberately spelled like the two actions in the

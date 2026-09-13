@@ -101,3 +101,18 @@ export const LOGIN_RATE_LIMIT = loginRateLimitFrom()
 export const LOGIN_RATE_WINDOW_MS = 60_000
 
 export const loginRateLimiter = new SlidingWindowLimiter(LOGIN_RATE_LIMIT, LOGIN_RATE_WINDOW_MS)
+
+/**
+ * Phase 16 (docs/specs/phase16-forgot-password.md, section 4): the same class, the same count and
+ * the same window guard `/forgot` and `/reset`, and the same one-replica caveat applies.
+ *
+ * It is a SEPARATE bucket from the sign-in limiter on purpose. Sharing one would mean the five
+ * failed sign-ins that made a nurse tap "Forgot your password?" are also what stops the link
+ * being sent, which is the one moment the app must still answer. A refusal here is answered with
+ * the page's ordinary sentence, so it tells an attacker nothing either.
+ *
+ * The account-level control is not this limiter: it is three links an hour per account
+ * (`RESET_REQUESTS_PER_HOUR`), counted on the token rows rather than on the address, so somebody
+ * moving between addresses gains attempts and none of them against any one mailbox.
+ */
+export const passwordResetRateLimiter = new SlidingWindowLimiter(LOGIN_RATE_LIMIT, LOGIN_RATE_WINDOW_MS)

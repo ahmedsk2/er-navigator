@@ -1,5 +1,6 @@
 /**
- * The one password reset, used by Admin → Users and by the host-side script (Phase 15, P15.63).
+ * The one password reset, used by Admin → Users, by the host-side script (Phase 15, P15.63) and,
+ * since Phase 16, by the emailed "Forgot your password?" link.
  *
  * Admin → Users is where a password is reset on a normal day. The exception this module exists
  * for is the one the runbook used to answer with hand-written bcrypt and hand-written SQL: every
@@ -37,16 +38,36 @@ export function generateTemporaryPassword(length = TEMPORARY_PASSWORD_LENGTH): s
 }
 
 /**
- * Who did it, as the audit row will say. `self` is false either way — a user changing their own
- * password goes through `changePassword`, which writes its own row.
+ * Who did it, as the audit row will say. `self` is false for the two paths where somebody else
+ * produced the password and read it out; it is true for the Phase 16 email reset, where the user
+ * typed a password only they know — the one case that is not a temporary credential.
  */
 export type ResetOrigin =
   | { by: 'admin'; adminUsername: string }
   /** The host-side script: no signed-in actor, so the `system` user is the actor on the row. */
   | { by: 'host' }
+  /**
+   * Phase 16: the user followed a one-time link from their own mailbox and chose the password
+   * themselves (docs/specs/phase16-forgot-password.md).
+   */
+  | { by: 'email' }
 
-/** The `after` payload of the `user.password` row. Never the password, in either shape. */
+/**
+ * Does this reset leave the account owing a password change?
+ *
+ * Yes for the two paths that hand out a temporary password somebody else has read (Phase 12).
+ * No for the email reset: the user has just set a password only they know, and sending them
+ * straight to /account to set another one would be theatre.
+ */
+export function mustChangeAfterReset(origin: ResetOrigin): boolean {
+  return origin.by !== 'email'
+}
+
+/** The `after` payload of the `user.password` row. Never the password, in any shape. */
 export function resetAuditAfter(username: string, origin: ResetOrigin): Record<string, unknown> {
+  if (origin.by === 'email') {
+    return { username, self: true, via: 'email-reset', mustChangePassword: false }
+  }
   return {
     username,
     self: false,
@@ -64,8 +85,9 @@ export type ApplyResetInput = {
 
 export type PasswordResetStore = {
   /**
-   * The new hash, `failedLogins` back to 0, `lockedUntil` cleared, `mustChangePassword` back on,
-   * and the `user.password` audit row — one transaction, so the row and the change land together.
+   * The new hash, `failedLogins` back to 0, `lockedUntil` cleared, `mustChangePassword` set from
+   * the origin (`mustChangeAfterReset`), and the `user.password` audit row — one transaction, so
+   * the row and the change land together.
    */
   apply(input: ApplyResetInput): Promise<void>
   /** Every session of that user: the phone on the ward desk stops working now, not in 12 hours. */
@@ -94,6 +116,28 @@ export async function resetPassword(
 }
 
 /**
+ * Phase 16: the same write, for a password the USER chose off a one-time link rather than one
+ * this module generated (docs/specs/phase16-forgot-password.md, section 5).
+ *
+ * Deliberately the same port and the same store, so there is still exactly one place in this
+ * application that sets a password hash, clears the lock and the failure count, writes the
+ * `user.password` row and signs every device out. The two differences are both in the origin:
+ * `mustChangePassword` stays false, and the audit payload says `via: 'email-reset'`.
+ */
+export async function applyChosenPassword(
+  store: PasswordResetStore,
+  target: { id: string; username: string },
+  newPassword: string,
+): Promise<{ sessionsDeleted: number }> {
+  const passwordHash = await hashPassword(newPassword)
+  await store.apply({ userId: target.id, username: target.username, passwordHash, origin: { by: 'email' } })
+  // After the transaction, for the same reason `resetPassword` does it there: a failed session
+  // delete must not roll back a password the person has already typed twice.
+  const sessionsDeleted = await store.deleteSessions(target.id)
+  return { sessionsDeleted }
+}
+
+/**
  * The real store. `client` is the app's shared handle in the app, and the script's own client
  * (built on the owner URL passed to `docker exec`) on the host.
  */
@@ -106,8 +150,14 @@ export function prismaPasswordResetStore(
       await client.$transaction(async (tx) => {
         await tx.user.update({
           where: { id: userId },
-          // Phase 12 (P12): a reset hands out another temporary password, so the flag goes back on.
-          data: { passwordHash, failedLogins: 0, lockedUntil: null, mustChangePassword: true },
+          // Phase 12 (P12): a reset hands out another temporary password, so the flag goes back
+          // on. Phase 16: unless the user chose the password themselves off an emailed link.
+          data: {
+            passwordHash,
+            failedLogins: 0,
+            lockedUntil: null,
+            mustChangePassword: mustChangeAfterReset(origin),
+          },
         })
         await audit(
           {

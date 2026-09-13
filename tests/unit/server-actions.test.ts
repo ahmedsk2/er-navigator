@@ -16,9 +16,9 @@ import { describe, expect, it } from 'vitest'
  *     that calls `assertCan(...)` — the shape this app actually uses, because the service is
  *     where the one `auth.forbidden` audit row is written and where the database tests reach.
  *
- * Three exports are allowed neither: signing in, signing out and changing your own password.
- * They are listed by name below with the reason, so adding a fourth is a deliberate edit to this
- * file rather than an omission nobody notices.
+ * Five exports are allowed neither: signing in, signing out, changing your own password, and the
+ * two halves of the Phase 16 password reset. They are listed by name below with the reason, so
+ * adding a sixth is a deliberate edit to this file rather than an omission nobody notices.
  */
 const ROOT = path.resolve(__dirname, '../..')
 const APP = path.join(ROOT, 'app')
@@ -30,6 +30,21 @@ const SESSION_ACTIONS = new Map<string, string>([
   [
     'app/(app)/account/actions.ts:changeMyPassword',
     'changes the caller’s own password, after re-checking their current one',
+  ],
+  /**
+   * Phase 16 (docs/specs/phase16-forgot-password.md). Both run before there is a session, exactly
+   * as `login` does, and both are public by design: proxy.ts lists /forgot and /reset beside
+   * /login. What stands in for a permission check is stated in each file and asserted below —
+   * `requestReset` answers one sentence whatever it decides, so it cannot be used to learn
+   * whether an account exists, and `completeReset` refuses everything but a live one-time token.
+   */
+  [
+    'app/forgot/actions.ts:requestReset',
+    'the public "forgot my password" form: it runs before there is a session, and answers the same sentence whatever it decides',
+  ],
+  [
+    'app/reset/actions.ts:completeReset',
+    'spends a one-time emailed token, which is the only credential there is at this point: there is no session yet',
   ],
 ])
 
@@ -99,7 +114,9 @@ describe('every server action checks the caller server-side', () => {
       'app/(app)/actions.ts',
       'app/(app)/admin/actions.ts',
       'app/cases/actions.ts',
+      'app/forgot/actions.ts',
       'app/login/actions.ts',
+      'app/reset/actions.ts',
     ])
   })
 
@@ -193,6 +210,41 @@ describe('every server action checks the caller server-side', () => {
       expect(source, `${key} is exempt but no longer exists`).toContain(`export async function ${name}(`)
       expect(reason.length, `${key} needs a reason`).toBeGreaterThan(20)
     }
-    expect(SESSION_ACTIONS.size, 'a new exemption is a decision, not an oversight').toBe(3)
+    expect(SESSION_ACTIONS.size, 'a new exemption is a decision, not an oversight').toBe(5)
+  })
+
+  /**
+   * Phase 16. The two exemptions above are only defensible while the properties that stand in for
+   * a permission check hold, so they are asserted here rather than taken on the reason string.
+   *
+   * `requestReset` must have exactly one return shape — a form that answered differently for an
+   * account that exists would be an enumeration oracle on a public page — and both actions must
+   * pass through the rate limiter, because a public endpoint that writes to the database and
+   * sends mail is otherwise a free amplifier.
+   */
+  it('keeps the two public reset actions to one answer and behind the rate limiter', () => {
+    const forgot = readFileSync(path.join(ROOT, 'app/forgot/actions.ts'), 'utf8')
+    const reset = readFileSync(path.join(ROOT, 'app/reset/actions.ts'), 'utf8')
+
+    for (const [name, source] of [['forgot', forgot], ['reset', reset]] as const) {
+      expect(source, `${name} does not rate limit`).toMatch(/passwordResetRateLimiter\.check\(/)
+      // The sign-in bucket must not be the one being spent: a nurse who has just failed to sign
+      // in five times is exactly the person who needs this form to answer.
+      expect(source, `${name} spends the sign-in bucket`).not.toMatch(/loginRateLimiter/)
+    }
+
+    // Every `return` in requestReset is the same object. Anything else is a difference an
+    // attacker can measure.
+    const body = forgot.slice(forgot.indexOf('export async function requestReset'))
+    const returns = [...body.matchAll(/\breturn (.+)$/gm)].map((m) => m[1]!.trim())
+    expect(returns.length).toBeGreaterThan(1)
+    expect(new Set(returns)).toEqual(new Set(['{ sent: true }']))
+
+    // And the reset action gives one outcome for a token that cannot be spent, whatever was
+    // wrong with it.
+    expect(reset).toMatch(/error: 'invalid'/)
+    expect(reset, 'a used token must not be distinguishable from an expired one').not.toMatch(
+      /error: '(expired|used|unknown_token)'/,
+    )
   })
 })

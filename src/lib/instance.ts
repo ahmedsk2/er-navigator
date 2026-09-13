@@ -42,3 +42,18 @@ export function instanceBannerText(label: string): string {
  * 1.75rem is `h-7`: 12 px of caption text at line-height 1.3 with the 6 px padding it had before.
  */
 export const INSTANCE_BANNER_HEIGHT = '1.75rem'
+
+/**
+ * The public origin of this copy of the app (Phase 16).
+ *
+ * `APP_URL` is already on the app container's allowlist and already defaulted in
+ * `docker-compose.production.yml`, on both the app and the worker: production says
+ * `https://nav.towardpcc.com`, the demo says `https://demo-nav.towardpcc.com`, and the demo seed
+ * already treats it as the value that cannot be bluffed away because it is the container's own.
+ * The password-reset link is built from it, which is what makes a link mailed from the demo point
+ * at the demo. Same default as the worker's `readConfig`, and any trailing slash is dropped so
+ * `${appUrl()}/reset` is never doubled.
+ */
+export function appUrl(env: NodeJS.ProcessEnv = process.env): string {
+  return (env.APP_URL?.trim() || 'https://nav.towardpcc.com').replace(/\/+$/, '')
+}

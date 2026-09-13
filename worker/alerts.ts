@@ -13,6 +13,13 @@
  * esbuild bundles it to `dist/worker.js` in the Docker build stage and the runner image runs
  * `node worker.js`. There is no TypeScript and no package manager at runtime.
  *
+ * Phase 16 added a second, much smaller job to the same process: every OUTBOX_POLL_MS it drains
+ * the `Outbox` table the app appends "Forgot your password?" mail to
+ * (docs/specs/phase16-forgot-password.md). It is deliberately its own timer with its own overlap
+ * guard, and it never touches the heartbeat and never calls the push monitor: a reset email is
+ * not a patient who has been waiting twelve hours, and it must never be the reason this container
+ * reports unhealthy.
+ *
  * Two ways to run it by hand:
  *   node worker.js               the loop
  *   node worker.js --test <to>   one message to that address, prints the SMTP response
@@ -20,8 +27,9 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { runAlertCycle, type Logger } from '../src/lib/alerts/cycle'
+import { drainOutbox, OUTBOX_POLL_MS } from '../src/lib/alerts/outbox'
 import { readSmtpConfig, smtpMailer } from '../src/lib/alerts/smtp'
-import { prismaAlertStore, requireSystemUserId } from '../src/lib/alerts/store'
+import { prismaAlertStore, prismaOutboxStore, requireSystemUserId } from '../src/lib/alerts/store'
 import { SYSTEM_USERNAME } from '../src/lib/auth/system-user'
 import { prisma } from '../src/lib/db'
 
@@ -134,6 +142,7 @@ async function main(): Promise<void> {
   const mailer = smtp ? smtpMailer(smtp) : null
   const systemUserId = await requireSystemUserId(SYSTEM_USERNAME)
   const store = prismaAlertStore(systemUserId)
+  const outbox = prismaOutboxStore()
 
   logger.info('[alerts] worker started', {
     intervalMinutes: config.intervalMs / 60_000,
@@ -142,6 +151,8 @@ async function main(): Promise<void> {
     // Not counted here on purpose: the recipient list is read from the database on every cycle,
     // so an Admin adding an address on Admin → Users takes effect without a restart.
     recipients: 'active SUPERVISOR and ADMIN users with an email (Admin → Users)',
+    // Phase 16: the same mailer, a different queue and a much shorter tick.
+    outbox: `every ${OUTBOX_POLL_MS / 1000}s, ${mailer ? 'sending' : 'log only (SMTP_HOST empty)'}`,
   })
 
   let running = false
@@ -170,13 +181,34 @@ async function main(): Promise<void> {
     }
   }
 
+  /**
+   * Phase 16. Separate from `cycle` on purpose, and separate from the heartbeat: it has its own
+   * overlap guard, it logs only when it did something, and a throw here is caught and forgotten
+   * rather than allowed anywhere near the alert cycle's health.
+   */
+  let draining = false
+  const drain = async (): Promise<void> => {
+    if (draining || stopping) return
+    draining = true
+    try {
+      const summary = await drainOutbox({ store: outbox, mailer, logger, now: new Date() })
+      if (summary.sent + summary.logged + summary.failed > 0) logger.info('[outbox] drained', summary)
+    } catch (error) {
+      logger.error('[outbox] poll failed', String(error))
+    } finally {
+      draining = false
+    }
+  }
+
   await cycle()
   const timer = setInterval(() => void cycle(), config.intervalMs)
+  const outboxTimer = setInterval(() => void drain(), OUTBOX_POLL_MS)
 
   const stop = (signal: string): void => {
     logger.info(`[alerts] ${signal} received, stopping`)
     stopping = true
     clearInterval(timer)
+    clearInterval(outboxTimer)
     void prisma.$disconnect().finally(() => process.exit(0))
   }
   process.on('SIGTERM', () => stop('SIGTERM'))

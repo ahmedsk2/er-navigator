@@ -26,6 +26,11 @@ const COOKIE_MAX_AGE_S = 12 * 60 * 60
 
 const PUBLIC_PATHS = new Set([
   '/login',
+  // "Forgot your password?" (Phase 16). Both run before there is a session, exactly as /login
+  // does, and both check everything themselves: /forgot answers one sentence whatever it decides,
+  // and /reset spends a one-time token or refuses. Neither reveals whether an account exists.
+  '/forgot',
+  '/reset',
   '/api/health',
   '/api/ready',
   // The PWA (Phase 7). `app/manifest.ts` is served at /manifest.webmanifest; a phone fetches it

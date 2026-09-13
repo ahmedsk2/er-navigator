@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import { Wordmark } from '@/src/components/brand/Mark'
+import { RESET_DONE_MESSAGE } from '@/src/lib/auth/forgot-password'
 import { LoginForm } from './login-form'
 
 export const metadata: Metadata = { title: 'Sign in · ER Navigator' }
@@ -32,12 +34,13 @@ const ECG =
 // The gate (proxy.ts) sends a refused request here with ?next=<path>; the action validates it.
 // `?expired=1` comes from `requireUser()` when the cookie outlived its session — the gate clears
 // the cookie on the way in, and this page says what happened rather than showing a bare form.
+// `?reset=1` is where /reset lands somebody who has just set a new password (Phase 16).
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string; expired?: string }>
+  searchParams: Promise<{ next?: string; expired?: string; reset?: string }>
 }) {
-  const { next, expired } = await searchParams
+  const { next, expired, reset } = await searchParams
 
   // Phase 9, direction A: on the phone a teal hero with a white sheet rising over it; on desktop
   // (lg) the same hero becomes the left 46% and the sheet becomes the ground under a form card.
@@ -106,7 +109,23 @@ export default async function LoginPage({
               Your session has ended. Sign in again.
             </p>
           ) : null}
+          {reset ? (
+            <p
+              role="status"
+              data-password-reset
+              className="mt-4 rounded-field border border-line bg-bg px-3 py-2 text-body text-ink-2"
+            >
+              {RESET_DONE_MESSAGE}
+            </p>
+          ) : null}
           <LoginForm next={typeof next === 'string' ? next : '/'} />
+          {/* Phase 16 (Ahmed, 13 September): the way out of a forgotten password, under the form
+              where somebody who has just failed to sign in is already looking. */}
+          <p className="mt-5 text-body">
+            <Link href="/forgot" className="text-accent-ink underline underline-offset-2">
+              Forgot your password?
+            </Link>
+          </p>
           <p className="mt-8 text-caption text-muted">
             Hospital accounts only. Ask the ER Navigator lead for access.
           </p>

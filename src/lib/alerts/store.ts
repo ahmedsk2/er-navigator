@@ -12,6 +12,7 @@
 import { audit, type AuditContext } from '@/src/lib/audit'
 import { prisma } from '@/src/lib/db'
 import type { AlertStore, FireOutcome, PendingEmail, Recipient } from './cycle'
+import { OUTBOX_MAX_ATTEMPTS, type OutboxMessage, type OutboxStore } from './outbox'
 import type { AlertCase } from './rules'
 import { EMAIL_MAX_ATTEMPTS, EMAIL_THRESHOLD_H, thresholdUpdateText } from './rules'
 
@@ -217,6 +218,40 @@ export function prismaAlertStore(systemUserId: string, client: PrismaLike = pris
         where: { active: true, role: { in: ['SUPERVISOR', 'ADMIN'] } },
         select: { username: true, displayName: true, email: true },
         orderBy: { username: 'asc' },
+      })
+    },
+  }
+}
+
+/**
+ * Phase 16 (docs/specs/phase16-forgot-password.md, section 3): the outbox the app appends to and
+ * this worker drains every twenty seconds.
+ *
+ * One indexed query — `sentAt IS NULL AND attempts < OUTBOX_MAX_ATTEMPTS`, oldest first, capped —
+ * so a quiet instance pays three cheap reads a minute and nothing else. The app role may INSERT
+ * and UPDATE this table and may not delete from it (prisma/sync-app-role.ts).
+ */
+export function prismaOutboxStore(client: PrismaLike = prisma): OutboxStore {
+  return {
+    async pending(limit: number): Promise<OutboxMessage[]> {
+      return client.outbox.findMany({
+        where: { sentAt: null, attempts: { lt: OUTBOX_MAX_ATTEMPTS } },
+        orderBy: { createdAt: 'asc' },
+        take: limit,
+        select: { id: true, to: true, subject: true, text: true, attempts: true },
+      })
+    },
+
+    async markSent(id: string, at: Date): Promise<void> {
+      await client.outbox.update({ where: { id }, data: { sentAt: at } })
+    },
+
+    async markFailed(id: string, error: string): Promise<void> {
+      // Nothing here stamps `sentAt`: the next poll picks the row up again until the attempts run
+      // out, and then it stays visibly unsent with its `lastError` on it.
+      await client.outbox.update({
+        where: { id },
+        data: { attempts: { increment: 1 }, lastError: error },
       })
     },
   }

@@ -12,7 +12,9 @@ import bcrypt from 'bcryptjs'
 import { describe, expect, it } from 'vitest'
 import { NEW_PASSWORD_MIN } from '../password'
 import {
+  applyChosenPassword,
   generateTemporaryPassword,
+  mustChangeAfterReset,
   resetAuditAfter,
   resetPassword,
   TEMPORARY_PASSWORD_LENGTH,
@@ -119,12 +121,55 @@ describe('resetAuditAfter', () => {
     })
   })
 
-  it('never carries a password field in either shape', () => {
+  it('never carries a password field in any shape', () => {
     for (const after of [
       resetAuditAfter('sami', { by: 'admin', adminUsername: 'ahmed' }),
       resetAuditAfter('sami', { by: 'host' }),
+      resetAuditAfter('sami', { by: 'email' }),
     ]) {
       expect(Object.keys(after).some((k) => /password/i.test(k) && k !== 'mustChangePassword')).toBe(false)
     }
+  })
+})
+
+/**
+ * Phase 16 (docs/specs/phase16-forgot-password.md, section 5). The emailed link ends in the same
+ * write, through the same port — which is the whole reason it may be trusted with a password.
+ * The two differences are both in the origin.
+ */
+describe('applyChosenPassword', () => {
+  it('leaves the account owing nothing: the user chose this password themselves', () => {
+    expect(mustChangeAfterReset({ by: 'admin', adminUsername: 'ahmed' })).toBe(true)
+    expect(mustChangeAfterReset({ by: 'host' })).toBe(true)
+    expect(mustChangeAfterReset({ by: 'email' })).toBe(false)
+    expect(resetAuditAfter('sami', { by: 'email' })).toEqual({
+      username: 'sami',
+      self: true,
+      via: 'email-reset',
+      mustChangePassword: false,
+    })
+  })
+
+  it('hashes at the same cost and never hands the store the plain text', async () => {
+    const store = new FakeStore()
+    const chosen = 'a-password-only-they-know'
+    await applyChosenPassword(store, TARGET, chosen)
+
+    const applied = store.applied[0]!
+    expect(applied.userId).toBe(TARGET.id)
+    expect(applied.username).toBe(TARGET.username)
+    expect(applied.origin).toEqual({ by: 'email' })
+    expect(applied.passwordHash).not.toBe(chosen)
+    expect(applied.passwordHash.split('$')[2]).toBe('12')
+    expect(await bcrypt.compare(chosen, applied.passwordHash)).toBe(true)
+    expect(JSON.stringify(applied.origin)).not.toContain(chosen)
+  })
+
+  it('signs every device out, which is the point when somebody else knew the old password', async () => {
+    const store = new FakeStore()
+    store.sessions = 4
+    const result = await applyChosenPassword(store, TARGET, 'a-password-only-they-know')
+    expect(store.signedOut).toEqual([TARGET.id])
+    expect(result.sessionsDeleted).toBe(4)
   })
 })
