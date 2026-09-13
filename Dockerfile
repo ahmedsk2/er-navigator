@@ -67,8 +67,11 @@ COPY --from=build --chown=app:app /repo/dist/demo-seed.js ./demo-seed.js
 # there is no screen left to press Reset password on. It carries no demo condition, unlike the
 # seed above — production is the instance it exists for — and it does exactly what Admin → Users
 # does (src/lib/auth/password-reset.ts), so it can only hand out a temporary password and sign
-# one person out. It needs an owner DATABASE_URL on the exec line; the container's own
-# environment does not carry one.
+# one person out. Corrected in P15.64, measured on the live container: this image DOES carry a
+# DATABASE_URL of its own (the app role, `ernav_app`), which `docker exec` inherits, so omitting
+# `-e DATABASE_URL` does not refuse — it runs as the app role, which has every privilege the
+# reset needs because Admin → Users already runs it as that role. The runbook passes the owner
+# URL on the exec line anyway, and says why.
 COPY --from=build --chown=app:app /repo/dist/reset-password.js ./reset-password.js
 USER 100
 EXPOSE 3000

@@ -21,6 +21,12 @@
  * host"). The app role would do for the UPDATE, but the owner is the role the runbook already
  * has to hand for work like this and it is the one that cannot be short of a privilege.
  *
+ * THAT `-e` OVERRIDES RATHER THAN SUPPLIES (corrected in P15.64, measured on the live container).
+ * The app container carries a `DATABASE_URL` of its own — the app role — and `docker exec`
+ * inherits it, so leaving the `-e` off does not reach the refusal below: it runs as the app role,
+ * which has every privilege this needs, since Admin → Users runs the same reset as that role. The
+ * `DATABASE_URL` refusal is for running the bundle outside a container.
+ *
  * NO DEMO CONDITION, deliberately, unlike `demo-seed.ts`. This is the production lockout tool;
  * refusing to run on production would remove its only reason to exist. It writes exactly what
  * Admin → Users writes — see `src/lib/auth/password-reset.ts` — so the worst it can do is hand

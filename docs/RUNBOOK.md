@@ -317,6 +317,15 @@ It never prints or stores the password anywhere but the one line it puts on stdo
 passed on the exec line and the owner URL never has to live in the container's environment. The
 host inside it is literally `db`: the exec runs on the app's own compose network.
 
+**`-e DATABASE_URL` overrides, it does not supply** (measured on the live container, 13 September
+2026). The app container carries a `DATABASE_URL` of its own — the app role, `ernav_app` — and
+`docker exec` inherits it, so leaving the `-e` off does not refuse: the reset simply runs as the
+app role, which has every privilege it needs, because Admin → Users already runs the same reset
+as that role. Pass the owner URL anyway. It is the role this file already reaches for when
+working on the database by hand, it is the one that cannot turn out to be short of a grant, and
+being explicit is what makes the command read the same on production and on the demo. The
+"DATABASE_URL is not set" refusal is therefore for running the bundle outside a container.
+
 ```bash
 U=jqcjqhmcmizxs1u51wnqlfwv
 APPC=$(sudo docker ps --format '{{.Names}}' | grep "^app-$U")
