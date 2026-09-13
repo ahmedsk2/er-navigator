@@ -7,9 +7,9 @@
  * (`__tests__/forgot-password.test.ts`), and the Prisma implementations in `forgot-password-
  * store.ts` are asserted against a real Postgres in `tests/db/forgot-password.test.ts`.
  *
- * THE ONE RULE TO READ FIRST. `/forgot` answers the same sentence whatever it decides — unknown
- * username, deactivated account, no address on file, three links already asked for this hour, or
- * a link genuinely on its way. The form is public, so any difference between those answers is a
+ * THE ONE RULE TO READ FIRST. `/forgot` answers the same sentence whatever it decides — an
+ * unknown username or address, a deactivated account, no address on file, one address on two
+ * accounts, three links already asked for this hour, or a link genuinely on its way. The form is public, so any difference between those answers is a
  * way to ask this application whether a member of staff exists. The same discipline the login
  * form has had since Phase 1, where "wrong password" and "no such user" are one message.
  *
@@ -18,7 +18,7 @@
  * a nurse's form on that mail server, and the worker already owns the transport, the retries and
  * the log-only mode.
  */
-import { loginUsernameSchema } from './password'
+import { resetIdentifierSchema } from './password'
 import { applyChosenPassword, type PasswordResetStore } from './password-reset'
 import {
   hashResetToken,
@@ -100,7 +100,14 @@ export type IssueResetInput = {
 }
 
 export type ForgotPasswordStore = {
-  /** Null unless the account exists, is active and has an address. One query, one answer. */
+  /**
+   * The account this identifier names, or null. The identifier is a USERNAME or the EMAIL
+   * ADDRESS on the account (P16.42), already trimmed and lower-cased by the caller.
+   *
+   * Null unless it names exactly one account that exists, is active and has an address — so an
+   * unknown name, a deactivated account, an account with no address and one address held by two
+   * accounts are one answer here, as they are one sentence on the page.
+   */
   findTarget(identifier: string): Promise<ResetRequestTarget | null>
   /**
    * Count and write as ONE decision, serialized per account (P16.40).
@@ -134,7 +141,7 @@ export type RequestResetResult = {
 }
 
 export async function requestPasswordReset(
-  rawUsername: string,
+  rawIdentifier: string,
   requestedIp: string | null,
   deps: RequestResetDeps,
 ): Promise<RequestResetResult> {
@@ -149,9 +156,9 @@ export async function requestPasswordReset(
   const tokenHash = hashResetToken(token)
   const { subject, text } = buildResetEmail(resetLink(deps.appUrl, token))
 
-  // The same shape the sign-in form parses, so "AHMED " and "ahmed" reach the same row. A
-  // username this refuses is answered exactly like one it accepts.
-  const parsed = loginUsernameSchema.safeParse(rawUsername)
+  // Trimmed and lower-cased, so "  AHMED " and "ahmed" reach the same row, and long enough for
+  // an address (P16.42). An identifier this refuses is answered exactly like one it accepts.
+  const parsed = resetIdentifierSchema.safeParse(rawIdentifier)
   if (!parsed.success) return answer(false)
 
   const target = await deps.store.findTarget(parsed.data)

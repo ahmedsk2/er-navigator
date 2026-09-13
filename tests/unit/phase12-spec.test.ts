@@ -380,6 +380,20 @@ describe('the guides name the controls the app actually renders', () => {
     expect(text, 'the guide does not warn that a reset signs you out').toMatch(
       /signs you out everywhere/,
     )
+
+    /**
+     * P16.42. The field takes a username or the address on the account, after Ahmed typed his
+     * address into it and nothing happened. A guide that still says "type your username" would
+     * send the next person down exactly the same hole, so the label and the sentence are read
+     * off each other here.
+     */
+    const form = readFileSync(path.join(ROOT, 'app/forgot/forgot-form.tsx'), 'utf8')
+    expect(form, 'the field is no longer labelled "Username or email"').toContain(
+      'Username or email',
+    )
+    expect(text, 'the guide still sends a nurse to a username-only field').toMatch(
+      /username, or the email address on your account/,
+    )
   })
 
   /** House style, and the reason this file can compare strings at all: no em dash in a guide. */

@@ -44,6 +44,20 @@ export async function verifyPassword(
 export const loginUsernameSchema = z.string().trim().min(1).max(64).toLowerCase()
 export const loginPasswordSchema = z.string().min(1).max(256)
 
+/**
+ * What `/forgot` takes (Phase 16, P16.42): a username OR the email address on the account.
+ *
+ * Ahmed typed his address into that form on 13 September and nothing happened, because it parsed
+ * with `loginUsernameSchema` and an address is both longer than 64 characters is allowed to be
+ * and not what the lookup asked for. Trimmed and lower-cased for the same reason the sign-in
+ * field is — "  AHMED " and "ahmed" are one person — and bounded at 254, the longest address SMTP
+ * will carry. It is deliberately not an `.email()` refinement: a value this refuses would have to
+ * be answered with the page's one sentence anyway, so refusing shapes buys nothing and would only
+ * turn a username with a stray character into a different code path.
+ */
+export const RESET_IDENTIFIER_MAX = 254
+export const resetIdentifierSchema = z.string().trim().min(1).max(RESET_IDENTIFIER_MAX).toLowerCase()
+
 export const loginSchema = z.object({
   username: loginUsernameSchema,
   password: loginPasswordSchema,

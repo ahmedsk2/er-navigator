@@ -26,15 +26,41 @@ export function prismaForgotPasswordStore(
   client: PrismaLike = prisma,
 ): ForgotPasswordStore {
   return {
-    async findTarget(username) {
-      const row = await client.user.findUnique({
-        where: { username },
+    /**
+     * A username, or the email address on the account (P16.42). Ahmed typed his address into this
+     * form on 13 September and nothing happened, and the address is the thing somebody who has
+     * forgotten a password is likeliest to remember.
+     *
+     * The username first, because that is what the field has always taken and a username cannot
+     * contain `@`; then, only if the input looks like an address, the address, matched without
+     * regard to case. The unique index on `User.email` is case SENSITIVE, so two accounts really
+     * can hold one address in two casings: `take: 2` is there to notice that, and two matches
+     * send nothing at all. Guessing which was meant would put a live link in a mailbox somebody
+     * else can also open, and saying so would be a fact about an account that is not the
+     * asker's.
+     */
+    async findTarget(identifier) {
+      const usable = (row: { id: string; email: string | null; active: boolean } | null) => {
+        // Three refusals, one answer: no such account, deactivated, or no address on file. The
+        // caller cannot tell them apart and neither can the page.
+        if (!row || !row.active || !row.email) return null
+        return { id: row.id, email: row.email }
+      }
+
+      const byUsername = await client.user.findUnique({
+        where: { username: identifier },
         select: { id: true, email: true, active: true },
       })
-      // Three refusals, one answer: no such user, deactivated, or no address on file. The caller
-      // cannot tell them apart and neither can the page.
-      if (!row || !row.active || !row.email) return null
-      return { id: row.id, email: row.email }
+      if (byUsername) return usable(byUsername)
+      if (!identifier.includes('@')) return null
+
+      const byEmail = await client.user.findMany({
+        where: { email: { equals: identifier, mode: 'insensitive' } },
+        select: { id: true, email: true, active: true },
+        take: 2,
+      })
+      if (byEmail.length !== 1) return null
+      return usable(byEmail[0]!)
     },
 
     async issue(input) {

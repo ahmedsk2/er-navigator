@@ -17,9 +17,10 @@ export type ForgotState = { sent?: true }
  * no actor to check it for. `tests/unit/server-actions.test.ts` lists it as an exemption by name.
  *
  * It answers `RESET_REQUESTED_MESSAGE` and nothing else, on every path through it: an unknown
- * username, a deactivated account, an account with no address, a fourth request within the hour,
- * a refused rate limit and a link genuinely on its way are one answer. Any difference between
- * them is a way to ask this application whether a member of staff exists.
+ * username or address, a deactivated account, an account with no address, one address on two
+ * accounts, a fourth request within the hour, a refused rate limit and a link genuinely on its
+ * way are one answer. Any difference between them is a way to ask this application whether a
+ * member of staff exists.
  *
  * P16.41: including a difference on the clock. The whole body runs inside `withConstantTimeFloor`,
  * so every one of those outcomes takes at least `RESET_RESPONSE_FLOOR_MS` measured from entry.
@@ -35,8 +36,9 @@ export async function requestReset(_previous: ForgotState, formData: FormData): 
     // refusal is answered exactly like everything else, and now takes exactly as long.
     if (!passwordResetRateLimiter.check(ip ?? 'unknown').allowed) return { sent: true }
 
-    const username = formData.get('username')
-    await requestPasswordReset(typeof username === 'string' ? username : '', ip, {
+    // A username or the email address on the account (P16.42); the rule decides which.
+    const identifier = formData.get('identifier')
+    await requestPasswordReset(typeof identifier === 'string' ? identifier : '', ip, {
       store: prismaForgotPasswordStore(contextFrom(requestHeaders, null)),
       appUrl: appUrl(),
     })

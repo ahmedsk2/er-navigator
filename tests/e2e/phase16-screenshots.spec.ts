@@ -35,9 +35,9 @@ test('phase 16 the forgot-password pages', async ({ page }, testInfo) => {
   await expect(page.getByRole('link', { name: 'Forgot your password?', exact: true })).toBeVisible()
   await shoot(page, 'login-link', suffix)
 
-  // 2. The one field.
+  // 2. The one field, which takes a username or the address on the account (P16.42).
   await page.goto('/forgot')
-  await expect(page.getByLabel('Username', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('Username or email', { exact: true })).toBeVisible()
   await shoot(page, 'forgot', suffix)
 
   // 3. The two fields behind a live link, and the sentence about signing every device out.

@@ -26,7 +26,8 @@ Put it on your home screen so it opens like an app, without the browser bar:
 Five wrong passwords in a minute from the same place, and the app stops answering for a minute.
 Ten wrong passwords, and the account is locked for fifteen minutes. Wait, or ask for a reset.
 
-Forgotten it? Tap **Forgot your password?** under the **Sign in** button and type your username.
+Forgotten it? Tap **Forgot your password?** under the **Sign in** button and type your username, or
+the email address on your account, into the one field.
 If your account has an email address on it, a link to set a new password is sent to that address;
 it works for 30 minutes and only once, and setting a new password signs you out everywhere. If
 your account has no email address, this cannot help you: ask the ER Navigator lead to reset it.

@@ -7,7 +7,7 @@ and link in the log in page using the minimal tokens"*.
 He is the owner and the only administrator. The host script (P15.63) is the answer when nobody can
 sign in at all, and it stays. What it is not is a path a person can walk on their own at 2 a.m.
 with a phone, and that is what this phase adds: a link under the sign-in form, a page that takes a
-username, an email with a one-time link, and a page that takes a new password.
+username or an email address, an email with a one-time link, and a page that takes a new password.
 
 Minimal, and correct. No new dependency, no new environment variable, no new container, no change
 to the Content-Security-Policy, no change to any existing screen except one link and one notice on
@@ -18,9 +18,10 @@ to the Content-Security-Policy, no change to any existing screen except one link
 ## 1. What the user sees
 
 1. **`/login`** grows one line under the form: **Forgot your password?**, a link to `/forgot`.
-2. **`/forgot`** is public. One field, `Username`, one button, `Send the link`. On submit it always
-   answers with the same sentence, whether or not the account exists, whether or not it has an
-   email, and whether or not it has already asked three times this hour:
+2. **`/forgot`** is public. One field, `Username or email`, one button, `Send the link`. On submit
+   it always answers with the same sentence, whether or not the account exists, whether or not it
+   has an email, whether the address is on two accounts, and whether or not it has already asked
+   three times this hour:
 
    > If that account has an email, a link is on its way. It works for 30 minutes.
 
@@ -160,8 +161,15 @@ The action, in order:
    shape available here: these paths' cost is database round trips and there is no dummy
    transaction worth running. The cheap half is levelled directly as well — the token, its digest
    and the message body are built on every path, including the ones that will not send anything.
-1. Parse the username with the login schema's own `loginUsernameSchema` (trimmed, lower-cased,
-   1..64). A parse failure answers **the same sentence**, not a validation error.
+1. Parse the identifier with `resetIdentifierSchema` (trimmed, lower-cased, 1..254). A parse
+   failure answers **the same sentence**, not a validation error.
+
+   **Widened 13 September (P16.42).** The field took `loginUsernameSchema` and a username only.
+   Ahmed typed his email address into it that day and nothing happened, which is exactly the
+   failure a page that answers one sentence for everything cannot report. The field is labelled
+   **Username or email** now, and 254 is the longest address SMTP will carry. It is deliberately
+   not an `.email()` refinement: a value it refused would be answered with the same sentence
+   anyway.
 2. **Rate limit by client IP**, `clientIpFrom()`, five per rolling 60 seconds — the sign-in
    numbers, `LOGIN_RATE_LIMIT` and `LOGIN_RATE_WINDOW_MS`, from the same `SlidingWindowLimiter`
    class. A refusal answers the same sentence too, so the limiter cannot be used to learn
@@ -170,8 +178,12 @@ The action, in order:
    **Recorded decision:** it is a *separate bucket* from `loginRateLimiter`, not the same instance.
    Sharing one would mean that the five failed sign-ins that made a nurse click the link are also
    what stops the link being sent. `passwordResetRateLimiter` is shared by `/forgot` and `/reset`.
-3. Look the user up. Issue a token only when the row exists, is `active`, and has a non-null
-   `email`.
+3. Look the account up: by `username` first, and then — only if the input contains `@` — by
+   `email`, matched case-insensitively. Issue a token only when exactly one row is found and it
+   is `active` with a non-null `email`. The unique index on `User.email` is case SENSITIVE, so
+   two accounts can hold one address in two casings: **two matches send nothing at all**, because
+   guessing which was meant would put a live link in a mailbox somebody else can also open, and
+   saying so would be a fact about an account that is not the asker's.
 4. **At most 3 requests per user per hour**, counted and enforced **inside** the issuing
    transaction, which opens with `SELECT id FROM "User" WHERE id = $1 FOR UPDATE`. A fourth is
    silently ignored — same sentence, no row, no email, no audit row.
@@ -315,7 +327,8 @@ the same cost as rendering `/login`, and the thing being guessed is 256 bits.
 **End to end** (`tests/e2e/phase16-forgot-password.spec.ts`, both viewports)
 
 - The login page carries the link and it goes to `/forgot`.
-- `/forgot` accepts a username and shows the sentence; an unknown username shows the same one.
+- `/forgot` accepts a username and shows the sentence; an unknown one shows the same sentence.
+- The whole flow is driven with the EMAIL ADDRESS, upper-cased, which is what Ahmed typed.
 - The whole flow: submit `/forgot` for a seeded account with an address, read the link out of the
   `Outbox` row in the test database, open it, set a new password, land on `/login?reset=1`, and
   sign in with the new one.

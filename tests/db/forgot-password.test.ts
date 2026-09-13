@@ -162,6 +162,49 @@ describe('asking for a link', () => {
     }
   })
 
+  /**
+   * P16.42. Ahmed typed his email address into this form on 13 September and nothing happened,
+   * because the field took a username and only a username. It takes either now: the address is
+   * the thing a person who has forgotten a password is most likely to remember, and the account
+   * already carries it, which is how the link gets anywhere at all.
+   */
+  it('takes the email address on the account, in whatever case it was typed', async () => {
+    const user = await makeUser()
+    const answer = await requestPasswordReset(user.email!.toUpperCase(), IP, {
+      store: requestStore(),
+      appUrl: APP_URL,
+    })
+    expect(answer.message).toBe(RESET_REQUESTED_MESSAGE)
+    expect(answer.issued, 'the address did not reach the account').toBe(true)
+
+    const tokens = await prisma.passwordResetToken.findMany({ where: { userId: user.id } })
+    expect(tokens).toHaveLength(1)
+    const { token, outboxId } = await linkFor(user)
+    outboxIds.push(outboxId)
+    expect(hashResetToken(token)).toBe(tokens[0]!.tokenHash)
+  })
+
+  /**
+   * The unique index on `User.email` is case sensitive, so two accounts really can hold one
+   * address in two casings. A case-insensitive lookup then has no way to know which one was
+   * meant, and guessing would send a live link to a mailbox somebody else can also open.
+   */
+  it('sends nothing when one address, read without regard to case, is on two accounts', async () => {
+    const tag = randomBytes(5).toString('hex')
+    const address = `p16_shared_${tag}@example.invalid`
+    const lower = await makeUser({ email: address })
+    const upper = await makeUser({ email: address.toUpperCase() })
+
+    const answer = await requestPasswordReset(address, IP, { store: requestStore(), appUrl: APP_URL })
+    // Still the same sentence: "that address is on two accounts" is a fact about somebody else's.
+    expect(answer.message).toBe(RESET_REQUESTED_MESSAGE)
+    expect(answer.issued).toBe(false)
+    for (const user of [lower, upper]) {
+      expect(await prisma.passwordResetToken.count({ where: { userId: user.id } })).toBe(0)
+      expect(await prisma.auditLog.count({ where: { entityId: user.id } })).toBe(0)
+    }
+  })
+
   it('kills the earlier link when a second one is asked for, and ignores the fourth in an hour', async () => {
     const user = await makeUser()
     const ask = () => requestPasswordReset(user.username, IP, { store: requestStore(), appUrl: APP_URL })

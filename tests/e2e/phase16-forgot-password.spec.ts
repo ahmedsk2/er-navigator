@@ -5,7 +5,8 @@ import { forgotUserFor, seedExpiredToken, tokenFromOutbox } from './fixtures/for
  * Phase 16 (docs/specs/phase16-forgot-password.md), at 390 x 844 and 1280 x 800.
  *
  * The claim these earn is the one the login page now makes to a nurse at 2 a.m.: tap the link,
- * type your username, open what arrives, and sign in with the password you chose. Nothing here
+ * type your username or the address on your account, open what arrives, and sign in with the
+ * password you chose. Nothing here
  * shortcuts the app — the token is read out of the `Outbox` row the app itself wrote, which is
  * exactly the string the mail carries, and the sign-in at the end is the real form.
  *
@@ -34,9 +35,10 @@ async function expectNoSidewaysScroll(page: Page, testInfo: { project: { name: s
   expect(overflow, 'the page scrolls sideways at 390').toBeLessThanOrEqual(0)
 }
 
-async function ask(page: Page, username: string): Promise<void> {
+/** The one field takes a username or the address on the account (P16.42). */
+async function ask(page: Page, identifier: string): Promise<void> {
   await page.goto('/forgot')
-  await page.getByLabel('Username', { exact: true }).fill(username)
+  await page.getByLabel('Username or email', { exact: true }).fill(identifier)
   await page.getByRole('button', { name: 'Send the link', exact: true }).click()
   await expect(page.locator('[data-reset-requested]')).toHaveText(MESSAGE)
 }
@@ -51,7 +53,7 @@ test.describe('the way in when the password is gone', () => {
     await link.click()
     await expect(page).toHaveURL('/forgot')
     await expect(page.getByRole('heading', { name: 'ER Navigator' })).toBeVisible()
-    await expect(page.getByLabel('Username', { exact: true })).toBeVisible()
+    await expect(page.getByLabel('Username or email', { exact: true })).toBeVisible()
     await expectNoSidewaysScroll(page, testInfo)
   })
 
@@ -77,9 +79,10 @@ test.describe('the way in when the password is gone', () => {
     await fromClientIp(page, testInfo, 2)
     const user = forgotUserFor(testInfo.project.name)
 
-    // 1. Ask, and read what the app put in the outbox for that address — the same string the
-    //    worker would put in the mail.
-    await ask(page, user.username)
+    // 1. Ask — with the EMAIL ADDRESS, which is what Ahmed typed on 13 September and what the
+    //    field takes since P16.42 — and read what the app put in the outbox for that address,
+    //    which is the same string the worker would put in the mail.
+    await ask(page, user.email.toUpperCase())
     const token = await tokenFromOutbox(user.email)
 
     // 2. Open the link. It says nothing about the account: no username anywhere on the page.
