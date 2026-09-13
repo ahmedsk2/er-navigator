@@ -159,13 +159,21 @@ The action, in order:
    what stops the link being sent. `passwordResetRateLimiter` is shared by `/forgot` and `/reset`.
 3. Look the user up. Issue a token only when the row exists, is `active`, and has a non-null
    `email`.
-4. **At most 3 requests per user per hour**: `PasswordResetToken` rows for that user with
-   `createdAt >= now - 1h`. A fourth is silently ignored — same sentence, no row, no email, no
-   audit row.
-5. In one transaction: stamp `usedAt` on that user's earlier unused tokens, insert the new token,
-   insert the `Outbox` row, append `auth.reset.requested` (`entity: 'User'`, `entityId: userId`,
-   `after: { requested: true }`). The audit row carries the user id and nothing else: not the
-   token, not the hash, not the email address, not the username.
+4. **At most 3 requests per user per hour**, counted and enforced **inside** the issuing
+   transaction, which opens with `SELECT id FROM "User" WHERE id = $1 FOR UPDATE`. A fourth is
+   silently ignored — same sentence, no row, no email, no audit row.
+
+   **Corrected 13 September (P16.40, security review).** This was two statements with a gap
+   between them: the count ran outside `issue()` and nothing was locked, so eight requests that
+   arrived together each counted zero and each wrote a link. A per-user rule that is not
+   serialized per user bounds nothing at all. The lock is on `User` rather than on the token rows
+   because the rows being counted are the ones about to be written; the app role may take it,
+   having UPDATE on `User` already; and nothing in this application locks `User` and then a
+   second table in the other order, so it cannot deadlock against the password write.
+5. Still in that transaction: stamp `usedAt` on that user's earlier unused tokens, insert the new
+   token, insert the `Outbox` row, append `auth.reset.requested` (`entity: 'User'`,
+   `entityId: userId`, `after: { requested: true }`). The audit row carries the user id and
+   nothing else: not the token, not the hash, not the email address, not the username.
 6. Answer the same sentence.
 
 The action is `async function requestPasswordReset` in `app/forgot/actions.ts`. It has no session
@@ -225,7 +233,7 @@ script are byte-identical in behaviour and their audit payloads are unchanged.
 | Single use | `usedAt`, stamped in the same transaction as the password write |
 | 30 minutes | `RESET_TOKEN_TTL_MS`, checked against `now` at use |
 | Earlier tokens invalidated on a new request | one transaction |
-| At most 3 per user per hour | counted on `createdAt`, a fourth silently ignored |
+| At most 3 per user per hour | counted on `createdAt` inside the issuing transaction, behind `SELECT … FOR UPDATE` on the account row, so simultaneous requests cannot each read the same count |
 | Five requests a minute per IP on both pages | `passwordResetRateLimiter` |
 | No enumeration | one sentence for every outcome of `/forgot`; one sentence for every bad token |
 | The reset page reveals no username | the page renders only the form |

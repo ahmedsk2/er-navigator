@@ -37,12 +37,33 @@ export function prismaForgotPasswordStore(
       return { id: row.id, email: row.email }
     },
 
-    async countRequestsSince(userId, since) {
-      return client.passwordResetToken.count({ where: { userId, createdAt: { gte: since } } })
-    },
-
     async issue(input) {
-      await client.$transaction(async (tx) => {
+      return client.$transaction(async (tx) => {
+        /**
+         * P16.40. Everything below is one decision about one account, so it is taken behind a
+         * lock on that account's row: `SELECT ... FOR UPDATE` makes every other request for the
+         * same user wait here until this transaction ends.
+         *
+         * Without it the count and the insert were two statements with a gap between them, and
+         * the security review's probe walked straight through it — eight requests fired together
+         * each counted zero and each wrote a link, against a rule that allows three. The lock is
+         * on `User` rather than on the token rows because the rows being counted are the ones
+         * about to be written, and there is nothing to lock until one exists.
+         *
+         * The app role may take it: it already has UPDATE on `User` (the sign-in path writes
+         * `failedLogins`), which is what Postgres requires for a row lock. Nothing else in this
+         * application locks `User` and then a second table in the other order, so this cannot
+         * deadlock against the password write, which takes the same row first.
+         */
+        await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${input.userId} FOR UPDATE`
+
+        const recent = await tx.passwordResetToken.count({
+          where: { userId: input.userId, createdAt: { gte: input.since } },
+        })
+        // The fourth within the hour writes nothing at all: no token, no mail, no audit row. The
+        // caller answers it exactly as it answers a link genuinely on its way.
+        if (recent >= input.maxPerWindow) return false
+
         // Every earlier link of this account dies here, so a person who asks twice can only use
         // the second one. `usedAt` means "cannot be used again", spent or superseded.
         await tx.passwordResetToken.updateMany({
@@ -72,6 +93,7 @@ export function prismaForgotPasswordStore(
           ctx,
           tx,
         )
+        return true
       })
     },
   }

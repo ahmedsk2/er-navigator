@@ -24,13 +24,23 @@ import {
   type ResetTokenLookup,
 } from '../forgot-password'
 import type { ApplyResetInput, PasswordResetStore } from '../password-reset'
-import { hashResetToken, RESET_REQUESTS_PER_HOUR, RESET_TOKEN_TTL_MINUTES } from '../reset-token'
+import {
+  hashResetToken,
+  resetRequestWindowStart,
+  RESET_REQUESTS_PER_HOUR,
+  RESET_TOKEN_TTL_MINUTES,
+} from '../reset-token'
 
 const NOW = new Date('2026-09-13T10:00:00.000Z')
 const APP_URL = 'https://nav.towardpcc.com'
 
 type Account = { id: string; email: string }
 
+/**
+ * The store owns the three-an-hour rule now (P16.40): the count and the insert are one
+ * transaction under a row lock, so the fake counts what it has already issued rather than
+ * answering a separate question the caller used to ask first.
+ */
 class FakeRequestStore implements ForgotPasswordStore {
   issued: IssueResetInput[] = []
   recentRequests = 0
@@ -40,12 +50,10 @@ class FakeRequestStore implements ForgotPasswordStore {
     return this.accounts[username] ?? null
   }
 
-  async countRequestsSince(): Promise<number> {
-    return this.recentRequests
-  }
-
-  async issue(input: IssueResetInput): Promise<void> {
+  async issue(input: IssueResetInput): Promise<boolean> {
+    if (this.recentRequests + this.issued.length >= input.maxPerWindow) return false
     this.issued.push(input)
+    return true
   }
 }
 
@@ -117,6 +125,26 @@ describe('what /forgot writes when it does issue', () => {
     // The one place the raw token appears.
     expect(issued.text).toContain(token)
     expect(JSON.stringify({ ...issued, text: '' })).not.toContain(token)
+  })
+
+  /**
+   * P16.40. The hour and the ceiling travel INTO the transaction, because the count and the
+   * insert have to be one decision: a caller that counted first and inserted afterwards is
+   * exactly the race the security review found.
+   */
+  it('hands the store the window and the ceiling, so the rule is decided under the lock', async () => {
+    const store = withAccount()
+    await ask(store, 'demo.lead')
+    const issued = store.issued[0]!
+    expect(issued.maxPerWindow).toBe(RESET_REQUESTS_PER_HOUR)
+    expect(issued.since).toEqual(resetRequestWindowStart(NOW))
+    expect(issued.now).toEqual(NOW)
+  })
+
+  it('reports not issued when the store refuses under the lock', async () => {
+    const store = withAccount()
+    store.recentRequests = RESET_REQUESTS_PER_HOUR
+    expect((await ask(store, 'demo.lead')).issued).toBe(false)
   })
 
   it('writes an audit payload that says only that a link was asked for', () => {

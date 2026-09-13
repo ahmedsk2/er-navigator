@@ -82,7 +82,7 @@ export function buildResetEmail(link: string): { subject: string; text: string }
 /** An account a link may be sent to: it exists, it is active, and it has an address. */
 export type ResetRequestTarget = { id: string; email: string }
 
-/** Everything one issued link writes, in one transaction. */
+/** Everything one issued link writes, in one transaction, and the rule that may refuse it. */
 export type IssueResetInput = {
   userId: string
   tokenHash: string
@@ -93,18 +93,28 @@ export type IssueResetInput = {
   email: string
   subject: string
   text: string
+  /** The oldest request that still counts against the hour, `resetRequestWindowStart(now)`. */
+  since: Date
+  /** `RESET_REQUESTS_PER_HOUR`. Passed in rather than read here, so the store owns one rule. */
+  maxPerWindow: number
 }
 
 export type ForgotPasswordStore = {
   /** Null unless the account exists, is active and has an address. One query, one answer. */
-  findTarget(username: string): Promise<ResetRequestTarget | null>
-  /** Tokens this account has been issued since `since`, however they ended up. */
-  countRequestsSince(userId: string, since: Date): Promise<number>
+  findTarget(identifier: string): Promise<ResetRequestTarget | null>
   /**
-   * One transaction: stamp `usedAt` on this user's earlier unused tokens, insert the new token,
-   * insert the outbox row, append `auth.reset.requested`.
+   * Count and write as ONE decision, serialized per account (P16.40).
+   *
+   * One transaction that first locks the account row, then counts this user's tokens since
+   * `since`, then — only if that count is under `maxPerWindow` — stamps `usedAt` on its earlier
+   * unused tokens, inserts the new token, inserts the outbox row and appends
+   * `auth.reset.requested`. Returns whether it issued.
+   *
+   * The lock is the point. Counting outside the transaction is what the security review of 13
+   * September found: eight requests arriving together each read the same count and each wrote a
+   * link, so the three-an-hour rule bounded nothing at all under concurrency.
    */
-  issue(input: IssueResetInput): Promise<void>
+  issue(input: IssueResetInput): Promise<boolean>
 }
 
 export type RequestResetDeps = {
@@ -139,22 +149,26 @@ export async function requestPasswordReset(
   const target = await deps.store.findTarget(parsed.data)
   if (!target) return answer(false)
 
-  const recent = await deps.store.countRequestsSince(target.id, resetRequestWindowStart(now))
-  if (recent >= RESET_REQUESTS_PER_HOUR) return answer(false)
-
   const token = (deps.newToken ?? generateResetToken)()
+  const tokenHash = hashResetToken(token)
   const { subject, text } = buildResetEmail(resetLink(deps.appUrl, token))
-  await deps.store.issue({
+
+  // The count and the insert are the store's one transaction, under a lock on the account
+  // (P16.40): reading the count out here is what let eight simultaneous requests write eight
+  // links against a rule that allows three.
+  const issued = await deps.store.issue({
     userId: target.id,
-    tokenHash: hashResetToken(token),
+    tokenHash,
     expiresAt: resetTokenExpiry(now),
     requestedIp,
     now,
     email: target.email,
     subject,
     text,
+    since: resetRequestWindowStart(now),
+    maxPerWindow: RESET_REQUESTS_PER_HOUR,
   })
-  return answer(true)
+  return answer(issued)
 }
 
 // --- spending the link ------------------------------------------------------------------------

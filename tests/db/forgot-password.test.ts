@@ -191,6 +191,44 @@ describe('asking for a link', () => {
     expect(await prisma.auditLog.count({ where: { entityId: user.id } })).toBe(RESET_REQUESTS_PER_HOUR)
     for (const row of await prisma.outbox.findMany({ where: { to: user.email! } })) outboxIds.push(row.id)
   })
+
+  /**
+   * P16.40, raised by the security review of 13 September and confirmed by all three refuters.
+   *
+   * The three-an-hour rule was a count read before the write and outside its transaction, so
+   * eight requests that arrive together each read the same "none yet" and each write a link: the
+   * reviewer's probe got eight tokens, seven of them live at some point, and eight mails. The
+   * count and the insert are one decision now, taken under a row lock on the account, so the
+   * rule holds however many requests arrive at once.
+   *
+   * The assertions are bounds rather than equalities on purpose: what the rule promises is a
+   * ceiling on the mail somebody can cause, and exactly one link that still works.
+   */
+  it('holds the three-an-hour rule against eight requests that arrive at once', async () => {
+    const user = await makeUser()
+    const answers = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        requestPasswordReset(user.username, IP, { store: requestStore(), appUrl: APP_URL }),
+      ),
+    )
+    // Whatever the race did, every caller was told the same thing.
+    for (const answer of answers) expect(answer.message).toBe(RESET_REQUESTED_MESSAGE)
+
+    const tokens = await prisma.passwordResetToken.findMany({ where: { userId: user.id } })
+    const mail = await prisma.outbox.findMany({ where: { to: user.email! } })
+    for (const row of mail) outboxIds.push(row.id)
+
+    expect(tokens.length, 'more links than the hour allows').toBeLessThanOrEqual(
+      RESET_REQUESTS_PER_HOUR,
+    )
+    expect(mail.length, 'more mail than the hour allows').toBeLessThanOrEqual(RESET_REQUESTS_PER_HOUR)
+    expect(
+      await prisma.auditLog.count({ where: { entityId: user.id } }),
+      'more audit rows than links',
+    ).toBeLessThanOrEqual(RESET_REQUESTS_PER_HOUR)
+    // The one that matters: a person who asked eight times has exactly one link that works.
+    expect(tokens.filter((t) => t.usedAt === null)).toHaveLength(1)
+  })
 })
 
 describe('spending the link', () => {
