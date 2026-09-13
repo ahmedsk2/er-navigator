@@ -300,8 +300,11 @@ A row still unsent after five attempts stays there with its `lastError` on it an
 again: fix the mail settings, then `UPDATE "Outbox" SET attempts = 0 WHERE id = '<id>'` as the
 owner role to let the worker pick it up, if the 30 minutes have not already run out.
 
-**Never print an `Outbox` row's `text` on a shared terminal.** It holds a live reset link for
-thirty minutes; the columns above are chosen so a diagnosis never has to.
+**Never print an `Outbox` row's `text` on a shared terminal.** An UNSENT row holds a live reset
+link; the columns above are chosen so a diagnosis never has to read it. A sent row's text is
+`[redacted on send]` (P16.43): the worker replaces it in the same write that stamps `sentAt`, so a
+token is in this table for one 20-second poll at most and reaches no backup taken afterwards. A
+row that failed keeps its text, because the next poll is the retry and needs something to send.
 
 **An account with no email address cannot use this at all** and is told nothing different, on
 purpose (an answer that varied would say which usernames exist). Give the account an address in
@@ -536,7 +539,9 @@ safe to demonstrate here: `/forgot` writes its `Outbox` row, the worker's next p
 and **nothing leaves the host**. The four demo accounts carry `<username>@demo.invalid` addresses
 (RFC 2606 reserves `.invalid`), so the form answers exactly as it does in production and there is
 no address anywhere that could receive anything. To show the whole flow to a room, read the link
-out of the row's `text` on the host — never on a shared screen — or just show the log line.
+out of the row's `text` on the host — never on a shared screen, and within twenty seconds, because
+the worker's next poll stamps the row sent and replaces the text with `[redacted on send]` — or
+just show the log line.
 
 **Seed it** (on the host, after the deploy is verified). `$OWNER_URL` and `$DEMO_PW` are read from
 the demo application's Coolify environment page into shell variables and **never echoed**;

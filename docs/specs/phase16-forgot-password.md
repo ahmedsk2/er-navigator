@@ -76,7 +76,9 @@ model Outbox {
 
 **The raw token is never stored.** It exists in exactly two places: the link in the `Outbox` row's
 `text`, and the URL in the person's mail client. `tokenHash` is `sha256(token)` in hex. No log
-line, no audit payload and no error message anywhere carries it.
+line, no audit payload and no error message anywhere carries it. And from P16.43 the first of
+those two places is temporary: the worker replaces `text` with `[redacted on send]` in the same
+write that stamps `sentAt`, so the link is in this table for one 20-second poll at most.
 
 **`usedAt` means "cannot be used again"**, whether it was spent or superseded. Issuing a token
 stamps `usedAt` on every earlier unused token of that user in the same transaction, so a person
@@ -109,7 +111,9 @@ So the app writes a row and the worker sends it.
   `setInterval` with its own overlap guard; it never writes `/tmp/heartbeat`, never calls the push
   monitor, and a failure in it is logged and cannot fail an alert cycle. A reset email is not a
   patient waiting twelve hours, and it must not be able to make the container look unhealthy.
-- **Sent**: `sentAt` is stamped.
+- **Sent**: `sentAt` is stamped, and `text` is replaced with `[redacted on send]` in the same
+  write (P16.43). A sent row has no further use for a body that holds a live link, and a nightly
+  dump should not carry one.
 - **Failed**: `attempts` + 1 and `lastError` (truncated to 300 characters), `sentAt` left null. The
   next poll picks it up. After 5 attempts the row stops being selected and stays visibly unsent.
 - **`SMTP_HOST` empty**: nothing is sent, the message is logged at info level exactly the way an
@@ -259,6 +263,7 @@ script are byte-identical in behaviour and their audit payloads are unchanged.
 | --- | --- |
 | 32 random bytes, `randomBytes(32)`, base64url in the link | `src/lib/auth/reset-token.ts` |
 | Only `sha256` of it is stored; the raw token is in the mail and nowhere else | the store; the unit tests grep the audit payload and the log lines |
+| The link leaves the database when the message goes | `markSent` writes `sentAt` and `[redacted on send]` together, so one 20-second poll is the whole window; failed rows keep their text for the retry |
 | Constant-time compare of the digests | `timingSafeEqual` in `verifyResetToken` |
 | Single use | `usedAt`, stamped in the same transaction as the password write |
 | 30 minutes | `RESET_TOKEN_TTL_MS`, checked against `now` at use |
@@ -275,9 +280,21 @@ script are byte-identical in behaviour and their audit payloads are unchanged.
 **Threats deliberately accepted.** A person who can read the mailbox can take the account: that is
 what "reset by email" means, and it is why the address lives in Admin → Users and not on a screen
 the user can edit. The in-process rate limiter is per container, as it has been since Phase 1, and
-the same one-replica caveat in `rate-limit.ts` applies. An `Outbox` row's `text` holds a live
-token for up to 30 minutes: the app role can read the table, which is the same trust boundary the
-session table already sits inside. And the **GET** of `/reset` is not rate limited — only the
+the same one-replica caveat in `rate-limit.ts` applies.
+
+**Corrected 13 September (P16.43, security review).** This paragraph used to say that an `Outbox`
+row's text holding a live token was "the same trust boundary the session table already sits
+inside". That was wrong, and the reviewer was right to name it: `Session` stores a **digest**, so
+reading that table gives an attacker nothing to replay, while an unsent `Outbox` row holds the
+secret itself. It is a strictly weaker boundary, not the same one. So the window is bounded
+instead of excused: `markSent` replaces `text` with `[redacted on send]` in the same write that
+stamps `sentAt`, which puts a live link in the database for one 20-second poll at most and keeps
+it out of every dump taken afterwards. A row that FAILED keeps its text, because the next poll is
+the retry and there is nothing to retry with otherwise; after five failures it stays visibly
+unsent with its link, which is the deliberate trade, and by then the 30 minutes have almost
+certainly run out anyway.
+
+And the **GET** of `/reset` is not rate limited — only the
 submission is — so a stranger can make one indexed lookup of a 32-byte digest per request; that is
 the same cost as rendering `/login`, and the thing being guessed is 256 bits.
 
@@ -321,7 +338,8 @@ the same cost as rendering `/login`, and the thing being guessed is 256 bits.
   with the new one and with the old one), deletes every session, leaves `mustChangePassword`
   false, and writes `user.password` with `via: 'email-reset'`.
 - A used token and an expired token are both refused, and the password does not change.
-- `drainOutbox` in log-only mode stamps `sentAt` on a real row.
+- `drainOutbox` in log-only mode stamps `sentAt` on a real row, and the row's `text` afterwards is
+  `[redacted on send]` and carries neither the token nor `/reset?token=`.
 - The app role has no `DELETE` on `Outbox`.
 
 **End to end** (`tests/e2e/phase16-forgot-password.spec.ts`, both viewports)

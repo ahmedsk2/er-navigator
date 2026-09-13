@@ -12,7 +12,12 @@
 import { audit, type AuditContext } from '@/src/lib/audit'
 import { prisma } from '@/src/lib/db'
 import type { AlertStore, FireOutcome, PendingEmail, Recipient } from './cycle'
-import { OUTBOX_MAX_ATTEMPTS, type OutboxMessage, type OutboxStore } from './outbox'
+import {
+  OUTBOX_MAX_ATTEMPTS,
+  OUTBOX_REDACTED_TEXT,
+  type OutboxMessage,
+  type OutboxStore,
+} from './outbox'
 import type { AlertCase } from './rules'
 import { EMAIL_MAX_ATTEMPTS, EMAIL_THRESHOLD_H, thresholdUpdateText } from './rules'
 
@@ -243,7 +248,14 @@ export function prismaOutboxStore(client: PrismaLike = prisma): OutboxStore {
     },
 
     async markSent(id: string, at: Date): Promise<void> {
-      await client.outbox.update({ where: { id }, data: { sentAt: at } })
+      // P16.43: the body goes with the stamp. A reset message holds a live link for thirty
+      // minutes and a sent row has no further use for it, so a token is in this table for one
+      // 20-second poll at most and reaches no backup taken afterwards. Failed rows keep their
+      // text (`markFailed` below) because the next poll is the retry.
+      await client.outbox.update({
+        where: { id },
+        data: { sentAt: at, text: OUTBOX_REDACTED_TEXT },
+      })
     },
 
     async markFailed(id: string, error: string): Promise<void> {

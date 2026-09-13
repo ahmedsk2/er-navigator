@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import type { User } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import { afterAll, describe, expect, it } from 'vitest'
-import { drainOutbox } from '@/src/lib/alerts/outbox'
+import { drainOutbox, OUTBOX_REDACTED_TEXT } from '@/src/lib/alerts/outbox'
 import { prismaOutboxStore } from '@/src/lib/alerts/store'
 import { RESET_RESPONSE_FLOOR_MS, withConstantTimeFloor } from '@/src/lib/auth/constant-time'
 import {
@@ -432,6 +432,16 @@ describe('the worker draining the outbox', () => {
     expect(row.lastError).toBeNull()
     expect(lines.some((l) => l.includes('[outbox]') && l.includes('would have emailed'))).toBe(true)
     for (const line of lines) expect(line).not.toContain(token)
+
+    /**
+     * P16.43, the hardening the security review's refuted third finding was worth taking anyway.
+     * A sent row has no further use for its body, and that body holds a live link. Redacting on
+     * send bounds the window a token sits in the database to one 20-second poll, and keeps it out
+     * of every nightly dump taken after that.
+     */
+    expect(row.text, 'a sent row still carries the live link').toBe(OUTBOX_REDACTED_TEXT)
+    expect(row.text).not.toContain(token)
+    expect(row.text).not.toContain('/reset?token=')
 
     // Drained once: a second poll does not pick it up again.
     const before = row.sentAt

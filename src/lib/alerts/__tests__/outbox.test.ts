@@ -15,6 +15,7 @@ import {
   OUTBOX_BATCH,
   OUTBOX_MAX_ATTEMPTS,
   OUTBOX_POLL_MS,
+  OUTBOX_REDACTED_TEXT,
   type OutboxMessage,
   type OutboxStore,
 } from '../outbox'
@@ -76,6 +77,17 @@ describe('the poll', () => {
     expect(OUTBOX_POLL_MS).toBe(20_000)
     expect(OUTBOX_BATCH).toBe(10)
     expect(OUTBOX_MAX_ATTEMPTS).toBe(5)
+  })
+
+  /**
+   * P16.43. `markSent` replaces the body as it stamps the row, so the twenty seconds above are
+   * also the whole time a live link spends in the database. What it is replaced BY has to say so
+   * to whoever reads the table later, and must not itself be mistaken for a message.
+   */
+  it('says what happened to a sent row, and carries no link of its own', () => {
+    expect(OUTBOX_REDACTED_TEXT).toBe('[redacted on send]')
+    expect(OUTBOX_REDACTED_TEXT).not.toContain('/reset')
+    expect(OUTBOX_REDACTED_TEXT).not.toContain('http')
   })
 
   it('asks the store for at most one batch', async () => {

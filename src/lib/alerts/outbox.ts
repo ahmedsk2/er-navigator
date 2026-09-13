@@ -32,6 +32,23 @@ export const OUTBOX_MAX_ATTEMPTS = 5
 /** How much of a transport error is worth keeping: the message, never a stack trace. */
 export const OUTBOX_ERROR_MAX = 300
 
+/**
+ * What a sent row's `text` becomes (P16.43, the hardening taken from the third finding of the
+ * security review on 13 September).
+ *
+ * A reset body holds a live link for thirty minutes and the row has no further use for it once
+ * the message has gone. Replacing it on send bounds the time a token spends in the database to a
+ * single 20-second poll, and keeps it out of every backup taken after that — the app role can
+ * read `Outbox`, and unlike `Session`, which stores only a digest, an unsent row here holds the
+ * secret itself.
+ *
+ * FAILED rows keep their text, and must: the next poll is the retry, and there is nothing to
+ * retry with once the body is gone. A row that runs out of attempts therefore stays visibly
+ * unsent WITH its link, which is the deliberate trade — five failures in a row means somebody has
+ * to look at it, and the token in it has almost certainly expired by then anyway.
+ */
+export const OUTBOX_REDACTED_TEXT = '[redacted on send]'
+
 /** A row waiting to be sent. Deliberately not the Prisma model. */
 export type OutboxMessage = {
   id: string
@@ -45,8 +62,16 @@ export type OutboxMessage = {
 export type OutboxStore = {
   /** `sentAt IS NULL AND attempts < OUTBOX_MAX_ATTEMPTS`, oldest first, at most `limit`. */
   pending(limit: number): Promise<OutboxMessage[]>
+  /**
+   * Stamps `sentAt` AND replaces `text` with `OUTBOX_REDACTED_TEXT` (P16.43). The two are one
+   * write on purpose: a row that is sent is a row whose body is spent, and the body of a reset
+   * message is a live link.
+   */
   markSent(id: string, at: Date): Promise<void>
-  /** +1 attempt and `lastError`. No timestamp: `createdAt` plus the count is the record. */
+  /**
+   * +1 attempt and `lastError`. No timestamp: `createdAt` plus the count is the record. The text
+   * is left alone, because the next poll is the retry and it needs something to send.
+   */
   markFailed(id: string, error: string): Promise<void>
 }
 
