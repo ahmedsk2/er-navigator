@@ -293,30 +293,50 @@ ADMIN_PASSWORD that was in Coolify when the database was first seeded, then chan
 user.password audit row. The seeded password is never re-applied — the seed only creates the
 admin when the username is absent — so clearing ADMIN_PASSWORD in Coolify afterwards is safe.
 
-For the same reason, CHANGING ADMIN_PASSWORD in Coolify after the first seed changes nothing:
-on 10 September it had been changed the morning after the seed, every sign-in with the new value
-failed (five `auth.fail` rows, no lock yet), and the fix was to re-hash the current value into the
-row as the owner role. Either sign in with the original value and change it at /account, or run
-this on the host. The value is read from the last migrate container (the one place outside
-Coolify that holds it), hashed with the host's python3-bcrypt, and piped straight into psql, so
-neither the value nor the hash is ever printed or re-read by a shell:
+CHANGING ADMIN_PASSWORD in Coolify after the first seed changes nothing, for the same reason: on
+10 September it had been changed the morning after the seed and every sign-in with the new value
+failed (five `auth.fail` rows, no lock yet). Sign in with the original value and change it at
+/account, or reset it from the host as below.
+
+## Reset a password from the host (Phase 15)
+
+**For everyone else, use the screen.** Admin → Users → Reset password shows a temporary password
+once, clears the lock and the failure count, signs that user out everywhere and leaves a
+`user.password` audit row. Ten failed sign-ins lock an account for 15 minutes and this is how the
+lock is cleared before then. Nothing below is needed while any ADMIN can still sign in.
+
+This is for the one case the screen cannot answer: **nobody can sign in as an ADMIN** — every
+administrator locked out at once, or the admin password lost. `reset-password.js` is in the app
+image beside `worker.js` and `demo-seed.js`, and runs the same reset Admin → Users runs
+(`src/lib/auth/password-reset.ts`): same generator, same bcrypt cost, `mustChangePassword` back
+on, failure count and lock cleared, every session deleted, one `user.password` audit row with the
+`system` user as actor, an `after` saying `fromHost`, and the user agent `reset-password (host)`.
+It never prints or stores the password anywhere but the one line it puts on stdout.
+
+`docker exec` does not run the image's `ENTRYPOINT`, so the allowlist does not strip what is
+passed on the exec line and the owner URL never has to live in the container's environment. The
+host inside it is literally `db`: the exec runs on the app's own compose network.
 
 ```bash
-M=$(sudo docker ps -a --format '{{.Names}}' | grep '^migrate-jqcjqhmcmizxs1u51wnqlfwv')
-D=$(sudo docker ps --format '{{.Names}}' | grep '^db-jqcjqhmcmizxs1u51wnqlfwv')
-HASH=$(sudo docker inspect "$M" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^ADMIN_PASSWORD=' | cut -d= -f2- | tr -d '\n' | python3 -c 'import sys,bcrypt; print(bcrypt.hashpw(sys.stdin.buffer.read(), bcrypt.gensalt(12)).decode(), end="")')
-printf '%s\n' "UPDATE \"User\" SET \"passwordHash\" = '$HASH', \"failedLogins\" = 0, \"lockedUntil\" = NULL WHERE username = 'admin';" "INSERT INTO \"AuditLog\" (id, action, entity, \"entityId\", after, \"userAgent\") VALUES (gen_random_uuid()::text, 'user.password', 'User', (SELECT id FROM \"User\" WHERE username = 'admin'), '{\"reason\":\"ADMIN_PASSWORD re-hashed by the owner role\"}', 'runbook: owner SQL');" | sudo docker exec -i "$D" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1'
-unset HASH
+U=jqcjqhmcmizxs1u51wnqlfwv
+APPC=$(sudo docker ps --format '{{.Names}}' | grep "^app-$U")
+DB=$(sudo docker ps --format '{{.Names}}' | grep "^db-$U")
+OWNER_URL="postgresql://$(sudo docker exec "$DB" printenv POSTGRES_USER):$(sudo docker exec "$DB" printenv POSTGRES_PASSWORD)@db:5432/$(sudo docker exec "$DB" printenv POSTGRES_DB)?schema=public"
+sudo docker exec -e DATABASE_URL="$OWNER_URL" "$APPC" node reset-password.js admin
+unset OWNER_URL
 ```
 
-Expect `UPDATE 1` and `INSERT 0 1`. The row's failure count and lock are cleared with it. Done
-this way on 2026-09-10 03:54 UTC (audit row `user.password`, user agent `runbook: owner SQL`).
-Ten failed sign-ins lock an account for 15 minutes. To clear a lock before then, an Admin uses
-Admin → Users → Reset password on that user: it clears the lock and the failure count, signs
-the user out everywhere and leaves a `user.password` audit row. Only when no Admin can sign in
-(every Admin locked at once) fall back to SQL as the owner role, and write an AuditLog row by
-hand as in "PHI scrub": `UPDATE "User" SET "lockedUntil" = NULL, "failedLogins" = 0 WHERE
-username = '<name>';`
+It prints exactly one line — the username and the temporary password, separated by a space — and
+nothing else. Read it out or type it in straight away: it cannot be recovered, and the account is
+sent to /account to set its own password on the first sign-in. The password is on the terminal
+and in that SSH session's scrollback and nowhere else, so close the session afterwards; `unset
+OWNER_URL` above is what keeps the owner password out of the rest of it.
+
+It refuses, non-zero and with a plain message: no username (it prints the usage and exits 2), no
+`DATABASE_URL`, no user of that name, the `system` account, and a database with no `system` user.
+A deactivated account is reset — the account stays deactivated, so reactivating it in Admin →
+Users is all that is left to do. There is no demo condition: it is the same command on production
+and on the demo (`app-iks3t780ppakzvl1nbnvzvfe`, and that instance's own owner URL).
 
 ## Reports and exports (Phase 8)
 

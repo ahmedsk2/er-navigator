@@ -35,6 +35,7 @@ jobs:
       # otherwise only surface as a failed deploy.
       - run: pnpm run build:worker
       - run: pnpm run build:demo-seed
+      - run: pnpm run build:reset-password
 
   # Database-backed checks and the Playwright suite against the production Postgres image:
   # migrations, role sync, seed, then the app on a normal build behind `pnpm start`.

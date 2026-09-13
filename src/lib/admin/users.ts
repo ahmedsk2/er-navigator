@@ -20,12 +20,21 @@
  * Every change writes `user.create`, `user.update` or `user.password` with before/after. A
  * temporary password is returned once, to be read out and typed in; it is never stored in plain
  * text, never logged and never audited.
+ *
+ * The reset itself lives in `@/src/lib/auth/password-reset`, because the host-side script
+ * (`scripts/reset-password.ts`, P15.63) performs the same one and neither may drift from the
+ * other. This file keeps the decisions only an administrator's request has: the permission, the
+ * missing user, and the system account.
  */
-import { randomInt } from 'node:crypto'
 import type { Role } from '@prisma/client'
 import { z } from 'zod'
 import { audit, type AuditContext } from '@/src/lib/audit'
 import { hashPassword } from '@/src/lib/auth/password'
+import {
+  generateTemporaryPassword,
+  prismaPasswordResetStore,
+  resetPassword,
+} from '@/src/lib/auth/password-reset'
 import { assertCan, deleteSessionsForUser, type AuthUser } from '@/src/lib/auth/session'
 import { isSystemAccount } from '@/src/lib/auth/system-user'
 import { prisma } from '@/src/lib/db'
@@ -63,16 +72,6 @@ const createSchema = z.object({
   role: roleSchema,
   email: emailSchema,
 })
-
-// No i, l, o, 0 or 1: this is read out loud across a ward desk before it is typed in.
-const TEMPORARY_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789ABCDEFGHJKMNPQRSTUVWXYZ'
-export const TEMPORARY_PASSWORD_LENGTH = 16
-
-export function generateTemporaryPassword(length = TEMPORARY_PASSWORD_LENGTH): string {
-  let out = ''
-  for (let i = 0; i < length; i += 1) out += TEMPORARY_ALPHABET[randomInt(TEMPORARY_ALPHABET.length)]
-  return out
-}
 
 export async function loadUsers(): Promise<UserRow[]> {
   const rows = await prisma.user.findMany({
@@ -309,32 +308,10 @@ export async function resetUserPassword(
     return fail('system', 'The system account has no password to reset.')
   }
 
-  const temporaryPassword = generateTemporaryPassword()
-  const passwordHash = await hashPassword(temporaryPassword)
-
-  await prisma.$transaction(async (tx) => {
-    await tx.user.update({
-      where: { id: userId },
-      // Phase 12 (P12): a reset hands out another temporary password, so the flag goes back on.
-      data: { passwordHash, failedLogins: 0, lockedUntil: null, mustChangePassword: true },
-    })
-    await audit(
-      {
-        action: 'user.password',
-        entity: 'User',
-        entityId: userId,
-        after: {
-          username: target.username,
-          self: false,
-          byAdmin: actor.username,
-          mustChangePassword: true,
-        },
-      },
-      ctx,
-      tx,
-    )
-  })
-
-  const sessionsDeleted = await deleteSessionsForUser(userId)
+  const { temporaryPassword, sessionsDeleted } = await resetPassword(
+    prismaPasswordResetStore(ctx),
+    { id: target.id, username: target.username },
+    { by: 'admin', adminUsername: actor.username },
+  )
   return { ok: true, username: target.username, temporaryPassword, sessionsDeleted }
 }

@@ -26,7 +26,8 @@ FROM deps AS build
 SHELL ["/bin/ash", "-o", "pipefail", "-c"]
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1 NEXT_OUTPUT_STANDALONE=1
-RUN pnpm exec prisma generate && pnpm exec next build && pnpm run build:worker && pnpm run build:demo-seed
+RUN pnpm exec prisma generate && pnpm exec next build && pnpm run build:worker && pnpm run build:demo-seed \
+  && pnpm run build:reset-password
 
 # ---- migrate: one-shot container applying migrations, role sync and seed as the OWNER ----
 # A separate target so the owner connection string is never part of the app image's command.
@@ -61,6 +62,14 @@ COPY --from=build --chown=app:app /repo/dist/worker.js ./worker.js
 # whatever the operator typed), but because the seed reads the container's own APP_URL and refuses
 # a production host whatever else it is given. Corrected in the Phase 12 review round.
 COPY --from=build --chown=app:app /repo/dist/demo-seed.js ./demo-seed.js
+# The host-side password reset (Phase 15, P15.63): never run by a service either, only by
+# `docker exec ... node reset-password.js <username>` when nobody can sign in as an ADMIN and
+# there is no screen left to press Reset password on. It carries no demo condition, unlike the
+# seed above — production is the instance it exists for — and it does exactly what Admin → Users
+# does (src/lib/auth/password-reset.ts), so it can only hand out a temporary password and sign
+# one person out. It needs an owner DATABASE_URL on the exec line; the container's own
+# environment does not carry one.
+COPY --from=build --chown=app:app /repo/dist/reset-password.js ./reset-password.js
 USER 100
 EXPOSE 3000
 ENV PORT=3000 HOSTNAME=0.0.0.0

@@ -1,24 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { NEW_PASSWORD_MIN } from '@/src/lib/auth/password'
 import { EMAIL_MAX, USERNAME_RE } from '../user-view'
-import { emailSchema, generateTemporaryPassword, TEMPORARY_PASSWORD_LENGTH } from '../users'
+import { emailSchema } from '../users'
 
-describe('generateTemporaryPassword', () => {
-  it('is long enough to pass the change-password rule', () => {
-    expect(TEMPORARY_PASSWORD_LENGTH).toBeGreaterThanOrEqual(NEW_PASSWORD_MIN)
-    expect(generateTemporaryPassword()).toHaveLength(TEMPORARY_PASSWORD_LENGTH)
-  })
-
-  it('avoids the characters that are misread when a password is read out loud', () => {
-    const sample = Array.from({ length: 200 }, () => generateTemporaryPassword()).join('')
-    expect(sample).not.toMatch(/[iloILO01]/)
-  })
-
-  it('is different every time', () => {
-    const many = new Set(Array.from({ length: 50 }, () => generateTemporaryPassword()))
-    expect(many.size).toBe(50)
-  })
-})
+// The temporary-password generator moved to `@/src/lib/auth/password-reset` with the reset
+// itself (P15.63); its tests moved with it, to src/lib/auth/__tests__/password-reset.test.ts.
 
 describe('USERNAME_RE', () => {
   it('accepts the shapes a ward actually uses', () => {
