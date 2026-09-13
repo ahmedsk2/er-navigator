@@ -147,6 +147,19 @@ display name, no MRN, no IP address.
 
 The action, in order:
 
+0. **A constant-time envelope around the whole body** (P16.41, added 13 September by the security
+   review). Everything below runs inside `withConstantTimeFloor` from
+   `src/lib/auth/constant-time.ts`, so every outcome takes at least `RESET_RESPONSE_FLOOR_MS`
+   (300 ms) measured from entry, awaited before anything is returned or thrown. A floor, not a
+   fixed duration: work that already outlasted it is answered the moment it finishes.
+
+   **Why.** The sentence was the same and the clock was not. A miss returned in about 1 ms and a
+   hit in about 10, because only the hit pays for a transaction; over HTTP the reviewer measured
+   p50 13.7 ms against 22.8 ms, which reads whether a member of staff exists off a form built to
+   reveal nothing. This is what `/login` has done since Phase 1 with its dummy bcrypt, in the only
+   shape available here: these paths' cost is database round trips and there is no dummy
+   transaction worth running. The cheap half is levelled directly as well — the token, its digest
+   and the message body are built on every path, including the ones that will not send anything.
 1. Parse the username with the login schema's own `loginUsernameSchema` (trimmed, lower-cased,
    1..64). A parse failure answers **the same sentence**, not a validation error.
 2. **Rate limit by client IP**, `clientIpFrom()`, five per rolling 60 seconds — the sign-in
@@ -191,6 +204,11 @@ except that the link works.
 
 `app/reset/actions.ts`, in order:
 
+0. The same constant-time envelope `/forgot` has (P16.41): the whole body inside
+   `withConstantTimeFloor`, so a refused rate limit, a password that is too short, two that do not
+   match, a dead token and the redirect that means the password changed all take at least 300 ms
+   from entry. The redirect is a throw and the envelope pads a throw too, or the one outcome that
+   matters would be the one outcome with its own shape on the clock.
 1. Rate limit by IP on the same `passwordResetRateLimiter`.
 2. Parse the two passwords: `newPasswordSchema` (12 characters minimum, the rule
    `/account` uses, from `src/lib/auth/password.ts`) and an equality refinement. `too_short` and
@@ -235,7 +253,7 @@ script are byte-identical in behaviour and their audit payloads are unchanged.
 | Earlier tokens invalidated on a new request | one transaction |
 | At most 3 per user per hour | counted on `createdAt` inside the issuing transaction, behind `SELECT … FOR UPDATE` on the account row, so simultaneous requests cannot each read the same count |
 | Five requests a minute per IP on both pages | `passwordResetRateLimiter` |
-| No enumeration | one sentence for every outcome of `/forgot`; one sentence for every bad token |
+| One answer for every outcome, in words and on the clock | one sentence for every outcome of `/forgot`; one sentence for every bad token; a 300 ms floor on both actions (`withConstantTimeFloor`), and the token, digest and message body built on the paths that will not send them |
 | The reset page reveals no username | the page renders only the form |
 | Audit rows for request, completion and failure | `auth.reset.requested`, `user.password`, `auth.fail` |
 | No token in any log or audit payload | asserted by grep in the unit suite |

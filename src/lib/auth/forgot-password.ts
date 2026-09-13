@@ -141,6 +141,14 @@ export async function requestPasswordReset(
   const answer = (issued: boolean): RequestResetResult => ({ message: RESET_REQUESTED_MESSAGE, issued })
   const now = deps.now ?? new Date()
 
+  // P16.41. Every path pays for the token, its digest and the message body, whether or not there
+  // is an account to send one to. It is a handful of microseconds and it buys the one thing the
+  // envelope in `constant-time.ts` cannot buy cheaply: the paths differ by a database write and
+  // nothing else. Doing this work only where it is used is a difference somebody can time.
+  const token = (deps.newToken ?? generateResetToken)()
+  const tokenHash = hashResetToken(token)
+  const { subject, text } = buildResetEmail(resetLink(deps.appUrl, token))
+
   // The same shape the sign-in form parses, so "AHMED " and "ahmed" reach the same row. A
   // username this refuses is answered exactly like one it accepts.
   const parsed = loginUsernameSchema.safeParse(rawUsername)
@@ -148,10 +156,6 @@ export async function requestPasswordReset(
 
   const target = await deps.store.findTarget(parsed.data)
   if (!target) return answer(false)
-
-  const token = (deps.newToken ?? generateResetToken)()
-  const tokenHash = hashResetToken(token)
-  const { subject, text } = buildResetEmail(resetLink(deps.appUrl, token))
 
   // The count and the insert are the store's one transaction, under a lock on the account
   // (P16.40): reading the count out here is what let eight simultaneous requests write eight

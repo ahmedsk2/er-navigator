@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs'
 import { afterAll, describe, expect, it } from 'vitest'
 import { drainOutbox } from '@/src/lib/alerts/outbox'
 import { prismaOutboxStore } from '@/src/lib/alerts/store'
+import { RESET_RESPONSE_FLOOR_MS, withConstantTimeFloor } from '@/src/lib/auth/constant-time'
 import {
   completePasswordReset,
   requestPasswordReset,
@@ -228,6 +229,48 @@ describe('asking for a link', () => {
     ).toBeLessThanOrEqual(RESET_REQUESTS_PER_HOUR)
     // The one that matters: a person who asked eight times has exactly one link that works.
     expect(tokens.filter((t) => t.usedAt === null)).toHaveLength(1)
+  })
+})
+
+/**
+ * P16.41. The clock was the enumeration channel the sentence could not close: a miss returned
+ * before any write and a hit paid for a transaction, about 1 ms against 10 in process. Both are
+ * held to the same floor now, the way `/login` has always run bcrypt for a username nobody has.
+ *
+ * This is the composition the server action runs, against a real Postgres, so what it times is
+ * the real write and not a fake.
+ */
+describe('the constant-time envelope on a real database', () => {
+  it('answers a real account and an unknown one at the same speed', async () => {
+    const user = await makeUser()
+    const askFloored = async (username: string): Promise<number> => {
+      const started = performance.now()
+      await withConstantTimeFloor(() =>
+        requestPasswordReset(username, IP, { store: requestStore(), appUrl: APP_URL }),
+      )
+      return performance.now() - started
+    }
+
+    const hit = await askFloored(user.username)
+    const miss = await askFloored('p16_nobody_has_this_name')
+    for (const row of await prisma.outbox.findMany({ where: { to: user.email! } })) {
+      outboxIds.push(row.id)
+    }
+
+    // A 1 ms allowance on each: `performance.now()` and `setTimeout` do not agree to the tick.
+    expect(hit, 'the hit path answered before the floor').toBeGreaterThanOrEqual(
+      RESET_RESPONSE_FLOOR_MS - 1,
+    )
+    expect(miss, 'the miss path answered before the floor').toBeGreaterThanOrEqual(
+      RESET_RESPONSE_FLOOR_MS - 1,
+    )
+    // What is left between them is scheduling noise, not a database write. The tolerance is a
+    // third of the floor rather than the ~9 ms the review measured, because a shared CI runner
+    // hiccups and the claim being made is that the difference no longer tracks the work.
+    expect(
+      Math.abs(hit - miss),
+      'a real account and an unknown one are still distinguishable by the clock',
+    ).toBeLessThan(RESET_RESPONSE_FLOOR_MS / 3)
   })
 })
 

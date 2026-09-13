@@ -4,6 +4,7 @@ import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { z } from 'zod'
 import { auditQuietly, clientIpFrom, contextFrom } from '@/src/lib/audit'
+import { withConstantTimeFloor } from '@/src/lib/auth/constant-time'
 import { completePasswordReset } from '@/src/lib/auth/forgot-password'
 import { prismaCompleteResetStore } from '@/src/lib/auth/forgot-password-store'
 import { newPasswordSchema } from '@/src/lib/auth/password'
@@ -32,41 +33,49 @@ const formSchema = z
  * no such link" are two different facts about somebody else's account, so the page says neither.
  * The two messages that do differ, `too_short` and `mismatch`, are about what was typed into this
  * browser and reveal nothing.
+ *
+ * P16.41: the same constant-time envelope `/forgot` has. Every outcome — a refused rate limit, a
+ * password that is too short, two that do not match, a token that cannot be spent, and the
+ * redirect that means the password changed — takes at least `RESET_RESPONSE_FLOOR_MS` measured
+ * from entry. The redirect is a throw, and the envelope pads a throw too, or the one outcome that
+ * matters would be the one outcome with its own shape on the clock.
  */
 export async function completeReset(_previous: ResetState, formData: FormData): Promise<ResetState> {
-  const requestHeaders = await headers()
-  const ip = clientIpFrom(requestHeaders)
-  if (!passwordResetRateLimiter.check(ip ?? 'unknown').allowed) return { error: 'rate_limited' }
+  return withConstantTimeFloor(async () => {
+    const requestHeaders = await headers()
+    const ip = clientIpFrom(requestHeaders)
+    if (!passwordResetRateLimiter.check(ip ?? 'unknown').allowed) return { error: 'rate_limited' }
 
-  const parsed = formSchema.safeParse({
-    token: formData.get('token'),
-    newPassword: formData.get('newPassword'),
-    confirmPassword: formData.get('confirmPassword'),
+    const parsed = formSchema.safeParse({
+      token: formData.get('token'),
+      newPassword: formData.get('newPassword'),
+      confirmPassword: formData.get('confirmPassword'),
+    })
+    if (!parsed.success) {
+      const paths = new Set(parsed.error.issues.map((i) => i.path[0]))
+      if (paths.has('token')) return { error: 'invalid' }
+      if (paths.has('newPassword')) return { error: 'too_short' }
+      return { error: 'mismatch' }
+    }
+
+    const outcome = await completePasswordReset({
+      store: prismaCompleteResetStore({ ip, userAgent: requestHeaders.get('user-agent') }),
+      token: parsed.data.token,
+      newPassword: parsed.data.newPassword,
+    })
+
+    if (!outcome.ok) {
+      // On the record, and MRN-free, token-free and username-free: the failure is about a string
+      // somebody pasted, and this row is what a repeated one would show up in.
+      await auditQuietly(
+        { action: 'auth.fail', entity: 'User', entityId: null, after: { reason: 'reset_token_invalid' } },
+        contextFrom(requestHeaders, null),
+      )
+      return { error: 'invalid' }
+    }
+
+    // No session is created here on purpose: every session of that account was just deleted, and
+    // the person proves the new password by typing it once on the form they know.
+    redirect('/login?reset=1')
   })
-  if (!parsed.success) {
-    const paths = new Set(parsed.error.issues.map((i) => i.path[0]))
-    if (paths.has('token')) return { error: 'invalid' }
-    if (paths.has('newPassword')) return { error: 'too_short' }
-    return { error: 'mismatch' }
-  }
-
-  const outcome = await completePasswordReset({
-    store: prismaCompleteResetStore({ ip, userAgent: requestHeaders.get('user-agent') }),
-    token: parsed.data.token,
-    newPassword: parsed.data.newPassword,
-  })
-
-  if (!outcome.ok) {
-    // On the record, and MRN-free, token-free and username-free: the failure is about a string
-    // somebody pasted, and this row is what a repeated one would show up in.
-    await auditQuietly(
-      { action: 'auth.fail', entity: 'User', entityId: null, after: { reason: 'reset_token_invalid' } },
-      contextFrom(requestHeaders, null),
-    )
-    return { error: 'invalid' }
-  }
-
-  // No session is created here on purpose: every session of that account was just deleted, and
-  // the person proves the new password by typing it once on the form they know.
-  redirect('/login?reset=1')
 }
