@@ -2,6 +2,7 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import { generateResetToken, hashResetToken } from '../../../src/lib/auth/reset-token'
+import { E2E_USERS } from './seed-users'
 
 /**
  * The Phase 16 fixtures (docs/specs/phase16-forgot-password.md, section 8).
@@ -81,6 +82,17 @@ export async function seedForgotUsers(): Promise<void> {
       } catch (cause) {
         console.warn('[e2e] could not clear the previous run’s reset rows (owner role needed):', String(cause))
       }
+    }
+    // The screenshot spec writes a live token on `e2e_navigator`, which asks for no links and so
+    // never invalidates one. Cleared here too, or every run leaves another row behind.
+    try {
+      const shots = await prisma.user.findUnique({
+        where: { username: E2E_USERS.navigator.username },
+        select: { id: true },
+      })
+      if (shots) await prisma.passwordResetToken.deleteMany({ where: { userId: shots.id } })
+    } catch (cause) {
+      console.warn('[e2e] could not clear the screenshot fixture’s reset tokens:', String(cause))
     }
   } finally {
     await prisma.$disconnect()

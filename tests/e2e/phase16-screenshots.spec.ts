@@ -1,6 +1,7 @@
 import { statSync as fileStat } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
-import { forgotUserFor, seedLiveToken } from './fixtures/forgot'
+import { seedLiveToken } from './fixtures/forgot'
+import { E2E_USERS } from './fixtures/seed-users'
 
 /**
  * The Phase 16 gate captures, both plan viewports: the "Forgot your password?" link under the
@@ -8,9 +9,12 @@ import { forgotUserFor, seedLiveToken } from './fixtures/forgot'
  *
  * A blank PNG is the failure that bit Phase 0, so every capture is size-checked.
  *
- * The /reset token is written straight to the database rather than asked for on the form: the
- * three-links-an-hour rule is per account, and spending one of them on a screenshot would leave
- * `phase16-forgot-password.spec.ts` one short on a retry.
+ * The /reset token is written straight to the database, and on an account this phase's flow spec
+ * never touches. Two reasons, both races that would otherwise show up as a screenshot of the
+ * expired-link page: issuing a link kills every earlier unused link of that account, so a
+ * concurrent /forgot in the flow spec would spend this one out from under the capture, and the
+ * three-links-an-hour rule would leave that spec one short on a retry. `e2e_navigator` asks for
+ * no links, so a token written for it stays live and is never submitted.
  */
 const MIN_BYTES = 8_000
 
@@ -25,8 +29,6 @@ test('phase 16 the forgot-password pages', async ({ page }, testInfo) => {
   const mobile = testInfo.project.name === 'mobile'
   const suffix = mobile ? 'mobile-390x844' : 'desktop-1280x800'
   await page.setExtraHTTPHeaders({ 'cf-connecting-ip': mobile ? '203.0.113.81' : '203.0.113.82' })
-  const user = forgotUserFor(testInfo.project.name)
-
   // 1. The sign-in screen with the link under the form: the whole of Ahmed's request that a
   //    person can see before they tap anything.
   await page.goto('/login')
@@ -39,7 +41,7 @@ test('phase 16 the forgot-password pages', async ({ page }, testInfo) => {
   await shoot(page, 'forgot', suffix)
 
   // 3. The two fields behind a live link, and the sentence about signing every device out.
-  const token = await seedLiveToken(user.username)
+  const token = await seedLiveToken(E2E_USERS.navigator.username)
   await page.goto(`/reset?token=${encodeURIComponent(token)}`)
   await expect(page.getByLabel('New password', { exact: true })).toBeVisible()
   await shoot(page, 'reset', suffix)

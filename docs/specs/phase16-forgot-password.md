@@ -239,7 +239,9 @@ what "reset by email" means, and it is why the address lives in Admin → Users 
 the user can edit. The in-process rate limiter is per container, as it has been since Phase 1, and
 the same one-replica caveat in `rate-limit.ts` applies. An `Outbox` row's `text` holds a live
 token for up to 30 minutes: the app role can read the table, which is the same trust boundary the
-session table already sits inside.
+session table already sits inside. And the **GET** of `/reset` is not rate limited — only the
+submission is — so a stranger can make one indexed lookup of a 32-byte digest per request; that is
+the same cost as rendering `/login`, and the thing being guessed is 256 bits.
 
 ---
 

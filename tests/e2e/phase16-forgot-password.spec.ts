@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { forgotUserFor, seedExpiredToken, tokenFromOutbox } from './fixtures/forgot'
 
 /**
@@ -10,13 +10,19 @@ import { forgotUserFor, seedExpiredToken, tokenFromOutbox } from './fixtures/for
  * exactly the string the mail carries, and the sign-in at the end is the real form.
  *
  * Each test declares its own client IP: /forgot and /reset are rate limited to five a minute per
- * address, like the sign-in form, and this file makes more than that across two projects.
+ * address, like the sign-in form, and this file makes more than that across two projects. The
+ * RETRY index is part of the address too — the flow below spends four of the five, so a CI retry
+ * from the same address inside the same minute would be refused for the wrong reason and hide
+ * whatever made the first attempt fail.
  */
 const MESSAGE = 'If that account has an email, a link is on its way. It works for 30 minutes.'
 const DEAD = 'That link does not work any more. Links last 30 minutes and can be used once.'
 
-async function fromClientIp(page: Page, ip: string): Promise<void> {
-  await page.setExtraHTTPHeaders({ 'cf-connecting-ip': ip })
+async function fromClientIp(page: Page, testInfo: TestInfo, n: number): Promise<void> {
+  const project = testInfo.project.name === 'mobile' ? 0 : 8
+  await page.setExtraHTTPHeaders({
+    'cf-connecting-ip': `203.0.113.${120 + project + n + testInfo.retry * 20}`,
+  })
 }
 
 /** The page must never scroll sideways on a phone (plan section 5). */
@@ -37,7 +43,7 @@ async function ask(page: Page, username: string): Promise<void> {
 
 test.describe('the way in when the password is gone', () => {
   test('the login page carries the link, and it goes to /forgot', async ({ page }, testInfo) => {
-    await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.201' : '198.51.100.202')
+    await fromClientIp(page, testInfo, 0)
     await page.goto('/login')
 
     const link = page.getByRole('link', { name: 'Forgot your password?', exact: true })
@@ -52,7 +58,7 @@ test.describe('the way in when the password is gone', () => {
   test('an account that exists and one that does not get exactly the same answer', async ({
     page,
   }, testInfo) => {
-    await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.203' : '198.51.100.204')
+    await fromClientIp(page, testInfo, 1)
     const user = forgotUserFor(testInfo.project.name)
 
     await ask(page, 'nobody_at_all_p16')
@@ -68,7 +74,7 @@ test.describe('the way in when the password is gone', () => {
 
   test('the link in the mail sets a password that signs in', async ({ page }, testInfo) => {
     const mobile = testInfo.project.name === 'mobile'
-    await fromClientIp(page, mobile ? '198.51.100.205' : '198.51.100.206')
+    await fromClientIp(page, testInfo, 2)
     const user = forgotUserFor(testInfo.project.name)
 
     // 1. Ask, and read what the app put in the outbox for that address — the same string the
@@ -118,7 +124,7 @@ test.describe('the way in when the password is gone', () => {
   })
 
   test('an expired link is refused, and offers a new one', async ({ page }, testInfo) => {
-    await fromClientIp(page, testInfo.project.name === 'mobile' ? '198.51.100.207' : '198.51.100.208')
+    await fromClientIp(page, testInfo, 3)
     const user = forgotUserFor(testInfo.project.name)
     const token = await seedExpiredToken(user.username)
 
