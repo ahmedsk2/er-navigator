@@ -275,6 +275,38 @@ If `SMTP_HOST` is empty the worker logs each message at info level instead of se
 leaves `emailSentAt` null — the alerts themselves are still recorded, so nothing is lost by
 leaving mail switched off until the DKIM record is in place.
 
+### Forgot password (Phase 16)
+
+The same worker sends the "Forgot your password?" mail, and it is the only thing that does. The
+app has no SMTP transport in any request path: `/forgot` writes an `Outbox` row and the worker
+drains that table **every 20 seconds** on its own timer, marking `sentAt`, or `attempts` and
+`lastError`. The 5-minute alert cycle, the heartbeat and the push monitor are untouched by it, so
+a mail server that is down can never make this container report unhealthy.
+
+**Mail only goes out if `SMTP_HOST` is set.** With it empty the worker logs
+`[outbox] SMTP_HOST is empty; would have emailed <address>` and stamps the row sent anyway, so the
+queue does not grow for ever on an instance that has no mail. Production has all five `SMTP_*`
+values set; the demo instance deliberately has none (see "Demo instance").
+
+```bash
+U=jqcjqhmcmizxs1u51wnqlfwv
+W=$(sudo docker ps --format '{{.Names}}' | grep "^worker-$U")
+sudo docker logs "$W" --tail 100 | grep '\[outbox\]'   # what it sent, or logged, and when
+DB=$(sudo docker ps --format '{{.Names}}' | grep "^db-$U")
+sudo docker exec "$DB" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc   "SELECT id, \"to\", \"sentAt\", attempts, \"lastError\" FROM \"Outbox\" ORDER BY \"createdAt\" DESC LIMIT 5"'
+```
+
+A row still unsent after five attempts stays there with its `lastError` on it and is not tried
+again: fix the mail settings, then `UPDATE "Outbox" SET attempts = 0 WHERE id = '<id>'` as the
+owner role to let the worker pick it up, if the 30 minutes have not already run out.
+
+**Never print an `Outbox` row's `text` on a shared terminal.** It holds a live reset link for
+thirty minutes; the columns above are chosen so a diagnosis never has to.
+
+**An account with no email address cannot use this at all** and is told nothing different, on
+purpose (an answer that varied would say which usernames exist). Give the account an address in
+Admin → Users, or reset it from the host as below.
+
 ## Add a user
 
 Admin → Users, as an ADMIN: create (the temporary password is shown once — read it out, it cannot
@@ -299,6 +331,12 @@ failed (five `auth.fail` rows, no lock yet). Sign in with the original value and
 /account, or reset it from the host as below.
 
 ## Reset a password from the host (Phase 15)
+
+**Before this, try the link.** Since Phase 16 the sign-in form carries "Forgot your password?",
+which mails a one-time link to the address on the account (see "Forgot password" above). It is the
+self-service path and it needs no host access. It cannot help an account that has **no email
+address on it**, and it cannot help if the mail is not arriving — that is what the rest of this
+section is for.
 
 **For everyone else, use the screen.** Admin → Users → Reset password shows a temporary password
 once, clears the lock and the failure count, signs that user out everywhere and leaves a
@@ -491,6 +529,14 @@ have emailed …" instead of sending. Alert rows are still recorded, so the demo
 alerts on Admin → Alerts with **Emailed: –**, which is correct and not a fault. An empty
 `ALERT_PUSH_URL` gives `pushMonitor: none`: no Uptime Kuma monitor watches the demo, deliberately,
 because a demo that is switched off must not page anyone.
+
+The same is true of the Phase 16 "Forgot your password?" mail, and it is what makes that flow
+safe to demonstrate here: `/forgot` writes its `Outbox` row, the worker's next poll logs
+`[outbox] SMTP_HOST is empty; would have emailed demo.lead@demo.invalid` and stamps the row sent,
+and **nothing leaves the host**. The four demo accounts carry `<username>@demo.invalid` addresses
+(RFC 2606 reserves `.invalid`), so the form answers exactly as it does in production and there is
+no address anywhere that could receive anything. To show the whole flow to a room, read the link
+out of the row's `text` on the host — never on a shared screen — or just show the log line.
 
 **Seed it** (on the host, after the deploy is verified). `$OWNER_URL` and `$DEMO_PW` are read from
 the demo application's Coolify environment page into shell variables and **never echoed**;

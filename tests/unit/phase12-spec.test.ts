@@ -347,6 +347,41 @@ describe('the guides name the controls the app actually renders', () => {
     }
   })
 
+  /**
+   * Phase 16 (docs/specs/phase16-forgot-password.md). One link on the sign-in screen and one
+   * paragraph in the nurse guide, and the two have to say the same thing: a nurse who is told to
+   * tap a control that is not there, or that is called something else, is worse off than a nurse
+   * who was told nothing. Read off the page that renders the link and the module that owns the
+   * thirty minutes, not off the prose.
+   */
+  it('names the forgot-password link the login page renders, and the rule it comes with', () => {
+    const { nurse } = guides()
+    const login = readFileSync(path.join(ROOT, 'app/login/page.tsx'), 'utf8')
+    const token = readFileSync(path.join(ROOT, 'src/lib/auth/reset-token.ts'), 'utf8')
+
+    // The control: a link to /forgot, by that exact name, which is what the guide sends them to.
+    expect(login).toMatch(/href="\/forgot"/)
+    expect(login).toContain('Forgot your password?')
+    // And the page it goes to exists and is public, or the link is a dead end.
+    expect(readFileSync(path.join(ROOT, 'app/forgot/page.tsx'), 'utf8')).toContain(
+      'Forgot your password?',
+    )
+    const proxySource = readFileSync(path.join(ROOT, 'proxy.ts'), 'utf8')
+    for (const p of ["'/forgot'", "'/reset'"]) expect(proxySource).toContain(p)
+
+    const minutes = Number(token.match(/RESET_TOKEN_TTL_MINUTES = (\d+)/)![1]!)
+    const text = nurse.replace(/\s+/g, ' ')
+    expect(text, 'the guide does not name the link').toMatch(/\*\*Forgot your password\?\*\*/)
+    expect(text, 'the guide does not say how long the link lasts').toContain(`${minutes} minutes`)
+    expect(text, 'the guide does not say an account needs an email address').toMatch(
+      /no email address, this cannot help you/,
+    )
+    // The one thing a nurse must not be surprised by afterwards.
+    expect(text, 'the guide does not warn that a reset signs you out').toMatch(
+      /signs you out everywhere/,
+    )
+  })
+
   /** House style, and the reason this file can compare strings at all: no em dash in a guide. */
   it('keeps both guides free of em dashes', () => {
     const { nurse, script } = guides()
